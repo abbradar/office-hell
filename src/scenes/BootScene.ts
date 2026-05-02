@@ -16,19 +16,6 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    console.log('[boot] preload start. urls:', {
-      player: playerSpriteUrl,
-      coworker1: coworker1Url,
-      coworker2: coworker2Url,
-      boss1: boss1Url,
-    });
-    console.log('[boot] location.href=', location.href);
-    this.load.on('filecomplete', (key: string, type: string) => console.log('[boot] filecomplete', type, key));
-    this.load.on('loaderror', (file: Phaser.Loader.File) =>
-      console.log('[boot] loaderror', file.type, file.key, 'url=', file.src ?? file.url),
-    );
-    this.load.on('complete', () => console.log('[boot] loader complete'));
-
     this.load.spritesheet('player', playerSpriteUrl, {
       frameWidth: PLAYER_FRAME_W,
       frameHeight: PLAYER_FRAME_H,
