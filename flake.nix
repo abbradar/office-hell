@@ -1,21 +1,23 @@
 {
-  description = "Office Hell — Touhou-style bullet hell HTML5 game";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    systems.url = "github:nix-systems/default";
+  };
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  outputs = inputs @ {flake-parts, ...}:
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = import inputs.systems;
 
-  outputs = { self, nixpkgs }:
-    let
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAll = nixpkgs.lib.genAttrs systems;
-      pkgsFor = forAll (system: import nixpkgs { inherit system; });
-    in {
-      devShells = forAll (system: {
-        default = pkgsFor.${system}.mkShell {
-          packages = with pkgsFor.${system}; [
+      perSystem = {pkgs, ...}: {
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
             nodejs_22
             biome
           ];
         };
-      });
+
+        formatter = pkgs.alejandra;
+      };
     };
 }
