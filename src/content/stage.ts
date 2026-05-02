@@ -1,8 +1,14 @@
+import type Phaser from 'phaser';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
+import { CHARACTER_REGISTRY_KEY, type CharacterDef, DEFAULT_CHARACTER } from './characters';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
+
+const PLAYER_OUTRO_SPEED = 220;
+const PLAYER_OUTRO_PAUSE_Y = 110;
+const PLAYER_OUTRO_EXIT_Y = -60;
 
 // Wait until every non-player entity (enemies and their bullets) has died or
 // left the play field — i.e. damages.player is empty of live entries.
@@ -89,15 +95,54 @@ export type WaveDef = {
 };
 
 export const WAVES: WaveDef[] = [
+  { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
   { id: 'w1', name: 'Wave 1 — Streamers', script: wave1 },
   { id: 'w2', name: 'Wave 2 — Fan shooters', script: wave2 },
   { id: 'w3', name: 'Wave 3 — Ring spinners', script: wave3 },
   { id: 'w4', name: 'Wave 4 — Drivers', script: wave4 },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
+  { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];
 
+function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
+  const p = self.pool.playerEntity;
+  if (!p?.alive) return;
+  // Take the wheel: stop accepting input and let the player float past the top
+  // edge unbothered by the world-bounds clamp the live controls relied on.
+  p.controlsEnabled = false;
+  const body = p.body as Phaser.Physics.Arcade.Body | null;
+  body?.setCollideWorldBounds(false);
+
+  p.setVelocity(0, -PLAYER_OUTRO_SPEED);
+  while (p.alive && p.y > PLAYER_OUTRO_PAUSE_Y) yield 0;
+  p.setVelocity(0, 0);
+  const ch = (self.scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    lines: [{ speaker: 'left', text: 'I did it. This time, I did it.' }],
+  });
+
+  p.setVelocity(0, -PLAYER_OUTRO_SPEED);
+  while (p.alive && p.y > PLAYER_OUTRO_EXIT_Y) yield 0;
+}
+
+function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
+  const ch = (self.scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    lines: [
+      { speaker: 'left', text: '8:47 PM. The hum of the lights is starting to feel personal.' },
+      { speaker: 'left', text: "Okay. Tonight I'm leaving before midnight. I mean it this time." },
+      { speaker: 'left', text: 'Just clear the floor, dodge a few "quick syncs", and out the door.' },
+      { speaker: 'left', text: '…how hard can it be.' },
+    ],
+  });
+}
+
 function* stageScript(self: Entity) {
-  yield 60;
+  yield 30;
+  yield* introMonologue(self);
+  yield 30;
 
   yield* wave1(self);
   yield 150;
@@ -117,6 +162,7 @@ function* stageScript(self: Entity) {
   yield 30;
   clearScreen(self);
   yield 30;
+  yield* playerOutro(self);
 
   self.scene.scene.start('End', { won: true });
 }

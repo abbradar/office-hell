@@ -13,6 +13,10 @@ const PLAYER_BULLET_SPEED = 700;
 const FIRE_OFFSET_Y = 24;
 
 export class Player extends Entity {
+  // Stage scripts flip this to false during cutscenes (e.g. the post-boss outro)
+  // so the live input/auto-fire loop stops fighting the puppeteered velocity.
+  controlsEnabled = true;
+
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
@@ -48,7 +52,7 @@ export class Player extends Entity {
   }
 
   controlUpdate(): void {
-    if (!this.alive) return;
+    if (!this.alive || !this.controlsEnabled) return;
 
     let dir = 0;
     if (this.leftKey.isDown || isLeftHeld()) dir -= 1;

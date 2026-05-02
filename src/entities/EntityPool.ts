@@ -5,6 +5,7 @@ import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { Entity } from './Entity';
+import type { Player } from './Player';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
@@ -18,6 +19,9 @@ export class EntityPool {
   readonly bubbles: BubbleManager;
   readonly dialogue: DialogueManager;
   readonly player = { x: 0, y: 0 };
+  // Live reference to the controllable player entity. Set by GameScene after
+  // construction so stage scripts can puppet the player during cutscenes.
+  playerEntity: Player | null = null;
   paused = false;
 
   private readonly free: Entity[] = [];

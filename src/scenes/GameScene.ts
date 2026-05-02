@@ -52,6 +52,7 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player.x = this.player.x;
     this.pool.player.y = this.player.y;
+    this.pool.playerEntity = this.player;
 
     const stageKind = this.practiceWave ? makeWaveStage(this.practiceWave) : stage;
     this.pool.spawn(stageKind, 0, 0, 0, 0);
