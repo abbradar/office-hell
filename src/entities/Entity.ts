@@ -7,8 +7,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   kind: EntityKind = INERT_KIND;
   hp: number | null = null;
   alive = false;
-  scriptIter: Generator<number, void, void> | null = null;
-  waitFrames = 0;
+  // Bumped on every spawn so deferred callbacks (e.g. onDeath) can detect
+  // that the entity they captured has since died and been reused for something else.
+  gen = 0;
+  onDeath: (() => void)[] | null = null;
   hasEnteredScreen = false;
 
   setMotion(angleRad: number, speed: number): void {
@@ -41,7 +43,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     vx: number,
     vy: number,
     opts?: SpawnOpts,
-  ): Entity | null {
+  ): Entity {
     return this.pool.spawn(kind, x, y, vx, vy, opts);
   }
 
@@ -49,6 +51,9 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     this.alive = false;
     const body = this.body as Phaser.Physics.Arcade.Body | null;
     if (body) body.enable = false;
+    const cbs = this.onDeath;
+    this.onDeath = null;
+    if (cbs) for (const cb of cbs) cb();
   }
 
   takeDamage(amount: number): void {

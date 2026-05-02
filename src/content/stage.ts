@@ -35,12 +35,8 @@ function* stageScript(self: Entity) {
 
   // Boss
   const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
-  if (boss) {
-    while (boss.alive && boss.kind === bossOne) {
-      yield 1;
-    }
-    yield 60;
-  }
+  yield { until: boss };
+  yield 60;
 
   self.scene.scene.start('End');
 }

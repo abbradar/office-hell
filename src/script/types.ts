@@ -1,6 +1,7 @@
 import type { Entity } from '../entities/Entity';
 
-export type EntityScript = (self: Entity) => Generator<number, void, void>;
+export type ScriptYield = number | { until: Entity };
+export type EntityScript = (self: Entity) => Generator<ScriptYield, void, void>;
 
 export const DAMAGE_CLASSES = ['player', 'enemy'] as const;
 export type DamageClass = typeof DAMAGE_CLASSES[number];
