@@ -1,7 +1,7 @@
 import { BULLET_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';
-import { ring } from '../script/patterns';
+import { ring, aimed, spread, arc } from '../script/patterns';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
@@ -19,9 +19,83 @@ export const playerBullet = new EntityKind({
   damagedByClass: [],
 });
 
+// --- Streamer: drifts down with a sine-wave x, fires aimed shots periodically ---
+
+function* streamerScript(self: Entity) {
+  const baseX = self.x;
+  self.setVelocity(0, 90);
+  let frame = 0;
+  while (true) {
+    self.x = baseX + Math.sin(frame * 0.06) * 50;
+    if (frame % 50 === 30) aimed(self, 1, bullet, 200);
+    frame++;
+    yield 0;
+  }
+}
+
+export const streamer = new EntityKind({
+  sprite: 'coworker1',
+  animKey: 'coworker1_walk',
+  hitboxRadius: 10,
+  hp: 2,
+  damageClass: ['player'],
+  damagedByClass: ['enemy'],
+  defaultScript: streamerScript,
+});
+
+// --- Fan shooter: drives in, stops, fires downward spreads, leaves ---
+
+function* fanShooterScript(self: Entity) {
+  self.setVelocity(0, 110);
+  yield 60;
+  self.setVelocity(0, 0);
+  for (let i = 0; i < 4; i++) {
+    spread(self, 5, bullet, 180, Math.PI / 2, Math.PI / 4);
+    yield 50;
+  }
+  self.setVelocity(0, 220);
+}
+
+export const fanShooter = new EntityKind({
+  sprite: 'coworker1',
+  animKey: 'coworker1_walk',
+  hitboxRadius: 12,
+  hp: 4,
+  damageClass: ['player'],
+  damagedByClass: ['enemy'],
+  defaultScript: fanShooterScript,
+});
+
+// --- Ring spinner: drives in, stops, fires rotating rings, leaves ---
+
+function* ringSpinnerScript(self: Entity) {
+  self.setVelocity(0, 100);
+  yield 80;
+  self.setVelocity(0, 0);
+  let baseAngle = Math.random() * Math.PI * 2;
+  for (let i = 0; i < 5; i++) {
+    ring(self, 14, bullet, 130, baseAngle);
+    baseAngle += Math.PI / 14;
+    yield 35;
+  }
+  self.setVelocity(0, 220);
+}
+
+export const ringSpinner = new EntityKind({
+  sprite: 'coworker2',
+  animKey: 'coworker2_walk',
+  hitboxRadius: 12,
+  hp: 5,
+  damageClass: ['player'],
+  damagedByClass: ['enemy'],
+  defaultScript: ringSpinnerScript,
+});
+
+// --- Driver (existing): rams toward player while shooting rings ---
+
 const DRIVE_SPEED = 80;
 const APPROACH_SPEED = 120;
-const EXIT_SPEED = 180;
+const EXIT_SPEED = 200;
 
 const DRIVE_FRAMES = 70;
 const RAMS_BEFORE_EXIT = 3;
@@ -46,10 +120,55 @@ function* driverScript(self: Entity) {
 }
 
 export const driver = new EntityKind({
-  sprite: 'enemy',
-  hitboxRadius: 10,
-  hp: 3,
+  sprite: 'coworker2',
+  animKey: 'coworker2_walk',
+  hitboxRadius: 12,
+  hp: 6,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: driverScript,
+});
+
+// --- Boss: enters from top, anchors, cycles three attack patterns until dead ---
+
+function* bossScript(self: Entity) {
+  // Entry
+  self.setVelocity(0, 110);
+  yield 80;
+  self.setVelocity(0, 0);
+  yield 30;
+
+  // Repeating attack cycle while alive
+  while (self.alive) {
+    // Phase 1: aimed shotgun bursts
+    for (let i = 0; i < 5; i++) {
+      aimed(self, 5, bullet, 200, Math.PI / 6);
+      yield 28;
+    }
+    yield 30;
+
+    // Phase 2: rotating multi-rings
+    for (let i = 0; i < 4; i++) {
+      ring(self, 16, bullet, 130, i * (Math.PI / 16));
+      yield 22;
+    }
+    yield 30;
+
+    // Phase 3: wide downward arcs
+    for (let i = 0; i < 6; i++) {
+      arc(self, 11, bullet, 170, Math.PI / 6, (5 * Math.PI) / 6);
+      yield 32;
+    }
+    yield 60;
+  }
+}
+
+export const bossOne = new EntityKind({
+  sprite: 'boss1',
+  animKey: 'boss1_walk',
+  hitboxRadius: 18,
+  hp: 30,
+  damageClass: ['player'],
+  damagedByClass: ['enemy'],
+  defaultScript: bossScript,
 });

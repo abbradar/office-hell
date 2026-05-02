@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { EntityKind, INERT_KIND, type SpawnOpts } from '../script/types';
 import type { EntityPool } from './EntityPool';
 
-export class Entity extends Phaser.Physics.Arcade.Image {
+export class Entity extends Phaser.Physics.Arcade.Sprite {
   pool!: EntityPool;
   kind: EntityKind = INERT_KIND;
   hp: number | null = null;

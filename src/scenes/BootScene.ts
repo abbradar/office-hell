@@ -1,5 +1,14 @@
 import Phaser from 'phaser';
 import { BULLET_RADIUS, GAME_W } from '../config';
+import playerSpriteUrl from '../sprites/player.png';
+import coworker1Url from '../sprites/coworker1.png';
+import coworker2Url from '../sprites/coworker2.png';
+import boss1Url from '../sprites/boss1.png';
+
+export const PLAYER_FRAME_W = 48;
+export const PLAYER_FRAME_H = 48;
+export const ENEMY_FRAME_W = 48;
+export const ENEMY_FRAME_H = 48;
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +16,23 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    this.load.spritesheet('player', playerSpriteUrl, {
+      frameWidth: PLAYER_FRAME_W,
+      frameHeight: PLAYER_FRAME_H,
+    });
+    this.load.spritesheet('coworker1', coworker1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('coworker2', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('boss1', boss1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+
     const g = this.add.graphics();
 
     const bd = BULLET_RADIUS * 2;
@@ -22,33 +48,6 @@ export class BootScene extends Phaser.Scene {
     g.generateTexture('playerBullet', 6, 14);
     g.clear();
 
-    g.fillStyle(0xfdd9b4, 1);
-    g.fillCircle(16, 8, 7);
-    g.fillStyle(0x2c3e6e, 1);
-    g.fillRect(8, 14, 16, 18);
-    g.fillStyle(0xfdd9b4, 1);
-    g.fillRect(4, 16, 4, 12);
-    g.fillRect(24, 16, 4, 12);
-    g.fillStyle(0x1c1c2a, 1);
-    g.fillRect(8, 32, 7, 14);
-    g.fillRect(17, 32, 7, 14);
-    g.fillStyle(0x000000, 1);
-    g.fillRect(8, 46, 7, 2);
-    g.fillRect(17, 46, 7, 2);
-    g.fillStyle(0xff3070, 1);
-    g.fillCircle(16, 24, 6);
-    g.fillStyle(0xffffff, 0.9);
-    g.fillCircle(16, 24, 2);
-    g.generateTexture('player', 32, 48);
-    g.clear();
-
-    g.fillStyle(0xf72585, 1);
-    g.fillRect(0, 0, 24, 24);
-    g.fillStyle(0x000000, 1);
-    g.fillRect(6, 8, 4, 4);
-    g.fillRect(14, 8, 4, 4);
-    g.generateTexture('enemy', 24, 24);
-    g.clear();
 
     const cw = GAME_W;
     const ch = 128;
@@ -91,6 +90,25 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.anims.create({
+      key: 'player_walk',
+      frames: this.anims.generateFrameNumbers('player', { start: 0, end: 5 }),
+      frameRate: 10,
+      repeat: -1,
+    });
+
+    // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
+    // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
+    // standard 1-0-1-2 sequence for a smooth gait.
+    for (const key of ['coworker1', 'coworker2', 'boss1']) {
+      this.anims.create({
+        key: `${key}_walk`,
+        frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+
     this.scene.start('Menu');
   }
 }

@@ -67,8 +67,14 @@ export class EntityPool {
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
       e.setVisible(true);
+      if (kind.animKey) {
+        e.play(kind.animKey);
+      } else {
+        e.anims.stop();
+      }
     } else {
       e.setVisible(false);
+      e.anims.stop();
     }
     e.setActive(true);
 

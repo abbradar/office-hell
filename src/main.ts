@@ -3,6 +3,7 @@ import { GAME_W, GAME_H } from './config';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
+import { EndScene } from './scenes/EndScene';
 
 new Phaser.Game({
   type: Phaser.WEBGL,
@@ -19,5 +20,5 @@ new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene, MenuScene, GameScene],
+  scene: [BootScene, MenuScene, GameScene, EndScene],
 });

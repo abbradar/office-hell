@@ -11,6 +11,7 @@ export type EntityKindOpts = {
   hp: number | null;
   damageClass: DamageClass[];
   damagedByClass: DamageClass[];
+  animKey?: string;
   defaultScript?: EntityScript;
 };
 
@@ -20,6 +21,7 @@ export class EntityKind {
   readonly hp: number | null;
   readonly damageClass: DamageClass[];
   readonly damagedByClass: DamageClass[];
+  readonly animKey?: string;
   readonly defaultScript?: EntityScript;
 
   constructor(opts: EntityKindOpts) {
@@ -28,6 +30,7 @@ export class EntityKind {
     this.hp = opts.hp;
     this.damageClass = opts.damageClass;
     this.damagedByClass = opts.damagedByClass;
+    this.animKey = opts.animKey;
     this.defaultScript = opts.defaultScript;
   }
 

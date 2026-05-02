@@ -11,6 +11,7 @@ export class PlayerKind extends EntityKind {
   constructor(hpText: Phaser.GameObjects.Text) {
     super({
       sprite: 'player',
+      animKey: 'player_walk',
       hitboxRadius: PLAYER_HITBOX_RADIUS,
       hp: PLAYER_HP,
       damageClass: [],

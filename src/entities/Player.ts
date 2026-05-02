@@ -4,6 +4,7 @@ import { isLeftHeld, isRightHeld, isAttackHeld } from '../input/touch';
 import { Entity } from './Entity';
 import { EntityPool } from './EntityPool';
 import { playerBullet } from '../content/kinds';
+import { shoot } from '../audio/sfx';
 import type { EntityKind } from '../script/types';
 
 const FIRE_INTERVAL_MS = 140;
@@ -40,6 +41,8 @@ export class Player extends Entity {
     for (const c of kind.damageClass) pool.damages[c].add(this);
     for (const c of kind.damagedByClass) pool.damagedBy[c].add(this);
 
+    if (kind.animKey) this.play(kind.animKey);
+
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
@@ -67,6 +70,7 @@ export class Player extends Entity {
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
         this.pool.spawn(playerBullet, this.x, this.y - FIRE_OFFSET_Y, 0, -PLAYER_BULLET_SPEED);
+        shoot();
       }
     }
   }
