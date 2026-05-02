@@ -1,0 +1,41 @@
+name: Deploy to itch.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: itch-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ITCH_TARGET: abbradar/office-hell
+      ITCH_CHANNEL: html5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Install butler
+        run: |
+          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d "$HOME/.butler"
+          chmod +x "$HOME/.butler/butler"
+          echo "$HOME/.butler" >> "$GITHUB_PATH"
+
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          butler push dist "$ITCH_TARGET:$ITCH_CHANNEL" \
+            --userversion "${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
