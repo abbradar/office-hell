@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { BULLET_RADIUS, GAME_W } from '../config';
-import playerSpriteUrl from '../sprites/player.png';
+import boss1Url from '../sprites/boss1.png';
 import coworker1Url from '../sprites/coworker1.png';
 import coworker2Url from '../sprites/coworker2.png';
-import boss1Url from '../sprites/boss1.png';
+import playerSpriteUrl from '../sprites/player.png';
 
 export const PLAYER_FRAME_W = 48;
 export const PLAYER_FRAME_H = 48;
@@ -16,6 +16,19 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    console.log('[boot] preload start. urls:', {
+      player: playerSpriteUrl,
+      coworker1: coworker1Url,
+      coworker2: coworker2Url,
+      boss1: boss1Url,
+    });
+    console.log('[boot] location.href=', location.href);
+    this.load.on('filecomplete', (key: string, type: string) => console.log('[boot] filecomplete', type, key));
+    this.load.on('loaderror', (file: Phaser.Loader.File) =>
+      console.log('[boot] loaderror', file.type, file.key, 'url=', file.src ?? file.url),
+    );
+    this.load.on('complete', () => console.log('[boot] loader complete'));
+
     this.load.spritesheet('player', playerSpriteUrl, {
       frameWidth: PLAYER_FRAME_W,
       frameHeight: PLAYER_FRAME_H,
@@ -48,7 +61,6 @@ export class BootScene extends Phaser.Scene {
     g.generateTexture('playerBullet', 6, 14);
     g.clear();
 
-
     const cw = GAME_W;
     const ch = 128;
     g.fillStyle(0x1a1a28, 1);
@@ -68,21 +80,11 @@ export class BootScene extends Phaser.Scene {
     const sh = 256;
     g.fillStyle(0xa0a8d0, 1);
     for (let i = 0; i < 32; i++) {
-      g.fillRect(
-        Phaser.Math.Between(48, sw - 48),
-        Phaser.Math.Between(0, sh - 1),
-        2,
-        2,
-      );
+      g.fillRect(Phaser.Math.Between(48, sw - 48), Phaser.Math.Between(0, sh - 1), 2, 2);
     }
     g.fillStyle(0x8090c0, 0.7);
     for (let i = 0; i < 24; i++) {
-      g.fillRect(
-        Phaser.Math.Between(48, sw - 48),
-        Phaser.Math.Between(0, sh - 1),
-        1,
-        1,
-      );
+      g.fillRect(Phaser.Math.Between(48, sw - 48), Phaser.Math.Between(0, sh - 1), 1, 1);
     }
     g.generateTexture('corridor_specks', sw, sh);
 

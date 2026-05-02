@@ -1,7 +1,7 @@
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';
-import { streamer, fanShooter, ringSpinner, driver, bossOne } from './kinds';
+import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 
 function* stageScript(self: Entity) {
   yield 60;

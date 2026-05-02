@@ -13,6 +13,7 @@
         default = pkgsFor.${system}.mkShell {
           packages = with pkgsFor.${system}; [
             nodejs_22
+            biome
           ];
         };
       });

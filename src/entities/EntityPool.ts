@@ -1,8 +1,8 @@
-import Phaser from 'phaser';
-import { GAME_W, GAME_H, ENTITY_POOL_SIZE, CULL_MARGIN } from '../config';
-import { Entity } from './Entity';
-import type { EntityKind, SpawnOpts, DamageClass, ScriptYield } from '../script/types';
+import type Phaser from 'phaser';
+import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
+import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
 import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
+import { Entity } from './Entity';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
@@ -55,14 +55,7 @@ export class EntityPool {
     return e;
   }
 
-  spawn(
-    kind: EntityKind,
-    x: number,
-    y: number,
-    vx: number,
-    vy: number,
-    opts: SpawnOpts = {},
-  ): Entity {
+  spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts: SpawnOpts = {}): Entity {
     const e = this.free.pop() ?? this.makeEntity();
 
     e.kind = kind;
@@ -95,11 +88,7 @@ export class EntityPool {
     const body = e.body as Phaser.Physics.Arcade.Body;
     if (kind.hitboxRadius > 0) {
       body.enable = true;
-      body.setCircle(
-        kind.hitboxRadius,
-        e.width / 2 - kind.hitboxRadius,
-        e.height / 2 - kind.hitboxRadius,
-      );
+      body.setCircle(kind.hitboxRadius, e.width / 2 - kind.hitboxRadius, e.height / 2 - kind.hitboxRadius);
       body.reset(x, y);
       body.setVelocity(vx, vy);
     } else {
@@ -125,7 +114,8 @@ export class EntityPool {
       this.schedule(e, iter, Math.max(0, r.value | 0) + 1);
     } else if (r.value.until.alive) {
       const gen = e.gen;
-      (r.value.until.onDeath ??= []).push(() => {
+      r.value.until.onDeath ??= [];
+      r.value.until.onDeath.push(() => {
         if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
       });
     } else {
@@ -135,6 +125,7 @@ export class EntityPool {
 
   private release(e: Entity, indexInActive: number): void {
     const last = this.active.length - 1;
+    // biome-ignore lint/style/noNonNullAssertion: bounded by active.length - 1
     if (indexInActive !== last) this.active[indexInActive] = this.active[last]!;
     this.active.pop();
 
@@ -143,8 +134,10 @@ export class EntityPool {
 
     // Drop a pending wait entry for this entity, so a stale iter can't fire on a reborn entity.
     for (let i = 0; i < this.waiting.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
       if (this.waiting[i]!.entity === e) {
         const lastW = this.waiting.length - 1;
+        // biome-ignore lint/style/noNonNullAssertion: lastW is waiting.length - 1
         if (i !== lastW) this.waiting[i] = this.waiting[lastW]!;
         this.waiting.pop();
         break;
@@ -171,6 +164,7 @@ export class EntityPool {
     const originalLen = this.waiting.length;
     let write = 0;
     for (let read = 0; read < originalLen; read++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by originalLen
       const w = this.waiting[read]!;
       w.framesLeft--;
       if (w.framesLeft > 0) {
@@ -180,6 +174,7 @@ export class EntityPool {
       }
     }
     for (let read = originalLen; read < this.waiting.length; read++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
       this.waiting[write++] = this.waiting[read]!;
     }
     this.waiting.length = write;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_W, GAME_H } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 
 export class MenuScene extends Phaser.Scene {

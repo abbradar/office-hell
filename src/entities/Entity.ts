@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { EntityKind, INERT_KIND, type SpawnOpts } from '../script/types';
+import { type EntityKind, INERT_KIND, type SpawnOpts } from '../script/types';
 import type { EntityPool } from './EntityPool';
 
 export class Entity extends Phaser.Physics.Arcade.Sprite {
@@ -36,14 +36,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     return Math.atan2(p.y - this.y, p.x - this.x);
   }
 
-  spawn(
-    kind: EntityKind,
-    x: number,
-    y: number,
-    vx: number,
-    vy: number,
-    opts?: SpawnOpts,
-  ): Entity {
+  spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts?: SpawnOpts): Entity {
     return this.pool.spawn(kind, x, y, vx, vy, opts);
   }
 

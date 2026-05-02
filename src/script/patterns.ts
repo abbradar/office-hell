@@ -1,6 +1,6 @@
+import { shoot } from '../audio/sfx';
 import type { Entity } from '../entities/Entity';
 import type { EntityKind } from './types';
-import { shoot } from '../audio/sfx';
 
 function shootAt(self: Entity, kind: EntityKind, angle: number, speed: number): void {
   self.spawn(kind, self.x, self.y, Math.cos(angle) * speed, Math.sin(angle) * speed);

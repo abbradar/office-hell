@@ -1,7 +1,7 @@
 import { BULLET_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
+import { aimed, arc, ring, spread } from '../script/patterns';
 import { EntityKind } from '../script/types';
-import { ring, aimed, spread, arc } from '../script/patterns';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',

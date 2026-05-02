@@ -1,4 +1,4 @@
-import { GAME_W, GAME_H } from '../config';
+import { GAME_H, GAME_W } from '../config';
 
 export const TOUCH_BUTTON_RADIUS = 90;
 export const TOUCH_BUTTON_Y = GAME_H - 60;

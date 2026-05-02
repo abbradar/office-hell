@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
-import { PLAYER_SPEED, PLAYER_Y, GAME_W } from '../config';
-import { isLeftHeld, isRightHeld, isAttackHeld } from '../input/touch';
-import { Entity } from './Entity';
-import { EntityPool } from './EntityPool';
-import { playerBullet } from '../content/kinds';
 import { shoot } from '../audio/sfx';
+import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { playerBullet } from '../content/kinds';
+import { isAttackHeld, isLeftHeld, isRightHeld } from '../input/touch';
 import type { EntityKind } from '../script/types';
+import { Entity } from './Entity';
+import type { EntityPool } from './EntityPool';
 
 const FIRE_INTERVAL_MS = 140;
 const PLAYER_BULLET_SPEED = 700;
@@ -30,11 +30,7 @@ export class Player extends Entity {
 
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.enable = true;
-    body.setCircle(
-      kind.hitboxRadius,
-      this.width / 2 - kind.hitboxRadius,
-      this.height / 2 - kind.hitboxRadius,
-    );
+    body.setCircle(kind.hitboxRadius, this.width / 2 - kind.hitboxRadius, this.height / 2 - kind.hitboxRadius);
     body.setAllowGravity(false);
     body.setCollideWorldBounds(true);
 
