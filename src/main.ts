@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_W, GAME_H } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
+import './input/orientation';
 
 new Phaser.Game({
   type: Phaser.WEBGL,
@@ -13,9 +14,6 @@ new Phaser.Game({
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-  },
-  input: {
-    activePointers: 3,
   },
   physics: {
     default: 'arcade',

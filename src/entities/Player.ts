@@ -3,8 +3,8 @@ import {
   PLAYER_SPEED,
   PLAYER_HITBOX_RADIUS,
   PLAYER_Y,
-  GAME_W,
 } from '../config';
+import { touchDirection } from '../input/touch';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private leftKey: Phaser.Input.Keyboard.Key;
@@ -31,20 +31,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   override update(): void {
-    let dir = 0;
+    let dir = touchDirection();
 
     if (this.leftKey.isDown) dir -= 1;
     if (this.rightKey.isDown) dir += 1;
-
-    const pointers = [
-      this.scene.input.pointer1,
-      this.scene.input.pointer2,
-      this.scene.input.pointer3,
-    ];
-    for (const p of pointers) {
-      if (!p || !p.isDown) continue;
-      dir += p.worldX < GAME_W / 2 ? -1 : 1;
-    }
 
     dir = Phaser.Math.Clamp(dir, -1, 1);
     this.setVelocityX(dir * PLAYER_SPEED);
