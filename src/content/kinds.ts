@@ -1,4 +1,4 @@
-import { BULLET_RADIUS } from '../config';
+import { BULLET_RADIUS, GAME_H } from '../config';
 import type { Entity } from '../entities/Entity';
 import { aimed, arc, ring, spread } from '../script/patterns';
 import { EntityKind } from '../script/types';
@@ -22,6 +22,8 @@ export const playerBullet = new EntityKind({
 
 // --- Streamer: drifts down with a sine-wave x, fires aimed shots periodically ---
 
+const STREAMER_FIRE_CUTOFF_Y = GAME_H * 0.75;
+
 function* streamerScript(self: Entity) {
   const baseX = self.x;
   self.setVelocity(0, 90);
@@ -29,7 +31,9 @@ function* streamerScript(self: Entity) {
   let frame = 0;
   while (true) {
     self.x = baseX + Math.sin(frame * 0.06) * 50;
-    if (frame % 50 === 30) aimed(self, 1, bullet, 200);
+    // Stop firing once they've passed three-quarters of the way down — the
+    // player needs an unmolested lane to dodge into as the streamer exits.
+    if (frame % 50 === 30 && self.y < STREAMER_FIRE_CUTOFF_Y) aimed(self, 1, bullet, 200);
     frame++;
     yield 0;
   }
