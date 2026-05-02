@@ -3,5 +3,5 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './',
   server: { port: 5173, host: true, open: true },
-  build: { target: 'es2022', sourcemap: true, assetsInlineLimit: 0 },
+  build: { target: 'es2022', sourcemap: true },
 });

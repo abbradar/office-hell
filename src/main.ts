@@ -65,6 +65,11 @@ new Phaser.Game({
   height: GAME_H,
   backgroundColor: '#10101a',
   pixelArt: true,
+  // itch.io's CDN serves PNGs with a Content-Type that Firefox refuses to
+  // decode when wrapped in a blob URL (Phaser 3.60+'s default XHR-as-blob
+  // image path). Force the legacy <img src> loader so the browser sniffs the
+  // bytes itself.
+  loader: { imageLoadType: 'HTMLImageElement' },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
