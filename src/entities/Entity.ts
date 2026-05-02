@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
-import type { EntityKind, SpawnOpts } from '../script/types';
+import { EntityKind, INERT_KIND, type SpawnOpts } from '../script/types';
 import type { EntityPool } from './EntityPool';
 
 export class Entity extends Phaser.Physics.Arcade.Image {
   pool!: EntityPool;
-  kind: EntityKind | null = null;
+  kind: EntityKind = INERT_KIND;
   hp: number | null = null;
   alive = false;
   scriptIter: Generator<number, void, void> | null = null;
@@ -34,17 +34,24 @@ export class Entity extends Phaser.Physics.Arcade.Image {
     return Math.atan2(p.y - this.y, p.x - this.x);
   }
 
-  spawn(kind: EntityKind, x: number, y: number, opts?: SpawnOpts): Entity | null {
-    return this.pool.spawn(kind, x, y, opts);
+  spawn(
+    kind: EntityKind,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    opts?: SpawnOpts,
+  ): Entity | null {
+    return this.pool.spawn(kind, x, y, vx, vy, opts);
   }
 
   die(): void {
     this.alive = false;
+    const body = this.body as Phaser.Physics.Arcade.Body | null;
+    if (body) body.enable = false;
   }
 
   takeDamage(amount: number): void {
-    if (this.hp === null) return;
-    this.hp -= amount;
-    if (this.hp <= 0) this.alive = false;
+    this.kind.takeDamage(this, amount);
   }
 }

@@ -3,8 +3,7 @@ import type { EntityKind } from './types';
 import { shoot } from '../audio/sfx';
 
 function shootAt(self: Entity, kind: EntityKind, angle: number, speed: number): void {
-  const e = self.spawn(kind, self.x, self.y);
-  if (e) e.setMotion(angle, speed);
+  self.spawn(kind, self.x, self.y, Math.cos(angle) * speed, Math.sin(angle) * speed);
 }
 
 export function ring(self: Entity, count: number, kind: EntityKind, speed: number, baseAngle = 0): void {

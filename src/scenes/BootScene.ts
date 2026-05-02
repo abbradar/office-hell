@@ -15,6 +15,13 @@ export class BootScene extends Phaser.Scene {
     g.generateTexture('bullet', bd, bd);
     g.clear();
 
+    g.fillStyle(0x6cf0a8, 1);
+    g.fillRect(0, 0, 6, 14);
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(1, 1, 4, 5);
+    g.generateTexture('playerBullet', 6, 14);
+    g.clear();
+
     g.fillStyle(0xfdd9b4, 1);
     g.fillCircle(16, 8, 7);
     g.fillStyle(0x2c3e6e, 1);
@@ -84,6 +91,6 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.scene.start('Game');
+    this.scene.start('Menu');
   }
 }

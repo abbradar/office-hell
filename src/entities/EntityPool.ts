@@ -1,12 +1,15 @@
 import Phaser from 'phaser';
 import { GAME_W, GAME_H, ENTITY_POOL_SIZE, CULL_MARGIN } from '../config';
 import { Entity } from './Entity';
-import type { EntityKind, SpawnOpts } from '../script/types';
+import type { EntityKind, SpawnOpts, DamageClass } from '../script/types';
+import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
+
+type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
 export class EntityPool {
   readonly scene: Phaser.Scene;
-  readonly hostileGroup: Phaser.Physics.Arcade.Group;
-  readonly targetGroup: Phaser.Physics.Arcade.Group;
+  readonly damages: ClassGroups;
+  readonly damagedBy: ClassGroups;
   readonly player = { x: 0, y: 0 };
 
   private readonly free: Entity[] = [];
@@ -14,8 +17,22 @@ export class EntityPool {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.hostileGroup = scene.physics.add.group({ runChildUpdate: false });
-    this.targetGroup = scene.physics.add.group({ runChildUpdate: false });
+
+    const makeGroups = (): ClassGroups => {
+      const out = {} as ClassGroups;
+      for (const c of DAMAGE_CLASSES) {
+        // allowGravity must be set here: the group's createCallback resets
+        // body properties to these defaults every time a child is added,
+        // including allowGravity and velocity.
+        out[c] = scene.physics.add.group({
+          runChildUpdate: false,
+          allowGravity: false,
+        });
+      }
+      return out;
+    };
+    this.damages = makeGroups();
+    this.damagedBy = makeGroups();
 
     for (let i = 0; i < ENTITY_POOL_SIZE; i++) {
       const e = new Entity(scene, 0, 0, 'bullet');
@@ -30,7 +47,14 @@ export class EntityPool {
     }
   }
 
-  spawn(kind: EntityKind, x: number, y: number, opts: SpawnOpts = {}): Entity | null {
+  spawn(
+    kind: EntityKind,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    opts: SpawnOpts = {},
+  ): Entity | null {
     const e = this.free.pop();
     if (!e) return null;
 
@@ -39,9 +63,20 @@ export class EntityPool {
     e.alive = true;
     e.hasEnteredScreen = false;
     e.waitFrames = 0;
-    e.setTexture(kind.texture);
-    e.setPosition(x, y);
-    e.setActive(true).setVisible(!kind.invisible);
+
+    if (kind.sprite !== null) {
+      e.setTexture(kind.sprite);
+      e.setVisible(true);
+    } else {
+      e.setVisible(false);
+    }
+    e.setActive(true);
+
+    // Group.add() runs a createCallback that overwrites body properties
+    // (velocity, drag, gravity, etc.) with the group's defaults, so we
+    // must add to groups BEFORE configuring the body.
+    for (const c of kind.damageClass) this.damages[c].add(e);
+    for (const c of kind.damagedByClass) this.damagedBy[c].add(e);
 
     const body = e.body as Phaser.Physics.Arcade.Body;
     if (kind.hitboxRadius > 0) {
@@ -51,20 +86,12 @@ export class EntityPool {
         e.width / 2 - kind.hitboxRadius,
         e.height / 2 - kind.hitboxRadius,
       );
-      if (opts.vx !== undefined || opts.vy !== undefined) {
-        body.setVelocity(opts.vx ?? 0, opts.vy ?? 0);
-      } else if (opts.angle !== undefined) {
-        const speed = opts.speed ?? 0;
-        body.setVelocity(Math.cos(opts.angle) * speed, Math.sin(opts.angle) * speed);
-      } else {
-        body.setVelocity(0, 0);
-      }
+      body.reset(x, y);
+      body.setVelocity(vx, vy);
     } else {
+      e.setPosition(x, y);
       body.enable = false;
     }
-
-    if (kind.hostile) this.hostileGroup.add(e);
-    if (kind.hp !== null) this.targetGroup.add(e);
 
     const script = opts.script ?? kind.defaultScript ?? null;
     e.scriptIter = script ? script(e) : null;
@@ -78,16 +105,17 @@ export class EntityPool {
     if (indexInActive !== last) this.active[indexInActive] = this.active[last]!;
     this.active.pop();
 
+    for (const c of e.kind.damageClass) this.damages[c].remove(e);
+    for (const c of e.kind.damagedByClass) this.damagedBy[c].remove(e);
+
     e.alive = false;
     e.scriptIter = null;
-    e.kind = null;
+    e.kind = INERT_KIND;
     e.hp = null;
     e.setActive(false).setVisible(false);
     const body = e.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0, 0);
     body.enable = false;
-    this.hostileGroup.remove(e);
-    this.targetGroup.remove(e);
     this.free.push(e);
   }
 

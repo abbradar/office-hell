@@ -1,14 +1,23 @@
 import { BULLET_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
-import type { EntityKind } from '../script/types';
+import { EntityKind } from '../script/types';
 import { ring } from '../script/patterns';
 
-export const bullet: EntityKind = {
-  texture: 'bullet',
+export const bullet = new EntityKind({
+  sprite: 'bullet',
   hitboxRadius: BULLET_RADIUS,
   hp: null,
-  hostile: true,
-};
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+export const playerBullet = new EntityKind({
+  sprite: 'playerBullet',
+  hitboxRadius: 3,
+  hp: null,
+  damageClass: ['enemy'],
+  damagedByClass: [],
+});
 
 const DRIVE_SPEED = 80;
 const APPROACH_SPEED = 120;
@@ -36,10 +45,11 @@ function* driverScript(self: Entity) {
   self.setMotion(Math.PI / 2, EXIT_SPEED);
 }
 
-export const driver: EntityKind = {
-  texture: 'enemy',
+export const driver = new EntityKind({
+  sprite: 'enemy',
   hitboxRadius: 10,
-  hp: 30,
-  hostile: true,
+  hp: 3,
+  damageClass: ['player'],
+  damagedByClass: ['enemy'],
   defaultScript: driverScript,
-};
+});
