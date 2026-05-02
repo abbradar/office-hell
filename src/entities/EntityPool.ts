@@ -3,6 +3,7 @@ import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
 import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
+import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { Entity } from './Entity';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
@@ -15,7 +16,9 @@ export class EntityPool {
   readonly damages: ClassGroups;
   readonly damagedBy: ClassGroups;
   readonly bubbles: BubbleManager;
+  readonly dialogue: DialogueManager;
   readonly player = { x: 0, y: 0 };
+  paused = false;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -42,6 +45,7 @@ export class EntityPool {
     this.damages = makeGroups();
     this.damagedBy = makeGroups();
     this.bubbles = new BubbleManager(scene);
+    this.dialogue = new DialogueManager(scene);
 
     for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
   }
@@ -115,6 +119,8 @@ export class EntityPool {
     if (r.done) return;
     if (typeof r.value === 'number') {
       this.schedule(e, iter, Math.max(0, r.value | 0) + 1);
+    } else if ('dialogue' in r.value) {
+      this.beginDialogue(r.value.dialogue, e, iter);
     } else if (r.value.until.alive) {
       const gen = e.gen;
       r.value.until.onDeath ??= [];
@@ -126,7 +132,23 @@ export class EntityPool {
     }
   }
 
+  private beginDialogue(opts: DialogueOpts, e: Entity, iter: ScriptIter): void {
+    this.paused = true;
+    this.scene.physics.pause();
+    const gen = e.gen;
+    this.dialogue.start(opts, () => {
+      this.paused = false;
+      this.scene.physics.resume();
+      if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
+    });
+  }
+
   private release(e: Entity, indexInActive: number): void {
+    // If we're releasing a still-alive entity (e.g. culled off-screen), fire its
+    // death callbacks so anything waiting via { until: e } unblocks rather than
+    // hanging forever on a target that just silently vanished.
+    if (e.alive) e.die();
+
     const last = this.active.length - 1;
     // biome-ignore lint/style/noNonNullAssertion: bounded by active.length - 1
     if (indexInActive !== last) this.active[indexInActive] = this.active[last]!;
@@ -158,7 +180,9 @@ export class EntityPool {
     this.free.push(e);
   }
 
-  update(_time: number, _delta: number): void {
+  update(time: number, _delta: number): void {
+    this.dialogue.update(time);
+    if (this.paused) return;
     this.bubbles.update();
 
     // Walk waiting once: decrement, keep entries that aren't due yet, fire those that are.

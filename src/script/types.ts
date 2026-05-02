@@ -1,6 +1,7 @@
 import type { Entity } from '../entities/Entity';
+import type { DialogueOpts } from '../ui/dialogue';
 
-export type ScriptYield = number | { until: Entity };
+export type ScriptYield = number | { until: Entity } | { dialogue: DialogueOpts };
 export type EntityScript = (self: Entity) => Generator<ScriptYield, void, void>;
 
 export const DAMAGE_CLASSES = ['player', 'enemy'] as const;

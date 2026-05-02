@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
 import { PlayerKind } from '../content/player';
-import { stage } from '../content/stage';
+import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import type { Entity } from '../entities/Entity';
 import { EntityPool } from '../entities/EntityPool';
 import { Player } from '../entities/Player';
@@ -12,6 +12,12 @@ import { DAMAGE_CLASSES } from '../script/types';
 const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
 const SPECKS_SCROLL_PX_PER_MS = 0.55;
 
+export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
+
+export type GameSceneData = {
+  practice?: WaveDef;
+};
+
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private pool!: EntityPool;
@@ -19,9 +25,15 @@ export class GameScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
   private specks!: Phaser.GameObjects.TileSprite;
+  private practiceWave: WaveDef | null = null;
+  private playerKind!: PlayerKind;
 
   constructor() {
     super('Game');
+  }
+
+  init(data: GameSceneData): void {
+    this.practiceWave = data?.practice ?? null;
   }
 
   create(): void {
@@ -35,12 +47,13 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(100);
 
-    const playerKind = new PlayerKind(this.hpText);
-    this.player = new Player(this, this.pool, playerKind);
+    this.playerKind = new PlayerKind({ hpText: this.hpText, practice: this.practiceWave !== null });
+    this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player.x = this.player.x;
     this.pool.player.y = this.player.y;
 
-    this.pool.spawn(stage, 0, 0, 0, 0);
+    const stageKind = this.practiceWave ? makeWaveStage(this.practiceWave) : stage;
+    this.pool.spawn(stageKind, 0, 0, 0, 0);
 
     for (const c of DAMAGE_CLASSES) {
       this.physics.add.overlap(this.pool.damages[c], this.pool.damagedBy[c], (a, b) => {
@@ -73,15 +86,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.hud = this.add.text(8, 8, '', { color: '#aaaaaa', fontSize: '12px' }).setScrollFactor(0).setDepth(100);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.practiceWave) {
+        this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.practiceWave.id, this.playerKind.hits);
+      }
+    });
   }
 
   override update(time: number, delta: number): void {
-    this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
-    this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
+    if (!this.pool.paused) {
+      this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+      this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
 
-    this.player.controlUpdate();
-    this.pool.player.x = this.player.x;
-    this.pool.player.y = this.player.y;
+      this.player.controlUpdate();
+      this.pool.player.x = this.player.x;
+      this.pool.player.y = this.player.y;
+    }
     this.pool.update(time, delta);
 
     if (!this.player.alive) {
@@ -91,6 +112,7 @@ export class GameScene extends Phaser.Scene {
 
     const hostile = this.pool.damages.player.countActive(true);
     const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
-    this.hud.setText(`${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}`);
+    const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
+    this.hud.setText(`${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
   }
 }

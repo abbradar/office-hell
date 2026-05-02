@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { EndScene } from './scenes/EndScene';
 import { GameScene } from './scenes/GameScene';
 import { MenuScene } from './scenes/MenuScene';
+import { TestMenuScene } from './scenes/TestMenuScene';
 
 new Phaser.Game({
   type: Phaser.WEBGL,
@@ -20,5 +21,5 @@ new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene, MenuScene, GameScene, EndScene],
+  scene: [BootScene, MenuScene, GameScene, EndScene, TestMenuScene],
 });

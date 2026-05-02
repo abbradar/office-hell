@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { type EntityKind, INERT_KIND, type SpawnOpts } from '../script/types';
+import { type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
+import type { DialogueOpts } from '../ui/dialogue';
 import type { EntityPool } from './EntityPool';
 
 export class Entity extends Phaser.Physics.Arcade.Sprite {
@@ -42,6 +43,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
 
   say(text: string, frames: number): void {
     this.pool.bubbles.show(this, text, frames);
+  }
+
+  dialogue(opts: DialogueOpts): ScriptYield {
+    return { dialogue: opts };
   }
 
   die(): void {

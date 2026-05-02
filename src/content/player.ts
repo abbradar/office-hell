@@ -6,10 +6,17 @@ import { EntityKind } from '../script/types';
 
 export const PLAYER_HP = 2;
 
+export type PlayerKindOpts = {
+  hpText: Phaser.GameObjects.Text;
+  practice?: boolean;
+};
+
 export class PlayerKind extends EntityKind {
   private hpText: Phaser.GameObjects.Text;
+  private practice: boolean;
+  hits = 0;
 
-  constructor(hpText: Phaser.GameObjects.Text) {
+  constructor(opts: PlayerKindOpts) {
     super({
       sprite: 'player',
       animKey: 'player_walk',
@@ -18,17 +25,27 @@ export class PlayerKind extends EntityKind {
       damageClass: [],
       damagedByClass: ['player'],
     });
-    this.hpText = hpText;
-    this.renderHp(PLAYER_HP);
+    this.hpText = opts.hpText;
+    this.practice = opts.practice ?? false;
+    this.render(PLAYER_HP);
   }
 
-  private renderHp(hp: number): void {
-    this.hpText.setText('♥'.repeat(Math.max(0, hp)));
+  private render(hp: number): void {
+    if (this.practice) {
+      this.hpText.setText(`hits: ${this.hits}`);
+    } else {
+      this.hpText.setText('♥'.repeat(Math.max(0, hp)));
+    }
   }
 
   override takeDamage(self: Entity, amount: number): void {
-    super.takeDamage(self, amount);
     hit();
-    if (self.hp !== null) this.renderHp(self.hp);
+    if (this.practice) {
+      this.hits++;
+      this.render(self.hp ?? 0);
+      return;
+    }
+    super.takeDamage(self, amount);
+    if (self.hp !== null) this.render(self.hp);
   }
 }
