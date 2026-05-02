@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop --command biome ci .
+      - run: nix develop --command npm ci
+      - run: nix develop --command npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: itch-deploy
+      cancel-in-progress: true
+    env:
+      ITCH_TARGET: abbradar/office-hell
+      ITCH_CHANNEL: html5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Install butler
+        run: |
+          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d "$HOME/.butler"
+          chmod +x "$HOME/.butler/butler"
+          echo "$HOME/.butler" >> "$GITHUB_PATH"
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          butler push dist "$ITCH_TARGET:$ITCH_CHANNEL" \
+            --userversion "${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"

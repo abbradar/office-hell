@@ -14,7 +14,13 @@
           packages = with pkgs; [
             nodejs_22
             biome
+            pre-commit
           ];
+          shellHook = ''
+            if [ -d .git ] && [ ! -f .git/hooks/pre-commit ]; then
+              pre-commit install
+            fi
+          '';
         };
 
         formatter = pkgs.alejandra;
