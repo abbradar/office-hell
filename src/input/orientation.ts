@@ -2,14 +2,22 @@ type LockableOrientation = ScreenOrientation & {
   lock?: (orientation: 'portrait' | 'landscape' | 'any') => Promise<void>;
 };
 
-function tryLock(): void {
+async function enterPortrait(): Promise<void> {
+  const root = document.documentElement;
+  if (!document.fullscreenElement && root.requestFullscreen) {
+    try {
+      await root.requestFullscreen({ navigationUI: 'hide' });
+    } catch {
+      // User denied or unsupported; fall through and try lock anyway.
+    }
+  }
   const o = screen.orientation as LockableOrientation | undefined;
-  o?.lock?.('portrait').catch(() => {
-    // Common cases: iOS Safari doesn't support orientation lock outside a
-    // standalone PWA; some Android browsers require fullscreen first.
-    // Input is orientation-agnostic, so the game stays playable either way.
-  });
+  try {
+    await o?.lock?.('portrait');
+  } catch {
+    // iOS Safari and some others can't lock outside a standalone PWA.
+    // Input is viewport-relative, so the game stays playable either way.
+  }
 }
 
-tryLock();
-window.addEventListener('pointerdown', tryLock, { once: true });
+window.addEventListener('pointerdown', enterPortrait, { once: true });
