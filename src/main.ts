@@ -5,6 +5,19 @@ import { EndScene } from './scenes/EndScene';
 import { GameScene } from './scenes/GameScene';
 import { MenuScene } from './scenes/MenuScene';
 
+// itch.io's CDN returns hash-named assets with `Content-Type: application/octet-stream`,
+// so the Blob produced by Phaser's XHR loader has the wrong MIME type and Firefox refuses
+// to decode the resulting blob: URL as an image. Recreate the Blob with the type Phaser
+// passes as `defaultType` (`image/png` for images) so the browser will decode it.
+const fileApi = Phaser.Loader.File as unknown as {
+  createObjectURL: (image: HTMLImageElement, blob: Blob, defaultType: string) => void;
+};
+const origCreateObjectURL = fileApi.createObjectURL;
+fileApi.createObjectURL = function (image, blob, defaultType) {
+  const typed = blob.type === defaultType ? blob : new Blob([blob], { type: defaultType });
+  return origCreateObjectURL.call(this, image, typed, defaultType);
+};
+
 // itch.io's iframe embed (especially with "Click to launch in fullscreen")
 // doesn't reliably grant keyboard focus on canvas clicks. Browsers are
 // inconsistent about whether <canvas> with tabindex actually accepts focus,

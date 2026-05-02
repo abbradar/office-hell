@@ -60,4 +60,3 @@ export function isRightHeld(): boolean {
   for (const p of pointers.values()) if (inRightButton(p)) return true;
   return false;
 }
-

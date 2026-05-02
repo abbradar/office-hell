@@ -85,7 +85,7 @@ export class GameScene extends Phaser.Scene {
     this.pool.update(time, delta);
 
     if (!this.player.alive) {
-      this.scene.restart();
+      this.scene.start('End', { won: false });
       return;
     }
 

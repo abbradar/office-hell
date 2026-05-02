@@ -38,7 +38,7 @@ function* stageScript(self: Entity) {
   yield { until: boss };
   yield 60;
 
-  self.scene.scene.start('End');
+  self.scene.scene.start('End', { won: true });
 }
 
 export const stage = new EntityKind({
