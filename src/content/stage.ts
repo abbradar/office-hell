@@ -4,20 +4,38 @@ import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 
-function* waitForEnemiesCleared(self: Entity): Generator<ScriptYield, void, void> {
-  // Each iteration: grab one live enemy and block on its death (or off-screen release).
-  // When the loop can't find any, the field is clear.
+// Wait until every non-player entity (enemies and their bullets) has died or
+// left the play field — i.e. damages.player is empty of live entries.
+export function* waitForScreenCleared(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
-    const enemy = firstLiveEnemy(self);
-    if (!enemy) return;
-    yield { until: enemy };
+    const e = firstLive(self.pool.damages.player);
+    if (!e) return;
+    yield { until: e };
   }
 }
 
-function firstLiveEnemy(self: Entity): Entity | null {
-  const group = self.pool.damages.player;
-  const children = group.getChildren();
-  for (const child of children) {
+// Wait until every enemy has died or left the screen. Bullets in flight are
+// not considered — the dedicated damagedBy.enemy group has only enemy entities.
+export function* waitForEnemiesCleared(self: Entity): Generator<ScriptYield, void, void> {
+  while (true) {
+    const e = firstLive(self.pool.damagedBy.enemy);
+    if (!e) return;
+    yield { until: e };
+  }
+}
+
+// Kill every non-player entity outright. die() only flips the alive flag and
+// fires onDeath; group cleanup happens later in pool.update, so we can iterate
+// the live children list directly.
+export function clearScreen(self: Entity): void {
+  for (const child of self.pool.damages.player.getChildren()) {
+    const e = child as Entity;
+    if (e.alive) e.die();
+  }
+}
+
+function firstLive(group: Phaser.Physics.Arcade.Group): Entity | null {
+  for (const child of group.getChildren()) {
     const e = child as Entity;
     if (e.alive) return e;
   }
@@ -52,23 +70,15 @@ function* wave4(self: Entity): Generator<ScriptYield, void, void> {
   self.spawn(driver, GAME_W * 0.75, -30, 0, 0);
 }
 
-function* bossDialogue(self: Entity): Generator<ScriptYield, void, void> {
-  yield self.dialogue({
-    left: { sprite: 'player', frame: 0, name: 'You' },
-    right: { sprite: 'boss1', frame: 1, name: 'The Boss' },
-    lines: [
-      { speaker: 'right', text: 'Working hard, I see. Or hardly working?' },
-      { speaker: 'left', text: "It's 11 PM. I just want to go home." },
-      { speaker: 'right', text: 'Home is where the deliverables are aligned.' },
-      { speaker: 'left', text: 'That… does not mean anything.' },
-      { speaker: 'right', text: "Let's circle back on that — after your performance review." },
-    ],
-  });
-}
-
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
-  yield* bossDialogue(self);
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
+  // Don't open the encounter while wave-4 leftovers are still on screen.
+  // Wait for enemies to clear, sweep in-flight bullets, brief beat, then bring on
+  // the boss. He spawns unhittable (damagedByClass override) — his own script
+  // handles entry, dialogue, and re-enabling damage after the dialogue ends.
+  yield* waitForEnemiesCleared(self);
+  clearScreen(self);
+  yield 30;
+  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, { damagedByClass: [] });
   yield { until: boss };
 }
 
@@ -99,11 +109,14 @@ function* stageScript(self: Entity) {
   yield 240;
 
   yield* wave4(self);
-  yield 240;
+  // bossWave waits for the field to clear before opening dialogue, so no fixed delay here.
 
   yield* bossWave(self);
-  yield* waitForEnemiesCleared(self);
-  yield 60;
+  // Boss is dead. Don't wait for in-flight bullets to drain (racy with the yield
+  // trick) — give the field a brief beat for visual closure, then nuke everything.
+  yield 30;
+  clearScreen(self);
+  yield 30;
 
   self.scene.scene.start('End', { won: true });
 }
@@ -121,8 +134,9 @@ export function makeWaveStage(wave: WaveDef): EntityKind {
   function* waveStageScript(self: Entity) {
     yield 30;
     yield* wave.script(self);
-    yield* waitForEnemiesCleared(self);
-    yield 30;
+    // Wait until everything non-player has cleared the field naturally before
+    // handing back to the menu.
+    yield* waitForScreenCleared(self);
     self.scene.scene.start('TestMenu');
   }
   return new EntityKind({

@@ -2,6 +2,7 @@ import { BULLET_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { aimed, arc, ring, spread } from '../script/patterns';
 import { EntityKind } from '../script/types';
+import { CHARACTER_REGISTRY_KEY, type CharacterDef, DEFAULT_CHARACTER } from './characters';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
@@ -136,10 +137,30 @@ export const driver = new EntityKind({
 // --- Boss: enters from top, anchors, cycles three attack patterns until dead ---
 
 function* bossScript(self: Entity) {
-  // Entry
+  // Entry — boss flies down from above to his fight position. He's spawned
+  // unhittable (damagedByClass: [] override at the spawn site) so player bullets
+  // pass through during entrance and dialogue.
   self.setVelocity(0, 110);
   yield 80;
   self.setVelocity(0, 0);
+  yield 20;
+
+  // Pre-fight dialogue.
+  const ch = (self.scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    right: { sprite: 'boss1', frame: 1, name: 'The Boss' },
+    lines: [
+      { speaker: 'right', text: 'Working hard, I see. Or hardly working?' },
+      { speaker: 'left', text: "It's 11 PM. I just want to go home." },
+      { speaker: 'right', text: 'Home is where the deliverables are aligned.' },
+      { speaker: 'left', text: 'That… does not mean anything.' },
+      { speaker: 'right', text: "Let's circle back on that — after your performance review." },
+    ],
+  });
+
+  // Become hittable.
+  self.setDamagedByClasses(['enemy']);
   self.say('Shrink the workforce!', 110);
   yield 110;
 

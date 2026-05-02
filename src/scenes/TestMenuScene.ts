@@ -118,6 +118,6 @@ export class TestMenuScene extends Phaser.Scene {
   private start(): void {
     const wave = WAVES[this.cursor];
     if (!wave) return;
-    this.scene.start('Game', { practice: wave });
+    this.scene.start('CharacterSelect', { next: 'Game', nextData: { practice: wave } });
   }
 }

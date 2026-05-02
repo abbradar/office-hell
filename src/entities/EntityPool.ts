@@ -90,7 +90,9 @@ export class EntityPool {
     // (velocity, drag, gravity, etc.) with the group's defaults, so we
     // must add to groups BEFORE configuring the body.
     for (const c of kind.damageClass) this.damages[c].add(e);
-    for (const c of kind.damagedByClass) this.damagedBy[c].add(e);
+    const damagedBy = opts.damagedByClass ?? kind.damagedByClass;
+    e.activeDamagedBy = damagedBy;
+    for (const c of damagedBy) this.damagedBy[c].add(e);
 
     const body = e.body as Phaser.Physics.Arcade.Body;
     if (kind.hitboxRadius > 0) {
@@ -155,7 +157,7 @@ export class EntityPool {
     this.active.pop();
 
     for (const c of e.kind.damageClass) this.damages[c].remove(e);
-    for (const c of e.kind.damagedByClass) this.damagedBy[c].remove(e);
+    for (const c of e.activeDamagedBy) this.damagedBy[c].remove(e);
 
     // Drop a pending wait entry for this entity, so a stale iter can't fire on a reborn entity.
     for (let i = 0; i < this.waiting.length; i++) {

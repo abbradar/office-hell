@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
+import { CHARACTER_REGISTRY_KEY, type CharacterDef, DEFAULT_CHARACTER } from '../content/characters';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import type { Entity } from '../entities/Entity';
@@ -112,7 +113,10 @@ export class GameScene extends Phaser.Scene {
 
     const hostile = this.pool.damages.player.countActive(true);
     const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
+    const ch = (this.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
-    this.hud.setText(`${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
+    this.hud.setText(
+      `${ch.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,
+    );
   }
 }

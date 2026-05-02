@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
+import { type DamageClass, type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import type { EntityPool } from './EntityPool';
 
@@ -13,6 +13,9 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   gen = 0;
   onDeath: (() => void)[] | null = null;
   hasEnteredScreen = false;
+  // Live damagedBy membership — initialised at spawn from kind or SpawnOpts override,
+  // mutable at runtime via setDamagedByClasses (e.g. to make a boss hittable post-intro).
+  activeDamagedBy: DamageClass[] = [];
 
   setMotion(angleRad: number, speed: number): void {
     this.setVelocity(Math.cos(angleRad) * speed, Math.sin(angleRad) * speed);
@@ -47,6 +50,23 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
 
   dialogue(opts: DialogueOpts): ScriptYield {
     return { dialogue: opts };
+  }
+
+  setDamagedByClasses(classes: DamageClass[]): void {
+    const cur = this.activeDamagedBy;
+    // Group.add() runs a createCallback that resets body properties (velocity,
+    // gravity, etc.) — snapshot velocity and restore after the membership churn.
+    const body = this.body as Phaser.Physics.Arcade.Body | null;
+    const vx = body?.velocity.x ?? 0;
+    const vy = body?.velocity.y ?? 0;
+    for (const c of cur) {
+      if (!classes.includes(c)) this.pool.damagedBy[c].remove(this);
+    }
+    for (const c of classes) {
+      if (!cur.includes(c)) this.pool.damagedBy[c].add(this);
+    }
+    this.activeDamagedBy = classes.slice();
+    if (body) body.setVelocity(vx, vy);
   }
 
   die(): void {

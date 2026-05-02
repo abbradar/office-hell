@@ -58,7 +58,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const start = (): void => {
-      this.scene.start('Game');
+      this.scene.start('CharacterSelect', { next: 'Game' });
     };
     const goPractice = (): void => {
       this.scene.start('TestMenu');

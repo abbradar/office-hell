@@ -58,4 +58,7 @@ export const INERT_KIND = new EntityKind({
 
 export type SpawnOpts = {
   script?: EntityScript;
+  // Override the kind's damagedByClass for this individual spawn — e.g. to make
+  // a boss unhittable during its intro and then re-enable damage after dialogue.
+  damagedByClass?: DamageClass[];
 };
