@@ -1,25 +1,41 @@
 import Phaser from 'phaser';
-import { GAME_W } from '../config';
+import { GAME_W, GAME_H } from '../config';
 import { Player } from '../entities/Player';
-import { Enemy } from '../entities/Enemy';
-import { BulletPool } from '../entities/BulletPool';
+import { EntityPool } from '../entities/EntityPool';
+import { stage } from '../content/stage';
+import { hit } from '../audio/sfx';
+
+const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
+const SPECKS_SCROLL_PX_PER_MS = 0.55;
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
-  private enemy!: Enemy;
-  private bullets!: BulletPool;
+  private pool!: EntityPool;
   private hud!: Phaser.GameObjects.Text;
+  private bg!: Phaser.GameObjects.TileSprite;
+  private specks!: Phaser.GameObjects.TileSprite;
 
   constructor() {
     super('Game');
   }
 
   create(): void {
-    this.bullets = new BulletPool(this);
-    this.player = new Player(this, GAME_W / 2);
-    this.enemy = new Enemy(this, GAME_W / 2, 120, this.bullets);
+    this.bg = this.add
+      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor')
+      .setDepth(-10);
+    this.specks = this.add
+      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor_specks')
+      .setDepth(-9);
 
-    this.physics.add.overlap(this.player, this.bullets.group, () => {
+    this.pool = new EntityPool(this);
+    this.player = new Player(this, GAME_W / 2);
+    this.pool.player.x = this.player.x;
+    this.pool.player.y = this.player.y;
+
+    this.pool.spawn(stage, 0, 0);
+
+    this.physics.add.overlap(this.player, this.pool.hostileGroup, () => {
+      hit();
       this.scene.restart();
     });
 
@@ -29,13 +45,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    this.player.update();
-    this.enemy.update(time, delta);
-    this.bullets.cullOffscreen();
+    this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+    this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
 
-    const live = this.bullets.group.countActive(true);
+    this.player.update();
+    this.pool.player.x = this.player.x;
+    this.pool.player.y = this.player.y;
+    this.pool.update(time, delta);
+
+    const live = this.pool.hostileGroup.countActive(true);
     this.hud.setText(
-      `tap left/right or arrows  bullets: ${live}  fps: ${Math.round(this.game.loop.actualFps)}`,
+      `tap left/right or arrows  hostile: ${live}  fps: ${Math.round(this.game.loop.actualFps)}`,
     );
   }
 }
