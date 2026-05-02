@@ -24,6 +24,7 @@ export const playerBullet = new EntityKind({
 function* streamerScript(self: Entity) {
   const baseX = self.x;
   self.setVelocity(0, 90);
+  self.say('Got a sec?', 80);
   let frame = 0;
   while (true) {
     self.x = baseX + Math.sin(frame * 0.06) * 50;
@@ -49,6 +50,7 @@ function* fanShooterScript(self: Entity) {
   self.setVelocity(0, 110);
   yield 60;
   self.setVelocity(0, 0);
+  self.say('Synergize harder!', 90);
   for (let i = 0; i < 4; i++) {
     spread(self, 5, bullet, 180, Math.PI / 2, Math.PI / 4);
     yield 50;
@@ -72,6 +74,7 @@ function* ringSpinnerScript(self: Entity) {
   self.setVelocity(0, 100);
   yield 80;
   self.setVelocity(0, 0);
+  self.say("Let's circle back.", 90);
   let baseAngle = Math.random() * Math.PI * 2;
   for (let i = 0; i < 5; i++) {
     ring(self, 14, bullet, 130, baseAngle);
@@ -106,6 +109,7 @@ const RING_SPEED = 130;
 
 function* driverScript(self: Entity) {
   self.setMotion(Math.PI / 2, DRIVE_SPEED);
+  self.say('Move fast!', 70);
   yield DRIVE_FRAMES;
 
   ring(self, RING_COUNT, bullet, RING_SPEED, Math.random() * Math.PI * 2);
@@ -136,11 +140,13 @@ function* bossScript(self: Entity) {
   self.setVelocity(0, 110);
   yield 80;
   self.setVelocity(0, 0);
-  yield 30;
+  self.say('Shrink the workforce!', 110);
+  yield 110;
 
   // Repeating attack cycle while alive
   while (self.alive) {
     // Phase 1: aimed shotgun bursts
+    self.say('Performance review!', 90);
     for (let i = 0; i < 5; i++) {
       aimed(self, 5, bullet, 200, Math.PI / 6);
       yield 28;
@@ -148,6 +154,7 @@ function* bossScript(self: Entity) {
     yield 30;
 
     // Phase 2: rotating multi-rings
+    self.say('Touch base!', 90);
     for (let i = 0; i < 4; i++) {
       ring(self, 16, bullet, 130, i * (Math.PI / 16));
       yield 22;
@@ -155,6 +162,7 @@ function* bossScript(self: Entity) {
     yield 30;
 
     // Phase 3: wide downward arcs
+    self.say('Align the deliverables!', 110);
     for (let i = 0; i < 6; i++) {
       arc(self, 11, bullet, 170, Math.PI / 6, (5 * Math.PI) / 6);
       yield 32;

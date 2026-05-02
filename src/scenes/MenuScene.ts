@@ -18,7 +18,7 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const startLabel = isTouchDevice ? '▶ TAP TO START' : '▶ PRESS ANY KEY';
+    const startLabel = isTouchDevice ? '▶ TAP TO START' : '▶ PRESS Z';
     const startText = this.add
       .text(GAME_W / 2, GAME_H * 0.55, startLabel, {
         color: '#ffffff',
@@ -37,7 +37,7 @@ export class MenuScene extends Phaser.Scene {
 
     const controlsText = isTouchDevice
       ? 'on-screen buttons: move\nfire is automatic on touch devices'
-      : '← → arrows: move\nctrl: fire';
+      : '← → arrows: move\nZ: fire';
     this.add
       .text(GAME_W / 2, GAME_H * 0.78, controlsText, {
         color: '#888888',
@@ -51,6 +51,6 @@ export class MenuScene extends Phaser.Scene {
     };
 
     this.input.once('pointerdown', start);
-    this.input.keyboard?.once('keydown', start);
+    this.input.keyboard?.once('keydown-Z', start);
   }
 }

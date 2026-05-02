@@ -40,6 +40,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     return this.pool.spawn(kind, x, y, vx, vy, opts);
   }
 
+  say(text: string, frames: number): void {
+    this.pool.bubbles.show(this, text, frames);
+  }
+
   die(): void {
     this.alive = false;
     const body = this.body as Phaser.Physics.Arcade.Body | null;

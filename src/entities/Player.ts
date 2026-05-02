@@ -44,7 +44,7 @@ export class Player extends Entity {
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
-    this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+    this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
   }
 
   controlUpdate(): void {

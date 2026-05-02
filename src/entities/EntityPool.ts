@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
 import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
+import { BubbleManager } from '../ui/bubbles';
 import { Entity } from './Entity';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
@@ -13,6 +14,7 @@ export class EntityPool {
   readonly scene: Phaser.Scene;
   readonly damages: ClassGroups;
   readonly damagedBy: ClassGroups;
+  readonly bubbles: BubbleManager;
   readonly player = { x: 0, y: 0 };
 
   private readonly free: Entity[] = [];
@@ -39,6 +41,7 @@ export class EntityPool {
     };
     this.damages = makeGroups();
     this.damagedBy = makeGroups();
+    this.bubbles = new BubbleManager(scene);
 
     for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
   }
@@ -156,6 +159,8 @@ export class EntityPool {
   }
 
   update(_time: number, _delta: number): void {
+    this.bubbles.update();
+
     // Walk waiting once: decrement, keep entries that aren't due yet, fire those that are.
     // advance() may push fresh entries onto waiting (yield N → reschedule, {until} → onDeath
     // closure schedules later). Newly pushed entries land at indices >= originalLen, so the
