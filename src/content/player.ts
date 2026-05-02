@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { hit } from '../audio/sfx';
 import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';
@@ -27,6 +28,7 @@ export class PlayerKind extends EntityKind {
 
   override takeDamage(self: Entity, amount: number): void {
     super.takeDamage(self, amount);
+    hit();
     if (self.hp !== null) this.renderHp(self.hp);
   }
 }

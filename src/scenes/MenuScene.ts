@@ -36,7 +36,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const controlsText = isTouchDevice
-      ? 'on-screen buttons: move\ntap anywhere else: fire'
+      ? 'on-screen buttons: move\nfire is automatic on touch devices'
       : '← → arrows: move\nctrl: fire';
     this.add
       .text(GAME_W / 2, GAME_H * 0.78, controlsText, {

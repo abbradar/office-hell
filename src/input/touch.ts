@@ -61,9 +61,3 @@ export function isRightHeld(): boolean {
   return false;
 }
 
-export function isAttackHeld(): boolean {
-  for (const p of pointers.values()) {
-    if (!inLeftButton(p) && !inRightButton(p)) return true;
-  }
-  return false;
-}

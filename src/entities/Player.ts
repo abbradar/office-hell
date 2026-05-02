@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { shoot } from '../audio/sfx';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
 import { playerBullet } from '../content/kinds';
-import { isAttackHeld, isLeftHeld, isRightHeld } from '../input/touch';
+import { isLeftHeld, isRightHeld } from '../input/touch';
+import { isTouchDevice } from '../input/device';
 import type { EntityKind } from '../script/types';
 import { Entity } from './Entity';
 import type { EntityPool } from './EntityPool';
@@ -60,7 +61,7 @@ export class Player extends Entity {
 
     this.x = Phaser.Math.Clamp(this.x, half, GAME_W - half);
 
-    const firing = this.fireKey.isDown || isAttackHeld();
+    const firing = isTouchDevice || this.fireKey.isDown;
     if (firing) {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
