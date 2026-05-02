@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { GAME_W, GAME_H } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
-import './input/orientation';
 
 new Phaser.Game({
   type: Phaser.WEBGL,
