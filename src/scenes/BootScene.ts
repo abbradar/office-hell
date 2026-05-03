@@ -9,11 +9,15 @@ import stage1MetalOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_me
 import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_loop.ogg';
 import stage1RetroOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_opening.ogg';
 import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_02_loop.ogg';
+import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
+import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
 import { initBuses } from '../audio/buses';
 import {
   CLICK_SFX_KEY,
+  HURT_SFX_KEY,
   MENU_LOOP_KEY,
+  SHOOT_SFX_KEY,
   STAGE1_METAL_LOOP_KEY,
   STAGE1_METAL_OPENING_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
@@ -89,6 +93,8 @@ export class BootScene extends Phaser.Scene {
 
     this.load.audio(MENU_LOOP_KEY, menuLoopUrl);
     this.load.audio(CLICK_SFX_KEY, clickSfxUrl);
+    this.load.audio(SHOOT_SFX_KEY, shootSfxUrl);
+    this.load.audio(HURT_SFX_KEY, hurtSfxUrl);
     this.load.audio(STAGE1_RETRO_OPENING_KEY, stage1RetroOpeningUrl);
     this.load.audio(STAGE1_RETRO_01_LOOP_KEY, stage1Retro01LoopUrl);
     this.load.audio(STAGE1_RETRO_02_LOOP_KEY, stage1Retro02LoopUrl);
@@ -216,6 +222,10 @@ export class BootScene extends Phaser.Scene {
     setSoundManager(this.sound);
     setMusicManager(this.sound);
     setVoiceCap(CLICK_SFX_KEY, 4);
+    // Shoot fires hot during boss patterns + player auto-fire. The sample is
+    // ~250ms, peak concurrency is ~3-4 in normal play; a cap of 8 lets
+    // dense ring volleys stack without clipping the player's own shots.
+    setVoiceCap(SHOOT_SFX_KEY, 8);
 
     // 1s self-crossfade dissolves the loop seam; the menu sits open long
     // enough that a hard wrap (even a sample-accurate one) gets perceptible.
