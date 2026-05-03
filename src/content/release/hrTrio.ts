@@ -104,21 +104,26 @@ function makeHrScript(role: Role): EntityScript {
       yield (2 - followerIndex) * FOLLOWER_SLOT + OPENER_TO_BICKER_GAP;
     }
 
-    // Bickering cycles — each role contributes a line + a volley per cycle.
-    for (const line of lines.bicker) {
-      if (!self.alive) return;
-      yield role * TURN_GAP;
-      self.say(line, SAY_DURATION);
-      aimed(self, REPORTS_PER_TURN, reportBullet, REPORT_SPEED, REPORT_SPREAD);
-      yield (2 - role) * TURN_GAP + CYCLE_GAP;
-    }
+    // Bickering + bombardment loop — runs forever, only stops when this HR dies.
+    // Each pass walks the role's bicker lines (one say + volley per cycle, with
+    // turn-taking offsets) and then plays the unison bombardment shout/volleys
+    // before starting over.
+    while (self.alive) {
+      for (const line of lines.bicker) {
+        if (!self.alive) return;
+        yield role * TURN_GAP;
+        self.say(line, SAY_DURATION);
+        aimed(self, REPORTS_PER_TURN, reportBullet, REPORT_SPEED, REPORT_SPREAD);
+        yield (2 - role) * TURN_GAP + CYCLE_GAP;
+      }
 
-    // Bombardment finale — single shout, then synchronized volleys.
-    self.say(lines.shout, BOMBARD_VOLLEYS * BOMBARD_GAP);
-    for (let i = 0; i < BOMBARD_VOLLEYS; i++) {
       if (!self.alive) return;
-      aimed(self, BOMBARD_COUNT, reportBullet, REPORT_SPEED, BOMBARD_SPREAD);
-      yield BOMBARD_GAP;
+      self.say(lines.shout, BOMBARD_VOLLEYS * BOMBARD_GAP);
+      for (let i = 0; i < BOMBARD_VOLLEYS; i++) {
+        if (!self.alive) return;
+        aimed(self, BOMBARD_COUNT, reportBullet, REPORT_SPEED, BOMBARD_SPREAD);
+        yield BOMBARD_GAP;
+      }
     }
   };
 }

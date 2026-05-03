@@ -15,9 +15,13 @@ import { bullet } from '../kinds';
 const ENTRY_SPEED = 100;
 const ENTRY_Y = 90;
 
-const SAY_FRAMES = 120;
+// SAY_FRAMES is tuned so the second admin's bubble (line 2) finishes right as
+// the first admin's last bubble (line 3) begins — see the schedule in
+// itAdminsWave. Bumping it past 100 will reintroduce overlap.
+const SAY_FRAMES = 100;
 const VOLLEYS = 4;
 const VOLLEY_GAP = 95;
+const ADMIN_STAGGER = 90;
 
 const ARROW_SPEED = 200;
 // Arrow geometry, in the arrow's local frame (forward = aim, lateral = ⊥).
@@ -76,27 +80,19 @@ function shootArrow(self: Entity): void {
   }
 }
 
-const VOLLEY_LINES = [
-  'Change your email password. Now.',
-  'Your last reset was 91 days ago.',
-  'Make it longer this time.',
-  '"Password1!" does not count.',
-  'Per policy, every 90 days.',
-];
+// Per-volley speech schedule. Each entry is the line to speak at that volley
+// index, or null to fire silently. Both admins fire on every volley regardless
+// of their speech schedule — only the bubbles are gated.
+type SpeechSchedule = readonly (string | null)[];
 
-// `talks` controls whether this admin barks the password-policy lines. The
-// lead admin speaks; subsequent admins in the same wave fire silently so the
-// dialogue bubbles don't pile up on top of each other.
-function makeITAdminScript(talks: boolean): EntityScript {
+function makeITAdminScript(speech: SpeechSchedule): EntityScript {
   return function* (self: Entity) {
     yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
     for (let i = 0; i < VOLLEYS; i++) {
       if (!self.alive) return;
-      if (talks) {
-        const line = VOLLEY_LINES[i % VOLLEY_LINES.length] ?? '';
-        self.say(line, SAY_FRAMES);
-      }
+      const line = speech[i];
+      if (line) self.say(line, SAY_FRAMES);
       shootArrow(self);
       yield VOLLEY_GAP;
     }
@@ -115,12 +111,22 @@ export const itAdmin = new EntityKind({
 });
 
 // Demo wave: two IT admins from opposite halves, staggered so a focused player
-// can drop one before the second's arrows arrive. Only the lead admin talks.
-// Spawn positions are pulled in toward centre (0.4 / 0.6 instead of 0.3 / 0.7)
-// because the arrow's base spans ~2/3 of the screen — admins any closer to
-// the side walls would spawn the outer bullets off-screen.
+// can drop one before the second's arrows arrive. Spawn positions are pulled
+// in toward centre (0.4 / 0.6 instead of 0.3 / 0.7) because the arrow's base
+// spans ~2/3 of the screen — admins any closer to the side walls would spawn
+// the outer bullets off-screen.
+//
+// Speech is split across both admins so no single sprite gets bubble-spammed
+// faster than SAY_FRAMES. Schedule (relative to admin1's first volley):
+//   t=0    admin1 v0 → "Change your email password. Now."
+//   t=185  admin2 v1 → "Your last reset was 91 days ago."   (90 stagger + 95 gap)
+//   t=285  admin1 v3 → '"Password1!" does not count.'        (skipped if dead)
+// Each bubble lives 100f (SAY_FRAMES), so line 2 ends exactly as line 3 begins.
 export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> {
-  self.spawn(itAdmin, GAME_W * 0.4, -30, 0, 0, { script: makeITAdminScript(true) });
-  yield 90;
-  self.spawn(itAdmin, GAME_W * 0.6, -30, 0, 0, { script: makeITAdminScript(false) });
+  const admin1Speech: SpeechSchedule = ['Change your email password. Now.', null, null, '"Password1!" does not count.'];
+  const admin2Speech: SpeechSchedule = [null, 'Your last reset was 91 days ago.', null, null];
+
+  self.spawn(itAdmin, GAME_W * 0.4, -30, 0, 0, { script: makeITAdminScript(admin1Speech) });
+  yield ADMIN_STAGGER;
+  self.spawn(itAdmin, GAME_W * 0.6, -30, 0, 0, { script: makeITAdminScript(admin2Speech) });
 }
