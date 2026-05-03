@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { setAudioContext } from '../audio/sfx';
 import { BULLET_RADIUS, GAME_W } from '../config';
 import boss1Url from '../sprites/boss1.png';
 import coworker1Url from '../sprites/coworker1.png';
@@ -96,6 +97,13 @@ export class BootScene extends Phaser.Scene {
         frameRate: 6,
         repeat: -1,
       });
+    }
+
+    // Phaser's WebAudioSoundManager owns the AudioContext + its unlock-on-
+    // user-gesture handling. Reuse it for our procedural SFX so we don't have
+    // to re-implement either. Falls through silently on NoAudioSoundManager.
+    if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+      setAudioContext(this.sound.context);
     }
 
     this.scene.start('Menu');

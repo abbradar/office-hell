@@ -4,6 +4,13 @@ import type { DialogueOpts } from '../ui/dialogue';
 import type { EntityPool } from './EntityPool';
 
 export class Entity extends Phaser.Physics.Arcade.Sprite {
+  // Phaser typings flag body as Body | StaticBody | null because GameObject
+  // covers every kind of sprite. Every Entity is constructed via
+  // physics.add.existing with a dynamic Arcade body and that body is never
+  // destroyed for the lifetime of the entity, so we can narrow it here and
+  // skip the `as Phaser.Physics.Arcade.Body` cast at every call site.
+  declare body: Phaser.Physics.Arcade.Body;
+
   pool!: EntityPool;
   kind: EntityKind = INERT_KIND;
   hp: number | null = null;
@@ -22,17 +29,16 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   }
 
   setDirection(angleRad: number): void {
-    const body = this.body as Phaser.Physics.Arcade.Body;
+    const body = this.body;
     const cur = Math.hypot(body.velocity.x, body.velocity.y);
     body.setVelocity(Math.cos(angleRad) * cur, Math.sin(angleRad) * cur);
   }
 
   setSpeed(speed: number): void {
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    const v = body.velocity;
+    const v = this.body.velocity;
     const cur = Math.hypot(v.x, v.y);
     if (cur < 1e-6) return;
-    body.setVelocity((v.x / cur) * speed, (v.y / cur) * speed);
+    this.body.setVelocity((v.x / cur) * speed, (v.y / cur) * speed);
   }
 
   angleToPlayer(): number {
@@ -56,9 +62,8 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     const cur = this.activeDamagedBy;
     // Group.add() runs a createCallback that resets body properties (velocity,
     // gravity, etc.) — snapshot velocity and restore after the membership churn.
-    const body = this.body as Phaser.Physics.Arcade.Body | null;
-    const vx = body?.velocity.x ?? 0;
-    const vy = body?.velocity.y ?? 0;
+    const vx = this.body.velocity.x;
+    const vy = this.body.velocity.y;
     for (const c of cur) {
       if (!classes.includes(c)) this.pool.damagedBy[c].remove(this);
     }
@@ -66,13 +71,12 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
       if (!cur.includes(c)) this.pool.damagedBy[c].add(this);
     }
     this.activeDamagedBy = classes.slice();
-    if (body) body.setVelocity(vx, vy);
+    this.body.setVelocity(vx, vy);
   }
 
   die(): void {
     this.alive = false;
-    const body = this.body as Phaser.Physics.Arcade.Body | null;
-    if (body) body.enable = false;
+    this.body.enable = false;
     const cbs = this.onDeath;
     this.onDeath = null;
     if (cbs) for (const cb of cbs) cb();

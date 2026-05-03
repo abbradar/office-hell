@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
-import { CHARACTER_REGISTRY_KEY, type CharacterDef, DEFAULT_CHARACTER } from '../content/characters';
+import { DEFAULT_CHARACTER, getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import type { Entity } from '../entities/Entity';
@@ -50,9 +50,7 @@ export class GameScene extends Phaser.Scene {
 
     this.playerKind = new PlayerKind({ hpText: this.hpText, practice: this.practiceWave !== null });
     this.player = new Player(this, this.pool, this.playerKind);
-    this.pool.player.x = this.player.x;
-    this.pool.player.y = this.player.y;
-    this.pool.playerEntity = this.player;
+    this.pool.player = this.player;
 
     const stageKind = this.practiceWave ? makeWaveStage(this.practiceWave) : stage;
     this.pool.spawn(stageKind, 0, 0, 0, 0);
@@ -97,24 +95,48 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    if (!this.pool.paused) {
-      this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
-      this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
-
-      this.player.controlUpdate();
-      this.pool.player.x = this.player.x;
-      this.pool.player.y = this.player.y;
-    }
-    this.pool.update(time, delta);
-
+    // Death check first — placement matters because of Phaser 3's frame order.
+    //
+    // Arcade physics runs on the SceneEvents.UPDATE event, which fires BEFORE
+    // the scene's update() method:
+    //
+    //   PRE_UPDATE → UPDATE (physics integrates + overlap callbacks fire) →
+    //   scene.update() (← we are here) → POST_UPDATE → PRE_RENDER → render
+    //
+    // So a fatal player-vs-bullet overlap in this frame has already called
+    // player.die() before this method runs; alive === false is visible from
+    // line one. We have to bail before pool.update so scripts never tick with
+    // a dead player.
+    //
+    // Why not check at the bottom of update (right before render)? scene.start
+    // only queues the scene swap for next frame; it doesn't preempt the rest
+    // of this update. By then pool.update has already run with alive === false
+    // — exactly the tick we want to skip. (If physics ran AFTER scene.update,
+    // the death wouldn't have happened yet during pool.update and the
+    // end-of-update check would be fine — but Phaser 3's order is the other
+    // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
       this.scene.start('End', { won: false });
       return;
     }
 
+    // Tick handlers first, controls last (before Phaser's physics step). This
+    // lets a script flip pool.paused or player.controlsEnabled this frame and
+    // have those state changes land before controlUpdate decides whether to
+    // read input or auto-fire — otherwise a held fire key spawns a bullet in
+    // the same frame (or the frame before) a cutscene begins, and it pops into
+    // view as physics integrates.
+    this.pool.update(time, delta);
+    if (!this.pool.paused) {
+      this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+      this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
+
+      this.player.controlUpdate();
+    }
+
     const hostile = this.pool.damages.player.countActive(true);
     const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
-    const ch = (this.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+    const ch = getSelectedCharacter(this) ?? DEFAULT_CHARACTER;
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(
       `${ch.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,

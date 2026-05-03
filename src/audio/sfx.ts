@@ -1,39 +1,25 @@
-type Webkit = { webkitAudioContext?: typeof AudioContext };
+// Procedural SFX layered on top of Phaser's audio context. Phaser's
+// WebAudioSoundManager handles creating the AudioContext (with the legacy
+// webkit fallback baked in) and resuming it on the first user gesture, so all
+// we have to do is grab the context once at boot and use it for raw oscillator
+// / noise synthesis. If Phaser falls back to NoAudioSoundManager (no audio
+// support detected), setAudioContext is never called and these functions just
+// no-op.
 
 let ctx: AudioContext | null = null;
-let unlocked = false;
 
-function getCtx(): AudioContext | null {
-  if (!ctx) {
-    const Ctx = window.AudioContext ?? (window as unknown as Webkit).webkitAudioContext;
-    if (!Ctx) return null;
-    ctx = new Ctx();
-  }
+export function setAudioContext(audioContext: AudioContext): void {
+  ctx = audioContext;
+}
+
+function ready(): AudioContext | null {
+  if (!ctx || ctx.state !== 'running') return null;
   return ctx;
 }
 
-function unlock(): void {
-  const c = getCtx();
-  if (!c) return;
-  if (c.state === 'suspended') void c.resume();
-  // iOS Safari fully unlocks WebAudio only after at least one buffer
-  // source has been started during a user gesture. A 1-sample silent
-  // buffer is the standard trick.
-  const buf = c.createBuffer(1, 1, 22050);
-  const src = c.createBufferSource();
-  src.buffer = buf;
-  src.connect(c.destination);
-  src.start(0);
-  unlocked = true;
-}
-
-window.addEventListener('pointerdown', unlock);
-window.addEventListener('touchstart', unlock);
-window.addEventListener('keydown', unlock);
-
 export function shoot(): void {
-  const c = getCtx();
-  if (!c || !unlocked) return;
+  const c = ready();
+  if (!c) return;
   const t = c.currentTime;
   const osc = c.createOscillator();
   const gain = c.createGain();
@@ -48,8 +34,8 @@ export function shoot(): void {
 }
 
 export function hit(): void {
-  const c = getCtx();
-  if (!c || !unlocked) return;
+  const c = ready();
+  if (!c) return;
   const t = c.currentTime;
   const dur = 0.45;
   const buffer = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);

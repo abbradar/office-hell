@@ -3,7 +3,7 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
-import { CHARACTER_REGISTRY_KEY, type CharacterDef, DEFAULT_CHARACTER } from './characters';
+import { DEFAULT_CHARACTER, getSelectedCharacter } from './characters';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 
 const PLAYER_OUTRO_SPEED = 220;
@@ -84,7 +84,9 @@ function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitForEnemiesCleared(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, { damagedByClass: [] });
+  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+    damagedByClass: [],
+  });
   yield { until: boss };
 }
 
@@ -105,41 +107,57 @@ export const WAVES: WaveDef[] = [
 ];
 
 function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
-  const p = self.pool.playerEntity;
-  if (!p?.alive) return;
+  const p = self.pool.player;
   // Take the wheel: stop accepting input and let the player float past the top
   // edge unbothered by the world-bounds clamp the live controls relied on.
   p.controlsEnabled = false;
-  const body = p.body as Phaser.Physics.Arcade.Body | null;
-  body?.setCollideWorldBounds(false);
+  p.body.setCollideWorldBounds(false);
 
   p.setVelocity(0, -PLAYER_OUTRO_SPEED);
-  while (p.alive && p.y > PLAYER_OUTRO_PAUSE_Y) yield 0;
+  while (p.y > PLAYER_OUTRO_PAUSE_Y) yield 0;
   p.setVelocity(0, 0);
-  const ch = (self.scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [{ speaker: 'left', text: 'I did it. This time, I did it.' }],
   });
 
   p.setVelocity(0, -PLAYER_OUTRO_SPEED);
-  while (p.alive && p.y > PLAYER_OUTRO_EXIT_Y) yield 0;
+  while (p.y > PLAYER_OUTRO_EXIT_Y) yield 0;
 }
 
 function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
-  const ch = (self.scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined) ?? DEFAULT_CHARACTER;
+  // Lock the player out for the whole intro — the lead-in beat plus dialogue.
+  // controlUpdate runs after pool.update, so this disable lands before any
+  // input or auto-fire executes this frame. Re-enabled on the way out so the
+  // first wave plays normally.
+  const p = self.pool.player;
+  p.controlsEnabled = false;
+  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [
-      { speaker: 'left', text: '8:47 PM. The hum of the lights is starting to feel personal.' },
-      { speaker: 'left', text: "Okay. Tonight I'm leaving before midnight. I mean it this time." },
-      { speaker: 'left', text: 'Just clear the floor, dodge a few "quick syncs", and out the door.' },
+      {
+        speaker: 'left',
+        text: '8:47 PM. The hum of the lights is starting to feel personal.',
+      },
+      {
+        speaker: 'left',
+        text: "Okay. Tonight I'm leaving before midnight. I mean it this time.",
+      },
+      {
+        speaker: 'left',
+        text: 'Just clear the floor, dodge a few "quick syncs", and out the door.',
+      },
       { speaker: 'left', text: '…how hard can it be.' },
     ],
   });
+  p.controlsEnabled = true;
 }
 
 function* stageScript(self: Entity) {
+  self.pool.player.controlsEnabled = false;
+
   yield 30;
   yield* introMonologue(self);
   yield 30;

@@ -13,8 +13,11 @@ const PLAYER_BULLET_SPEED = 700;
 const FIRE_OFFSET_Y = 24;
 
 export class Player extends Entity {
-  // Stage scripts flip this to false during cutscenes (e.g. the post-boss outro)
-  // so the live input/auto-fire loop stops fighting the puppeteered velocity.
+  // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
+  // and the post-boss outro) so the live input/auto-fire loop stops running
+  // while the script puppets the player. controlUpdate is invoked late in the
+  // frame (after pool.update), so a script that sets this earlier in the same
+  // frame is honoured before any input or firing happens.
   controlsEnabled = true;
 
   private leftKey: Phaser.Input.Keyboard.Key;
@@ -33,7 +36,7 @@ export class Player extends Entity {
     this.alive = true;
     this.hasEnteredScreen = true;
 
-    const body = this.body as Phaser.Physics.Arcade.Body;
+    const body = this.body;
     body.enable = true;
     body.setCircle(kind.hitboxRadius, this.width / 2 - kind.hitboxRadius, this.height / 2 - kind.hitboxRadius);
     body.setAllowGravity(false);

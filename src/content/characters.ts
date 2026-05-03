@@ -1,3 +1,5 @@
+import type Phaser from 'phaser';
+
 export type CharacterDef = {
   id: string;
   name: string;
@@ -32,3 +34,10 @@ export const DEFAULT_CHARACTER: CharacterDef = (() => {
   if (!first) throw new Error('CHARACTERS roster is empty');
   return first;
 })();
+
+// Returns the character the player picked on the select screen, or undefined
+// if nothing was set yet (e.g. running a scene directly via dev tooling).
+// Hides the unavoidable cast for registry.get's any-typed return in one place.
+export function getSelectedCharacter(scene: Phaser.Scene): CharacterDef | undefined {
+  return scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined;
+}

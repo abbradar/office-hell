@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
-import { DAMAGE_CLASSES, INERT_KIND } from '../script/types';
+import { INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { Entity } from './Entity';
@@ -18,10 +18,12 @@ export class EntityPool {
   readonly damagedBy: ClassGroups;
   readonly bubbles: BubbleManager;
   readonly dialogue: DialogueManager;
-  readonly player = { x: 0, y: 0 };
-  // Live reference to the controllable player entity. Set by GameScene after
-  // construction so stage scripts can puppet the player during cutscenes.
-  playerEntity: Player | null = null;
+  // Live reference to the controllable player entity. Assigned by GameScene
+  // immediately after the Player is constructed (which can't happen until the
+  // pool exists). Pool construction → Player construction → assignment all
+  // complete inside GameScene.create, so by the time any script runs (during
+  // pool.update from GameScene.update) this is guaranteed to be set.
+  player!: Player;
   paused = false;
 
   private readonly free: Entity[] = [];
@@ -33,19 +35,14 @@ export class EntityPool {
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
 
-    const makeGroups = (): ClassGroups => {
-      const out = {} as ClassGroups;
-      for (const c of DAMAGE_CLASSES) {
-        // allowGravity must be set here: the group's createCallback resets
-        // body properties to these defaults every time a child is added,
-        // including allowGravity and velocity.
-        out[c] = scene.physics.add.group({
-          runChildUpdate: false,
-          allowGravity: false,
-        });
-      }
-      return out;
-    };
+    // allowGravity must be set here: the group's createCallback resets body
+    // properties to these defaults every time a child is added, including
+    // allowGravity and velocity.
+    const groupConfig = { runChildUpdate: false, allowGravity: false };
+    const makeGroups = (): ClassGroups => ({
+      player: scene.physics.add.group(groupConfig),
+      enemy: scene.physics.add.group(groupConfig),
+    });
     this.damages = makeGroups();
     this.damagedBy = makeGroups();
     this.bubbles = new BubbleManager(scene);
@@ -60,7 +57,7 @@ export class EntityPool {
     this.scene.add.existing(e);
     this.scene.physics.add.existing(e);
     e.setActive(false).setVisible(false);
-    const body = e.body as Phaser.Physics.Arcade.Body;
+    const body = e.body;
     body.enable = false;
     body.setAllowGravity(false);
     return e;
@@ -98,7 +95,7 @@ export class EntityPool {
     e.activeDamagedBy = damagedBy;
     for (const c of damagedBy) this.damagedBy[c].add(e);
 
-    const body = e.body as Phaser.Physics.Arcade.Body;
+    const body = e.body;
     if (kind.hitboxRadius > 0) {
       body.enable = true;
       body.setCircle(kind.hitboxRadius, e.width / 2 - kind.hitboxRadius, e.height / 2 - kind.hitboxRadius);
@@ -180,7 +177,7 @@ export class EntityPool {
     e.kind = INERT_KIND;
     e.hp = null;
     e.setActive(false).setVisible(false);
-    const body = e.body as Phaser.Physics.Arcade.Body;
+    const body = e.body;
     body.setVelocity(0, 0);
     body.enable = false;
     this.free.push(e);
