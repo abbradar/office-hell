@@ -118,3 +118,18 @@ export function getMusicTime(): { key: string; time: number } | null {
   if (!current || trackStartCtxTime === null || !musicBus) return null;
   return { key: current.key, time: musicBus.context.currentTime - trackStartCtxTime };
 }
+
+// Durations of the active track's intro (one-shot, plays once) and loop body
+// (loop: true, repeats indefinitely). Used by the stage-queue `trackEnded`
+// filter to compute the next loop-boundary timestamp so music switches snap
+// to a clean musical break instead of cutting mid-bar.
+//
+// `introDuration` is 0 when the active track was started via playMusicLoop
+// (no intro segment). Returns null when no track is active.
+export function getCurrentTrackInfo(): { introDuration: number; loopDuration: number } | null {
+  if (!current) return null;
+  return {
+    introDuration: current.intro?.totalDuration ?? 0,
+    loopDuration: current.sound.totalDuration,
+  };
+}

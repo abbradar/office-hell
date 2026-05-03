@@ -8,7 +8,7 @@
 // makes sense.
 
 import type Phaser from 'phaser';
-import { getMusicTime } from '../audio/music/loop';
+import { getCurrentTrackInfo, getMusicTime } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from './types';
 
@@ -44,6 +44,16 @@ export type StageState = {
   index: number;
   current: StageEntry | null;
   pendingFilters: string[];
+  // Audio time (seconds, from current track start) at which the previous
+  // entry's action returned. Null at queue start, becomes null again after
+  // a music switch entry until the new track is reported playing. Used by
+  // the `audioGap(s)` filter to gate "N seconds since the last entry fired".
+  lastFireAudioTime: number | null;
+  // Audio time at which the *current* entry became the cursor (i.e. when
+  // its filters started polling). Used by `trackEnded` to compute the next
+  // loop-boundary >= this point — that boundary is fixed for the entry,
+  // not chased forward as the entry waits.
+  currentEntryActivatedAt: number | null;
 };
 
 let _state: StageState | null = null;
@@ -78,13 +88,21 @@ export function* runStageQueue(
   self: Entity,
   queue: StageQueue,
 ): Generator<ScriptYield, void, void> {
-  _state = { queue, index: 0, current: null, pendingFilters: [] };
+  _state = {
+    queue,
+    index: 0,
+    current: null,
+    pendingFilters: [],
+    lastFireAudioTime: null,
+    currentEntryActivatedAt: null,
+  };
   try {
     for (let i = 0; i < queue.length; i++) {
       const entry = queue[i];
       if (!entry) continue;
       _state.index = i;
       _state.current = entry;
+      _state.currentEntryActivatedAt = getMusicTime()?.time ?? null;
 
       // Poll filters once per frame. Cheap, and matches the cadence of
       // existing frame-counted scripts. While a dialog is open, pool.update
@@ -105,9 +123,33 @@ export function* runStageQueue(
       if (result !== undefined && typeof (result as Generator).next === 'function') {
         yield* result as Generator<ScriptYield, void, void>;
       }
+      // Stamp the audio clock for the next entry's audioGap. May be null if
+      // music isn't playing (e.g. action was a music switch and the new
+      // track hasn't started yet) — audioGap will block until music is up.
+      _state.lastFireAudioTime = getMusicTime()?.time ?? null;
     }
   } finally {
     _state = null;
+  }
+}
+
+// Wait `seconds` of audio time from now. Captures the current music time
+// once and yields until that target elapses. Falls back to a frame-based
+// yield (60fps) when no track is playing — important for practice mode and
+// for the pre-music pause beats in stageScript.
+export function* waitAudioSeconds(seconds: number): Generator<ScriptYield, void, void> {
+  if (seconds <= 0) return;
+  const m = getMusicTime();
+  if (m === null) {
+    yield Math.max(1, Math.round(seconds * 60));
+    return;
+  }
+  const target = m.time + seconds;
+  while (true) {
+    const cur = getMusicTime();
+    // If music stops/changes mid-wait, bail rather than block forever.
+    if (cur === null || cur.time >= target) return;
+    yield 1;
   }
 }
 
@@ -128,6 +170,56 @@ export const audioTimeAtLeast = (t: number): StageFilter => ({
 export const musicReady: StageFilter = {
   label: 'music ready',
   ready: () => getMusicTime() !== null,
+};
+
+// Gate: at least `seconds` of audio time have elapsed since the previous
+// queue entry's action returned. Replaces frame-counted gaps between waves
+// — naturally pauses through dialogs (music keeps playing) and freezes
+// during music-switch downtime (lastFireAudioTime is null until the new
+// track starts). Don't put on the very first entry — there's no "previous"
+// for it to gate against and it would block forever.
+export const audioGap = (seconds: number): StageFilter => ({
+  label: `+${seconds.toFixed(1)}s`,
+  ready: () => {
+    const m = getMusicTime();
+    const last = _state?.lastFireAudioTime;
+    if (last == null || m === null) return false;
+    return m.time >= last + seconds;
+  },
+});
+
+// Gate: wait until the currently-playing track reaches its next loop boundary
+// (intro→loop hand-off, or the next loop iteration end). Snapping music
+// switches to this filter prevents hard cuts in the middle of a bar; the new
+// track takes over right as the old one would have wrapped around.
+//
+// "Boundary" is computed once when the entry first becomes current — it's
+// the next iteration end at-or-after that activation point — so combining
+// with audioGap behaves as `wait MAX(audioGap, trackEnded)`.
+//
+// Returns true when no track is playing (nothing to wait for) so this can be
+// safely added to the very first music entry of a stage.
+export const trackEnded: StageFilter = {
+  label: 'track end',
+  ready: () => {
+    const m = getMusicTime();
+    if (m === null) return true;
+    const info = getCurrentTrackInfo();
+    if (info === null || info.loopDuration <= 0) return true;
+    const start = _state?.currentEntryActivatedAt;
+    if (start == null) return true;
+
+    let nextBoundary: number;
+    if (start < info.introDuration) {
+      // Activation landed during the intro — first boundary is the intro end.
+      nextBoundary = info.introDuration;
+    } else {
+      const elapsedInLoop = start - info.introDuration;
+      const iterations = Math.floor(elapsedInLoop / info.loopDuration) + 1;
+      nextBoundary = info.introDuration + iterations * info.loopDuration;
+    }
+    return m.time >= nextBoundary;
+  },
 };
 
 export const enemiesClear: StageFilter = {

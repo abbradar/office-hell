@@ -9,7 +9,16 @@ import { playMusicLoop, playMusicWithIntro } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
-import { firstLive } from '../script/stageQueue';
+import {
+  audioGap,
+  enemiesClear,
+  firstLive,
+  musicReady,
+  runStageQueue,
+  type StageQueue,
+  trackEnded,
+  waitAudioSeconds,
+} from '../script/stageQueue';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
@@ -57,25 +66,29 @@ export function clearScreen(self: Entity): void {
 }
 
 
+// Internal wave pacing is in audio seconds *relative to the wave's own start*.
+// `waitAudioSeconds` captures the music time on entry and yields until that
+// target elapses; in practice mode (no music) it falls back to a frame yield
+// at 60fps, preserving the original frame counts.
 function* wave1(self: Entity): Generator<ScriptYield, void, void> {
   for (let i = 0; i < 3; i++) {
     self.spawn(streamer, 80, -30, 0, 0);
-    yield 35;
+    yield* waitAudioSeconds(0.58); // was: yield 35
     self.spawn(streamer, GAME_W - 80, -30, 0, 0);
-    yield 35;
+    yield* waitAudioSeconds(0.58); // was: yield 35
   }
 }
 
 function* wave2(self: Entity): Generator<ScriptYield, void, void> {
   for (let i = 0; i < 3; i++) {
     self.spawn(fanShooter, GAME_W * (0.3 + (i % 2) * 0.4), -30, 0, 0);
-    yield 70;
+    yield* waitAudioSeconds(1.17); // was: yield 70
   }
 }
 
 function* wave3(self: Entity): Generator<ScriptYield, void, void> {
   self.spawn(ringSpinner, GAME_W * 0.3, -30, 0, 0);
-  yield 30;
+  yield* waitAudioSeconds(0.5); // was: yield 30
   self.spawn(ringSpinner, GAME_W * 0.7, -30, 0, 0);
 }
 
@@ -169,51 +182,134 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
   p.controlsEnabled = true;
 }
 
-function* stageScript(self: Entity) {
-  self.pool.player.controlsEnabled = false;
+// Top-level stage as a declarative queue. Order is the queue's order; gating
+// is in `filters`; what happens is in `action`. Inter-wave gaps use
+// `audioGap(s)` (audio-time-based) instead of frame counts so the schedule
+// is synced to the music. Music switches are themselves entries — the
+// per-track audio clock resets, so subsequent gaps are measured against the
+// new track's start.
+//
+// Frame yields still appear inside the actions for the *pre-music* beats
+// (intro pause, post-boss pause, etc.) — those run before / outside any
+// music context, so audio time isn't meaningful there.
+const STAGE_QUEUE: StageQueue = [
+  // Intro: lock controls, half-second pause, monologue, half-second pause.
+  // No music yet, so frame yields are appropriate.
+  {
+    name: 'intro',
+    kind: 'dialog',
+    filters: [],
+    action: function* (self) {
+      self.pool.player.controlsEnabled = false;
+      yield 30; // 0.5s before monologue
+      yield* introMonologue(self);
+      yield 30; // 0.5s after monologue
+    },
+  },
 
-  yield 30;
-  yield* introMonologue(self);
-  yield 30;
+  // Music kicks in: retro opening fanfare → loop. Wave 1 waits on musicReady
+  // so it spawns in time with the first downbeat of the loop.
+  {
+    name: 'music: retro 01',
+    kind: 'music',
+    filters: [],
+    action: () => playMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY),
+  },
 
-  // Music: opening retro fanfare → first stage loop. Triggered after the
-  // monologue so the dialogue lands in silence; the loop kicks in just as
-  // wave 1 starts spawning.
-  playMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
+  {
+    name: 'wave 1',
+    kind: 'spawn',
+    filters: [musicReady],
+    action: function* (self) {
+      yield* wave1(self);
+    },
+  },
+  {
+    name: 'wave 2',
+    kind: 'spawn',
+    filters: [audioGap(2.5)], // was: yield 150 between waves
+    action: function* (self) {
+      yield* wave2(self);
+    },
+  },
+  {
+    name: 'wave 3',
+    kind: 'spawn',
+    filters: [audioGap(3.0)], // was: yield 180
+    action: function* (self) {
+      yield* wave3(self);
+    },
+  },
 
-  yield* wave1(self);
-  yield 150;
+  // Halfway pivot to retro 02 — gap measured against retro 01's clock,
+  // then the new track's clock is what subsequent entries see. `trackEnded`
+  // snaps the swap to the next loop iteration end so the cut lands on a
+  // musical seam rather than mid-bar.
+  {
+    name: 'music: retro 02',
+    kind: 'music',
+    filters: [trackEnded],
+    action: () => playMusicLoop(STAGE1_RETRO_02_LOOP_KEY),
+  },
+  {
+    name: 'wave 4',
+    kind: 'spawn',
+    filters: [musicReady],
+    action: function* (self) {
+      yield* wave4(self);
+    },
+  },
 
-  yield* wave2(self);
-  yield 180;
+  // Mid-stage boss — internal script waits for field to clear, then plays
+  // its own dialogue + attack loop. The next entry (boss music) gates on
+  // his death via enemiesClear (his death drops him from damagedBy.enemy).
+  {
+    name: 'mr. hodges',
+    kind: 'spawn',
+    filters: [],
+    action: function* (self) {
+      yield* shrunkOldManWave(self);
+    },
+  },
 
-  yield* wave3(self);
-  yield 240;
+  {
+    name: 'music: metal',
+    kind: 'music',
+    filters: [enemiesClear, trackEnded],
+    action: () => playMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY),
+  },
+  {
+    name: 'final boss',
+    kind: 'spawn',
+    filters: [],
+    action: function* (self) {
+      yield* bossWave(self);
+    },
+  },
 
-  // Halfway pivot — abrupt loop swap (no crossfade, matching the menu loop).
-  playMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  // Outro: brief pause, sweep stragglers, brief pause, player exits.
+  // Frame yields again — by this point music is moot.
+  {
+    name: 'outro',
+    kind: 'dialog',
+    filters: [],
+    action: function* (self) {
+      yield 30; // 0.5s after boss death
+      clearScreen(self);
+      yield 30; // 0.5s before outro starts
+      yield* playerOutro(self);
+    },
+  },
 
-  yield* wave4(self);
-  // shrunkOldManWave and bossWave each wait for the field to clear before
-  // opening their dialogue, so no fixed delay between waves here.
-
-  yield* shrunkOldManWave(self);
-
-  // Boss music — opening sting then the metal loop, matching the same
-  // intro→loop pattern as the stage opener. Fires before the bossWave's
-  // own dialogue so the music is up by the time he speaks.
-  playMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
-
-  yield* bossWave(self);
-  // Boss is dead. Don't wait for in-flight bullets to drain (racy with the yield
-  // trick) — give the field a brief beat for visual closure, then nuke everything.
-  yield 30;
-  clearScreen(self);
-  yield 30;
-  yield* playerOutro(self);
-
-  self.scene.scene.start('End', { won: true });
-}
+  {
+    name: 'end',
+    kind: 'misc',
+    filters: [],
+    action: (self) => {
+      self.scene.scene.start('End', { won: true });
+    },
+  },
+];
 
 export const stage = new EntityKind({
   sprite: null,
@@ -221,7 +317,7 @@ export const stage = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: stageScript,
+  defaultScript: (self) => runStageQueue(self, STAGE_QUEUE),
 });
 
 export function makeWaveStage(wave: WaveDef): EntityKind {

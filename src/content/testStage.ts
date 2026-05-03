@@ -29,6 +29,7 @@ import {
   runStageQueue,
   screenClear,
   type StageQueue,
+  trackEnded,
 } from '../script/stageQueue';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
@@ -160,7 +161,7 @@ const TEST_STAGE_QUEUE: StageQueue = [
   {
     name: 'metal music',
     kind: 'music',
-    filters: [],
+    filters: [trackEnded],
     action: () => playMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY),
   },
   // Boss spawn + wait-for-death folded into one entry. The boss's own script

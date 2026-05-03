@@ -139,12 +139,14 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
 
-    if (this.testMode) {
-      this.debugHud = this.add
-        .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: '#6cf0a8' })
-        .setScrollFactor(0)
-        .setDepth(100);
-    }
+    // Debug HUD (track / t / next / blocked) shown for both the real stage
+    // and the diagnostics test stage now that both run on the queue runner.
+    // Test stage gets the green tint as a "you're in test mode" cue;
+    // real-stage version is greyer so it recedes.
+    this.debugHud = this.add
+      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: this.testMode ? '#6cf0a8' : '#888888' })
+      .setScrollFactor(0)
+      .setDepth(100);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (this.practiceWave) {
@@ -186,14 +188,12 @@ export class GameScene extends Phaser.Scene {
     // the same frame (or the frame before) a cutscene begins, and it pops into
     // view as physics integrates.
     this.pool.update(time, delta);
-    // Touhou soft pause: corridor scroll freezes during dialog (keeps the
-    // visual "time stopped" cue), but the player can keep moving — Player
-    // gates its own firing/bombing on pool.dialogActive.
     if (!this.pool.paused) {
       this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
       this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
+
+      this.player.controlUpdate();
     }
-    this.player.controlUpdate();
 
     const hostile = this.pool.damages.player.countActive(true);
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';

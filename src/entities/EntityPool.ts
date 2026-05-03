@@ -25,12 +25,9 @@ export class EntityPool {
   // pool.update from GameScene.update) this is guaranteed to be set.
   player!: Player;
   // True while a dialog/cutscene wants scripts to freeze. pool.update consults
-  // this to short-circuit script ticks and bullet/enemy logic.
+  // this to short-circuit script ticks; GameScene gates physics + player
+  // input on the same flag.
   paused = false;
-  // Touhou-style soft-pause flag. True only while a dialog box is open.
-  // Distinct from `paused` because the player can keep moving during a dialog
-  // — Player.controlUpdate reads this to gate firing/bombing only.
-  dialogActive = false;
   // Name shown in the HUD header during a boss fight. Set and cleared by the
   // boss's own script — the pool/HUD don't infer it from entity state.
   bossName: string | null = null;
@@ -40,10 +37,6 @@ export class EntityPool {
   // Unsorted: each tick we walk the whole list, decrement, fire entries that hit zero.
   // At most one entry per entity (a script's only suspended on one thing at a time).
   private readonly waiting: Wait[] = [];
-  // Velocity snapshots taken at dialog open so non-player entities freeze in
-  // place visually. Restored on dialog close. Skipped for entities that died
-  // mid-dialog (shouldn't happen with paused scripts, but cheap to guard).
-  private frozenBodies: { entity: Entity; gen: number; vx: number; vy: number }[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -171,47 +164,19 @@ export class EntityPool {
   }
 
   private beginDialogue(opts: DialogueOpts, e: Entity, iter: ScriptIter): void {
-    // Touhou-style soft pause: scripts and AI freeze (paused = true short-
-    // circuits pool.update), but Phaser physics keeps running so the player
-    // can still move and dodge. We snapshot every non-player body's velocity
-    // and zero it so on-screen bullets/enemies sit motionless, and we make
-    // the player invincible (via the existing push/pop mechanism) so they
-    // can't die brushing past a frozen bullet.
+    // Hard pause: scripts freeze (paused = true short-circuits pool.update)
+    // and Phaser physics is paused globally so all bodies — including the
+    // player — sit still. GameScene also gates player input on pool.paused
+    // so held keys don't accumulate during the cutscene.
     this.paused = true;
-    this.dialogActive = true;
-    this.freezeNonPlayerBodies();
-    this.player.pushInvincible();
+    this.scene.physics.pause();
 
     const gen = e.gen;
     this.dialogue.start(opts, () => {
       this.paused = false;
-      this.dialogActive = false;
-      this.player.popInvincible();
-      this.unfreezeBodies();
+      this.scene.physics.resume();
       if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
     });
-  }
-
-  private freezeNonPlayerBodies(): void {
-    const player = this.player;
-    for (const ent of this.active) {
-      if (ent === player) continue;
-      const v = ent.body.velocity;
-      this.frozenBodies.push({ entity: ent, gen: ent.gen, vx: v.x, vy: v.y });
-      ent.body.setVelocity(0, 0);
-    }
-  }
-
-  private unfreezeBodies(): void {
-    for (const f of this.frozenBodies) {
-      // gen guard: an entity that was released and re-spawned during the
-      // dialog (shouldn't happen with paused scripts, but defensive) would
-      // now be a different logical entity — don't restore its old velocity.
-      if (f.entity.alive && f.entity.gen === f.gen) {
-        f.entity.body.setVelocity(f.vx, f.vy);
-      }
-    }
-    this.frozenBodies.length = 0;
   }
 
   private release(e: Entity, indexInActive: number): void {
