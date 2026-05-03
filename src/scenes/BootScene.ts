@@ -4,8 +4,8 @@ import coworker1Url from '../assets/sprites/coworker1.png';
 import coworker2Url from '../assets/sprites/coworker2.png';
 import playerSpriteUrl from '../assets/sprites/player.png';
 import { initBuses } from '../audio/buses';
-import menuLoopUrl from '../audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.mp3';
 import { CLICK_SFX_KEY, MENU_LOOP_KEY } from '../audio/keys';
+import menuLoopUrl from '../audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.mp3';
 import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
 import clickSfxUrl from '../audio/sfx/switch20.wav';
@@ -58,6 +58,17 @@ export class BootScene extends Phaser.Scene {
     // Shrunk-old-man (stage boss "Mr. Hodges") placeholder until the retiree
     // art lands.
     this.load.spritesheet('shrunkOldMan', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    // HR coordinator placeholder — reused for the bickering trio until the
+    // dedicated HR sheet lands.
+    this.load.spritesheet('hr', coworker1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    // IT Admin placeholder — reused coworker sheet until the sysop art lands.
+    this.load.spritesheet('itAdmin', coworker2Url, {
       frameWidth: ENEMY_FRAME_W,
       frameHeight: ENEMY_FRAME_H,
     });
@@ -161,7 +172,17 @@ export class BootScene extends Phaser.Scene {
     // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
     // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
     // standard 1-0-1-2 sequence for a smooth gait.
-    for (const key of ['coworker1', 'coworker2', 'boss1', 'sales', 'importantClient', 'gymBro', 'shrunkOldMan']) {
+    for (const key of [
+      'coworker1',
+      'coworker2',
+      'boss1',
+      'sales',
+      'importantClient',
+      'gymBro',
+      'shrunkOldMan',
+      'hr',
+      'itAdmin',
+    ]) {
       this.anims.create({
         key: `${key}_walk`,
         frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),

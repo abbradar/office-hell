@@ -7,7 +7,9 @@ import { EntityKind } from '../script/types';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 import { colleaguesWave } from './release/colleague';
 import { gymBroWave } from './release/gymBro';
+import { hrTrioWave } from './release/hrTrio';
 import { internsWave } from './release/intern';
+import { itAdminsWave } from './release/itAdmin';
 import { janitorsWave } from './release/janitor';
 import { salesClientWave } from './release/salesClient';
 import { shrunkOldManWave } from './release/shrunkOldMan';
@@ -112,6 +114,8 @@ export const WAVES: WaveDef[] = [
   { id: 'r-janitor', name: 'Release — Janitor', script: janitorsWave },
   { id: 'r-colleagues', name: 'Release — Colleagues', script: colleaguesWave },
   { id: 'r-sales-client', name: 'Release — Sales & Client', script: salesClientWave },
+  { id: 'r-hr-trio', name: 'Release — HR Trio', script: hrTrioWave },
+  { id: 'r-it-admin', name: 'Release — IT Admin', script: itAdminsWave },
   { id: 'r-gym-bro', name: 'Release — Gym Bro', script: gymBroWave },
   { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },

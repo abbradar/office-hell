@@ -70,7 +70,7 @@ export class EntityPool {
     const e = this.free.pop() ?? this.makeEntity();
 
     e.kind = kind;
-    e.hp = kind.hp;
+    e.hp = opts.hp ?? kind.hp;
     e.alive = true;
     e.gen++;
     e.hasEnteredScreen = false;

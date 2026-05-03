@@ -61,4 +61,8 @@ export type SpawnOpts = {
   // Override the kind's damagedByClass for this individual spawn — e.g. to make
   // a boss unhittable during its intro and then re-enable damage after dialogue.
   damagedByClass?: DamageClass[];
+  // Override the kind's starting HP for this individual spawn — useful when one
+  // of a kind needs to outlast its peers (e.g. a "lead" enemy that has to
+  // survive long enough to deliver its solo intro).
+  hp?: number;
 };
