@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from '../content/characters';
+import { getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import type { Entity } from '../entities/Entity';
@@ -48,7 +48,11 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(100);
 
-    this.playerKind = new PlayerKind({ hpText: this.hpText, practice: this.practiceWave !== null });
+    const character = getSelectedCharacter(this);
+    if (!character)
+      throw new Error('GameScene started without a selected character — go through CharacterSelect first');
+
+    this.playerKind = new PlayerKind({ hpText: this.hpText, practice: this.practiceWave !== null, character });
     this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player = this.player;
 
@@ -136,10 +140,9 @@ export class GameScene extends Phaser.Scene {
 
     const hostile = this.pool.damages.player.countActive(true);
     const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
-    const ch = getSelectedCharacter(this) ?? DEFAULT_CHARACTER;
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(
-      `${ch.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,
+      `${this.player.character.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,
     );
   }
 }

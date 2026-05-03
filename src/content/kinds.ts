@@ -2,7 +2,6 @@ import { BULLET_RADIUS, GAME_H } from '../config';
 import type { Entity } from '../entities/Entity';
 import { aimed, arc, ring, spread } from '../script/patterns';
 import { EntityKind } from '../script/types';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from './characters';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
@@ -150,7 +149,7 @@ function* bossScript(self: Entity) {
   yield 20;
 
   // Pre-fight dialogue.
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  const ch = self.pool.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss1', frame: 1, name: 'The Boss' },

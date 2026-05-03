@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
+import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
 import { isLeftHeld, isRightHeld } from '../input/touch';
-import type { EntityKind } from '../script/types';
 import { Entity } from './Entity';
 import type { EntityPool } from './EntityPool';
 
@@ -20,12 +21,16 @@ export class Player extends Entity {
   // frame is honoured before any input or firing happens.
   controlsEnabled = true;
 
+  // Narrow the inherited Entity.kind: we always construct with a PlayerKind, and
+  // scripts can then reach kind-specific config (like character) without a cast.
+  declare kind: PlayerKind;
+
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
 
-  constructor(scene: Phaser.Scene, pool: EntityPool, kind: EntityKind) {
+  constructor(scene: Phaser.Scene, pool: EntityPool, kind: PlayerKind) {
     super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -52,6 +57,10 @@ export class Player extends Entity {
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
     this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+  }
+
+  get character(): CharacterDef {
+    return this.kind.character;
   }
 
   controlUpdate(): void {

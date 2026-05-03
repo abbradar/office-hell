@@ -3,7 +3,6 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from './characters';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 
 const PLAYER_OUTRO_SPEED = 220;
@@ -116,7 +115,7 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   p.setVelocity(0, -PLAYER_OUTRO_SPEED);
   while (p.y > PLAYER_OUTRO_PAUSE_Y) yield 0;
   p.setVelocity(0, 0);
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  const ch = p.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [{ speaker: 'left', text: 'I did it. This time, I did it.' }],
@@ -133,7 +132,7 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
   // first wave plays normally.
   const p = self.pool.player;
   p.controlsEnabled = false;
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  const ch = p.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [
