@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { DEFAULT_CHARACTER, getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
@@ -38,6 +39,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    stopMusicLoop();
+
     this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor').setDepth(-10);
     this.specks = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor_specks').setDepth(-9);
 

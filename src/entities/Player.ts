@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { shoot } from '../audio/sfx';
+import { shoot } from '../audio/sfx/events';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
 import { playerBullet } from '../content/kinds';
 import { isTouchDevice } from '../input/device';

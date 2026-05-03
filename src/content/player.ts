@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { hit } from '../audio/sfx';
+import { hit } from '../audio/sfx/events';
 import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';

@@ -1,25 +1,14 @@
-// Procedural SFX layered on top of Phaser's audio context. Phaser's
-// WebAudioSoundManager handles creating the AudioContext (with the legacy
-// webkit fallback baked in) and resuming it on the first user gesture, so all
-// we have to do is grab the context once at boot and use it for raw oscillator
-// / noise synthesis. If Phaser falls back to NoAudioSoundManager (no audio
-// support detected), setAudioContext is never called and these functions just
-// no-op.
+// Game-facing SFX events. Procedural ones (shoot, hit) synth into sfxBus;
+// sample-based ones (click) go through the voice pool. Everything no-ops
+// silently until initBuses + setSoundManager have been called from BootScene.
 
-let ctx: AudioContext | null = null;
-
-export function setAudioContext(audioContext: AudioContext): void {
-  ctx = audioContext;
-}
-
-function ready(): AudioContext | null {
-  if (!ctx || ctx.state !== 'running') return null;
-  return ctx;
-}
+import { sfxBus } from '../buses';
+import { CLICK_SFX_KEY } from '../keys';
+import { playPooled } from './pool';
 
 export function shoot(): void {
-  const c = ready();
-  if (!c) return;
+  if (!sfxBus) return;
+  const c = sfxBus.context;
   const t = c.currentTime;
   const osc = c.createOscillator();
   const gain = c.createGain();
@@ -28,14 +17,14 @@ export function shoot(): void {
   osc.frequency.exponentialRampToValueAtTime(220, t + 0.1);
   gain.gain.setValueAtTime(0.25, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
-  osc.connect(gain).connect(c.destination);
+  osc.connect(gain).connect(sfxBus);
   osc.start(t);
   osc.stop(t + 0.14);
 }
 
 export function hit(): void {
-  const c = ready();
-  if (!c) return;
+  if (!sfxBus) return;
+  const c = sfxBus.context;
   const t = c.currentTime;
   const dur = 0.45;
   const buffer = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
@@ -52,7 +41,11 @@ export function hit(): void {
   const gain = c.createGain();
   gain.gain.setValueAtTime(0.5, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  noise.connect(filter).connect(gain).connect(c.destination);
+  noise.connect(filter).connect(gain).connect(sfxBus);
   noise.start(t);
   noise.stop(t + dur + 0.05);
+}
+
+export function playClick(): void {
+  playPooled(CLICK_SFX_KEY, { volume: 0.6 });
 }

@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
-import { setAudioContext } from '../audio/sfx';
-import { BULLET_RADIUS, GAME_W } from '../config';
+import { initBuses } from '../audio/buses';
+import menuLoopUrl from '../audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.mp3';
+import { CLICK_SFX_KEY, MENU_LOOP_KEY } from '../audio/keys';
+import { playMusicLoop, setMusicManager } from '../audio/music/loop';
+import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
+import clickSfxUrl from '../audio/sfx/switch20.wav';
+import { BULLET_RADIUS, GAME_H, GAME_W } from '../config';
 import boss1Url from '../sprites/boss1.png';
 import coworker1Url from '../sprites/coworker1.png';
 import coworker2Url from '../sprites/coworker2.png';
@@ -17,6 +22,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    this.showLoadingUI();
+
     this.load.spritesheet('player', playerSpriteUrl, {
       frameWidth: PLAYER_FRAME_W,
       frameHeight: PLAYER_FRAME_H,
@@ -33,6 +40,9 @@ export class BootScene extends Phaser.Scene {
       frameWidth: ENEMY_FRAME_W,
       frameHeight: ENEMY_FRAME_H,
     });
+
+    this.load.audio(MENU_LOOP_KEY, menuLoopUrl);
+    this.load.audio(CLICK_SFX_KEY, clickSfxUrl);
 
     const g = this.add.graphics();
 
@@ -99,13 +109,50 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    // Phaser's WebAudioSoundManager owns the AudioContext + its unlock-on-
-    // user-gesture handling. Reuse it for our procedural SFX so we don't have
-    // to re-implement either. Falls through silently on NoAudioSoundManager.
-    if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
-      setAudioContext(this.sound.context);
-    }
+    initBuses(this.sound);
+    setSoundManager(this.sound);
+    setMusicManager(this.sound);
+    setVoiceCap(CLICK_SFX_KEY, 4);
+
+    playMusicLoop(MENU_LOOP_KEY);
 
     this.scene.start('Menu');
+  }
+
+  private showLoadingUI(): void {
+    this.cameras.main.setBackgroundColor('#10101a');
+
+    const cx = GAME_W / 2;
+    const cy = GAME_H / 2;
+    const barW = 320;
+    const barH = 14;
+    const barX = cx - barW / 2;
+    const barY = cy - barH / 2;
+
+    this.add
+      .text(cx, cy - 60, 'OFFICE HELL', {
+        color: '#ff5577',
+        fontSize: '36px',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5);
+
+    this.add
+      .text(cx, cy - 24, 'loading…', {
+        color: '#888888',
+        fontSize: '14px',
+      })
+      .setOrigin(0.5);
+
+    const border = this.add.graphics();
+    border.lineStyle(2, 0x444466, 1);
+    border.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+    const fill = this.add.graphics();
+    this.load.on(Phaser.Loader.Events.PROGRESS, (value: number) => {
+      fill.clear();
+      fill.fillStyle(0xffd96a, 1);
+      fill.fillRect(barX, barY, barW * value, barH);
+    });
   }
 }

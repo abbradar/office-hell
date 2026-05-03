@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { MENU_LOOP_KEY } from '../audio/keys';
+import { playMusicLoop } from '../audio/music/loop';
+import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 
@@ -9,6 +12,12 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#10101a');
+
+    // Music is owned by the audio module and survives scene transitions, so
+    // the loop keeps playing across CharacterSelect / TestMenu / End. The
+    // call is idempotent for the same key — calling it again on a return to
+    // the menu (e.g. from EndScene) just no-ops while the loop is alive.
+    playMusicLoop(MENU_LOOP_KEY);
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {
@@ -58,9 +67,11 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const start = (): void => {
+      playClick();
       this.scene.start('CharacterSelect', { next: 'Game' });
     };
     const goPractice = (): void => {
+      playClick();
       this.scene.start('TestMenu');
     };
 

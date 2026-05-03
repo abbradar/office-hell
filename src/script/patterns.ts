@@ -1,4 +1,4 @@
-import { shoot } from '../audio/sfx';
+import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { EntityKind } from './types';

@@ -5,3 +5,7 @@ dist
 .vite
 .direnv
 result
+
+# Unused source audio (boss tracks, theme drafts) — keep out of git, opt back
+# in by moving the file out of src/audio/tracks/ when you actually wire it up.
+src/audio/tracks/
