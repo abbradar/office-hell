@@ -5,6 +5,7 @@ import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { makePrompt } from '../ui/prompt';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -27,14 +28,11 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const startLabel = isTouchDevice ? '▶ TAP TO START' : '▶ PRESS Z';
-    const startText = this.add
-      .text(GAME_W / 2, GAME_H * 0.5, startLabel, {
-        ...FONT_MENU,
-        color: '#ffffff',
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
+    const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ <confirm>  START';
+    const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
+      ...FONT_MENU,
+      color: '#ffffff',
+    }).setInteractive({ useHandCursor: true });
 
     this.tweens.add({
       targets: startText,
@@ -44,25 +42,23 @@ export class MenuScene extends Phaser.Scene {
       repeat: -1,
     });
 
-    const practiceLabel = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE (T)';
-    const practiceText = this.add
-      .text(GAME_W / 2, GAME_H * 0.62, practiceLabel, {
-        ...FONT_DIALOGUE_LG,
-        color: '#ffd96a',
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
+    const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
+    const practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
+      ...FONT_DIALOGUE_LG,
+      color: '#ffd96a',
+    }).setInteractive({ useHandCursor: true });
 
-    const controlsText = isTouchDevice
+    const controlsTemplate = isTouchDevice
       ? 'on-screen buttons: move\nfire is automatic on touch devices\n(no excuses on touch — yet)'
-      : '← → arrows: move\nZ: fire\nX: excuse (clears bullets, 3 per run)';
-    this.add
-      .text(GAME_W / 2, GAME_H * 0.8, controlsText, {
-        ...FONT_DEBUG,
-        color: '#888888',
-        align: 'center',
-      })
-      .setOrigin(0.5);
+      : '<moveHorizontal>: move\n<fire>: fire\n<bomb>: excuse (clears bullets, 3 per run)';
+    makePrompt(
+      this,
+      GAME_W / 2,
+      GAME_H * 0.8,
+      controlsTemplate,
+      { ...FONT_DEBUG, color: '#888888', align: 'center' },
+      { align: 'center' },
+    );
 
     const start = (): void => {
       playClick();

@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
+import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { makePrompt } from '../ui/prompt';
 
 export type EndSceneData = { won: boolean };
 
@@ -38,12 +40,11 @@ export class EndScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const restart = this.add
-      .text(GAME_W / 2, GAME_H * 0.6, '▶ TAP TO RESTART', {
-        ...FONT_MENU,
-        color: '#ffffff',
-      })
-      .setOrigin(0.5);
+    const restartTemplate = isTouchDevice ? '▶ TAP TO RESTART' : '▶ <confirm>  RESTART';
+    const restart = makePrompt(this, GAME_W / 2, GAME_H * 0.6, restartTemplate, {
+      ...FONT_MENU,
+      color: '#ffffff',
+    });
 
     this.tweens.add({
       targets: restart,

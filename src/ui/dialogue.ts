@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG } from './fonts';
+import { makePrompt } from './prompt';
 
 export type DialoguePortrait = {
   sprite: string;
@@ -54,7 +55,7 @@ type Live = {
   nameBg: Phaser.GameObjects.Graphics;
   nameText: Phaser.GameObjects.Text;
   bodyText: Phaser.GameObjects.Text;
-  hint: Phaser.GameObjects.Text;
+  hint: Phaser.GameObjects.Container;
   index: number;
   typed: number;
   lastTypeMs: number;
@@ -120,18 +121,19 @@ export class DialogueManager {
     bodyText.setLineSpacing(TEXT_LINE_SPACING);
     container.add(bodyText);
 
-    const hint = this.scene.add
-      .text(
-        GAME_W - TEXT_BOX_MARGIN - TEXT_BOX_PAD,
-        TEXT_BOX_Y + TEXT_BOX_H - TEXT_BOX_PAD,
-        isTouchDevice ? '▼ tap' : '▼ Z',
-        {
-          ...FONT_DEBUG,
-          color: HINT_COLOR,
-        },
-      )
-      .setOrigin(1, 1)
-      .setVisible(false);
+    // Anchored to the box's bottom-right corner. makePrompt centres its
+    // content vertically around the y argument, so subtract half a line to
+    // get a visual bottom-anchor that matches the old `setOrigin(1, 1)`.
+    const hintTemplate = isTouchDevice ? '▼ tap' : '▼ <advanceDialogue>';
+    const hintLineH = Math.round(11 * 1.4);
+    const hint = makePrompt(
+      this.scene,
+      GAME_W - TEXT_BOX_MARGIN - TEXT_BOX_PAD,
+      TEXT_BOX_Y + TEXT_BOX_H - TEXT_BOX_PAD - hintLineH / 2,
+      hintTemplate,
+      { ...FONT_DEBUG, color: HINT_COLOR },
+      { align: 'right' },
+    ).setVisible(false);
     container.add(hint);
 
     this.scene.tweens.add({

@@ -3,6 +3,7 @@ import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
+import { makePrompt } from '../ui/prompt';
 
 export type CharacterSelectData = {
   next: string;
@@ -68,16 +69,17 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.cards.push(this.makeCard(i, ch, cx));
     }
 
-    const hint = isTouchDevice
+    const hintTemplate = isTouchDevice
       ? 'tap a card to select   •   tap "back" to return'
-      : '← →: switch   Z/Enter: select   Esc: back';
-    this.add
-      .text(GAME_W / 2, GAME_H - 96, hint, {
-        ...FONT_DEBUG,
-        color: '#888888',
-        align: 'center',
-      })
-      .setOrigin(0.5);
+      : '<moveHorizontal>: switch   <confirm>: select   <back>: back';
+    makePrompt(
+      this,
+      GAME_W / 2,
+      GAME_H - 96,
+      hintTemplate,
+      { ...FONT_DEBUG, color: '#888888', align: 'center' },
+      { align: 'center' },
+    );
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 56, '← back', {
@@ -102,7 +104,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       });
       kb.on('keydown-Z', () => this.confirm());
       kb.on('keydown-ENTER', () => this.confirm());
-      kb.on('keydown-ESC', () => {
+      kb.on('keydown-BACKSPACE', () => {
         this.scene.start('Menu');
       });
     }

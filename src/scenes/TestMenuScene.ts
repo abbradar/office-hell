@@ -4,6 +4,7 @@ import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { makePrompt } from '../ui/prompt';
 import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
 const ROW_SPACING = 44;
@@ -165,16 +166,17 @@ export class TestMenuScene extends Phaser.Scene {
       this.scene.start('Menu');
     });
 
-    const hint = isTouchDevice
+    const hintTemplate = isTouchDevice
       ? 'tap to play   •   swipe list to scroll'
-      : '↑ ↓: select   Z/Enter: play   wheel: scroll   Esc: back';
-    this.add
-      .text(GAME_W / 2, GAME_H - 25, hint, {
-        ...FONT_DEBUG,
-        color: '#666666',
-        align: 'center',
-      })
-      .setOrigin(0.5);
+      : '<menuUp> <menuDown>: select   <confirm>: play   wheel: scroll   <back>: back';
+    makePrompt(
+      this,
+      GAME_W / 2,
+      GAME_H - 25,
+      hintTemplate,
+      { ...FONT_DEBUG, color: '#666666', align: 'center' },
+      { align: 'center' },
+    );
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.y < LIST_VIEW_TOP || p.y > LIST_VIEW_BOTTOM) {
@@ -214,7 +216,7 @@ export class TestMenuScene extends Phaser.Scene {
       });
       kb.on('keydown-Z', () => this.start());
       kb.on('keydown-ENTER', () => this.start());
-      kb.on('keydown-ESC', () => this.scene.start('Menu'));
+      kb.on('keydown-BACKSPACE', () => this.scene.start('Menu'));
     }
 
     this.refresh();

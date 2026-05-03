@@ -53,12 +53,13 @@ export const FONT_DIALOGUE_LG: Style = { fontFamily: BODY_FAMILY, fontSize: '16p
 
 // Speech bubbles, dialogue advance hints, secondary descriptions. Sans-serif
 // because pixel fonts get noisy below 16px and these tiers want to *recede*.
-export const FONT_DIALOGUE_SM: Style = { fontFamily: SMALL_FAMILY, fontSize: '13px', resolution: TEXT_RESOLUTION };
+export const FONT_DIALOGUE_SM: Style = { fontFamily: SMALL_FAMILY, fontSize: '14px', resolution: TEXT_RESOLUTION };
 
 // Smallest tier: debug HUD, control hints, "back" links — usually grayed out.
-// Sans-serif for the same reason as FONT_DIALOGUE_SM, plus the shapes need to
-// stay readable at 11px which Silkscreen genuinely can't do.
-export const FONT_DEBUG: Style = { fontFamily: SMALL_FAMILY, fontSize: '11px', resolution: TEXT_RESOLUTION };
+// Sans-serif for the same reason as FONT_DIALOGUE_SM. Bumped up from the
+// previous 11px because input-prompt rows (text + icon) at that size were
+// hard to read on actual displays, even with `resolution: dpr` boosting.
+export const FONT_DEBUG: Style = { fontFamily: SMALL_FAMILY, fontSize: '13px', resolution: TEXT_RESOLUTION };
 
 async function registerFont(family: string, url: string, weight: number): Promise<void> {
   const face = new FontFace(family, `url(${url})`, { weight: String(weight), display: 'block' });
