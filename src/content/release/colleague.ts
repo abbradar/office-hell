@@ -43,7 +43,7 @@ export const colleague = new EntityKind({
   sprite: 'coworker2',
   animKey: 'coworker2_walk',
   hitboxRadius: 12,
-  hp: 4,
+  hp: 12,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: colleagueScript,
@@ -58,4 +58,12 @@ export function* colleaguesWave(self: Entity): Generator<ScriptYield, void, void
   yield 100;
   self.spawn(colleague, -30, 200, 0, 0);
   self.spawn(colleague, GAME_W + 30, 340, 0, 0);
+  yield 120;
+  self.spawn(colleague, -30, 260, 0, 0);
+  yield 70;
+  self.spawn(colleague, GAME_W + 30, 180, 0, 0);
+  self.spawn(colleague, -30, 360, 0, 0);
+  yield 110;
+  self.spawn(colleague, GAME_W + 30, 240, 0, 0);
+  self.spawn(colleague, -30, 320, 0, 0);
 }

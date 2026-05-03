@@ -14,6 +14,10 @@ import type { EntityPool } from './EntityPool';
 const FIRE_INTERVAL_MS = 140;
 const PLAYER_BULLET_SPEED = 700;
 const FIRE_OFFSET_Y = 24;
+// Side streams: two extra bullets fanned outward so the player covers a wider
+// horizontal slice and clipping enemies on the way past is more forgiving.
+const FIRE_SIDE_OFFSET_X = 6;
+const FIRE_SIDE_VX = 40;
 
 export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
@@ -39,6 +43,8 @@ export class Player extends Entity {
   private invincibleDepth = 0;
   private savedDamagedBy: DamageClass[] = [];
 
+  private hitboxGfx: Phaser.GameObjects.Graphics;
+
   constructor(scene: Phaser.Scene, pool: EntityPool, kind: PlayerKind) {
     super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
     scene.add.existing(this);
@@ -62,6 +68,15 @@ export class Player extends Entity {
     if (kind.animKey) this.play(kind.animKey);
 
     kind.render(this);
+
+    // Touhou-style hitbox marker: a bright dot the player can centre on dense
+    // bullet streams. Sits above the sprite in z-order.
+    this.hitboxGfx = scene.add.graphics();
+    this.hitboxGfx.fillStyle(0xff3344, 0.9);
+    this.hitboxGfx.fillCircle(0, 0, kind.hitboxRadius);
+    this.hitboxGfx.lineStyle(1, 0xffffff, 0.9);
+    this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
+    this.hitboxGfx.setDepth(this.depth + 1);
 
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
@@ -92,6 +107,9 @@ export class Player extends Entity {
   }
 
   controlUpdate(): void {
+    this.hitboxGfx.setPosition(this.x, this.y);
+    this.hitboxGfx.setVisible(this.alive);
+
     if (!this.alive || !this.controlsEnabled) return;
 
     let dir = 0;
@@ -110,7 +128,10 @@ export class Player extends Entity {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
-        this.pool.spawn(playerBullet, this.x, this.y - FIRE_OFFSET_Y, 0, -PLAYER_BULLET_SPEED);
+        const fy = this.y - FIRE_OFFSET_Y;
+        this.pool.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
+        this.pool.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.pool.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
         shoot();
       }
     }

@@ -47,8 +47,8 @@ export class MenuScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     const controlsText = isTouchDevice
-      ? 'on-screen buttons: move\nfire is automatic on touch devices'
-      : '← → arrows: move\nZ: fire';
+      ? 'on-screen buttons: move\nfire is automatic on touch devices\n(no excuses on touch — yet)'
+      : '← → arrows: move\nZ: fire\nX: excuse (clears bullets, 3 per run)';
     this.add
       .text(GAME_W / 2, GAME_H * 0.8, controlsText, {
         color: '#888888',

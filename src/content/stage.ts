@@ -7,6 +7,7 @@ import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
 import { colleaguesWave } from './release/colleague';
 import { internsWave } from './release/intern';
 import { janitorsWave } from './release/janitor';
+import { salesClientWave } from './release/salesClient';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -107,6 +108,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-interns', name: 'Release — Interns', script: internsWave },
   { id: 'r-janitor', name: 'Release — Janitor', script: janitorsWave },
   { id: 'r-colleagues', name: 'Release — Colleagues', script: colleaguesWave },
+  { id: 'r-sales-client', name: 'Release — Sales & Client', script: salesClientWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];

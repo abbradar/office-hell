@@ -27,7 +27,7 @@ export const intern = new EntityKind({
   sprite: 'coworker1',
   animKey: 'coworker1_walk',
   hitboxRadius: 11,
-  hp: 1,
+  hp: 2,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
 });

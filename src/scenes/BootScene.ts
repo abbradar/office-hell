@@ -33,6 +33,17 @@ export class BootScene extends Phaser.Scene {
       frameWidth: ENEMY_FRAME_W,
       frameHeight: ENEMY_FRAME_H,
     });
+    // Sales & important-client placeholders — reuse coworker sheets until the
+    // custom character art for each lands. The keys are reserved so swapping
+    // in the real sprites is just changing these URLs.
+    this.load.spritesheet('sales', coworker1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('importantClient', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
 
     const g = this.add.graphics();
 
@@ -130,7 +141,7 @@ export class BootScene extends Phaser.Scene {
     // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
     // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
     // standard 1-0-1-2 sequence for a smooth gait.
-    for (const key of ['coworker1', 'coworker2', 'boss1']) {
+    for (const key of ['coworker1', 'coworker2', 'boss1', 'sales', 'importantClient']) {
       this.anims.create({
         key: `${key}_walk`,
         frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),

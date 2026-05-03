@@ -61,15 +61,17 @@ export const janitor = new EntityKind({
   sprite: 'coworker2',
   animKey: 'coworker2_walk',
   hitboxRadius: 12,
-  hp: 5,
+  hp: 24,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: janitorScript,
 });
 
-// Demo wave: one janitor planted slightly off-centre so the sweep angles
-// across the whole play field rather than dumping bullets straight down.
-// biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
+// Demo wave: two janitors from opposite sides, staggered so a player who
+// focuses fire can drop the first before it sweeps and only eat the
+// second's mop strokes.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
   self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
+  yield 180;
+  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
 }
