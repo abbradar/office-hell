@@ -3,12 +3,25 @@ import boss1Url from '../assets/sprites/boss1.png';
 import coworker1Url from '../assets/sprites/coworker1.png';
 import coworker2Url from '../assets/sprites/coworker2.png';
 import playerSpriteUrl from '../assets/sprites/player.png';
+import menuLoopUrl from '../assets/audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.ogg';
+import stage1MetalLoopUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_loop.ogg';
+import stage1MetalOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_opening.ogg';
+import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_loop.ogg';
+import stage1RetroOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_opening.ogg';
+import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_02_loop.ogg';
+import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
 import { initBuses } from '../audio/buses';
-import { CLICK_SFX_KEY, MENU_LOOP_KEY } from '../audio/keys';
-import menuLoopUrl from '../audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.mp3';
+import {
+  CLICK_SFX_KEY,
+  MENU_LOOP_KEY,
+  STAGE1_METAL_LOOP_KEY,
+  STAGE1_METAL_OPENING_KEY,
+  STAGE1_RETRO_01_LOOP_KEY,
+  STAGE1_RETRO_02_LOOP_KEY,
+  STAGE1_RETRO_OPENING_KEY,
+} from '../audio/keys';
 import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
-import clickSfxUrl from '../audio/sfx/switch20.wav';
 import { BULLET_RADIUS, GAME_H, GAME_W } from '../config';
 
 export const PLAYER_FRAME_W = 48;
@@ -75,6 +88,11 @@ export class BootScene extends Phaser.Scene {
 
     this.load.audio(MENU_LOOP_KEY, menuLoopUrl);
     this.load.audio(CLICK_SFX_KEY, clickSfxUrl);
+    this.load.audio(STAGE1_RETRO_OPENING_KEY, stage1RetroOpeningUrl);
+    this.load.audio(STAGE1_RETRO_01_LOOP_KEY, stage1Retro01LoopUrl);
+    this.load.audio(STAGE1_RETRO_02_LOOP_KEY, stage1Retro02LoopUrl);
+    this.load.audio(STAGE1_METAL_OPENING_KEY, stage1MetalOpeningUrl);
+    this.load.audio(STAGE1_METAL_LOOP_KEY, stage1MetalLoopUrl);
 
     const g = this.add.graphics();
 

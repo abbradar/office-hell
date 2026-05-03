@@ -1,7 +1,15 @@
-import type Phaser from 'phaser';
+import {
+  STAGE1_METAL_LOOP_KEY,
+  STAGE1_METAL_OPENING_KEY,
+  STAGE1_RETRO_01_LOOP_KEY,
+  STAGE1_RETRO_02_LOOP_KEY,
+  STAGE1_RETRO_OPENING_KEY,
+} from '../audio/keys';
+import { playMusicLoop, playMusicWithIntro } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
+import { firstLive } from '../script/stageQueue';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
@@ -48,13 +56,6 @@ export function clearScreen(self: Entity): void {
   }
 }
 
-function firstLive(group: Phaser.Physics.Arcade.Group): Entity | null {
-  for (const child of group.getChildren()) {
-    const e = child as Entity;
-    if (e.alive) return e;
-  }
-  return null;
-}
 
 function* wave1(self: Entity): Generator<ScriptYield, void, void> {
   for (let i = 0; i < 3; i++) {
@@ -175,6 +176,11 @@ function* stageScript(self: Entity) {
   yield* introMonologue(self);
   yield 30;
 
+  // Music: opening retro fanfare → first stage loop. Triggered after the
+  // monologue so the dialogue lands in silence; the loop kicks in just as
+  // wave 1 starts spawning.
+  playMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
+
   yield* wave1(self);
   yield 150;
 
@@ -184,11 +190,19 @@ function* stageScript(self: Entity) {
   yield* wave3(self);
   yield 240;
 
+  // Halfway pivot — abrupt loop swap (no crossfade, matching the menu loop).
+  playMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
   yield* wave4(self);
   // shrunkOldManWave and bossWave each wait for the field to clear before
   // opening their dialogue, so no fixed delay between waves here.
 
   yield* shrunkOldManWave(self);
+
+  // Boss music — opening sting then the metal loop, matching the same
+  // intro→loop pattern as the stage opener. Fires before the bossWave's
+  // own dialogue so the music is up by the time he speaks.
+  playMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
 
   yield* bossWave(self);
   // Boss is dead. Don't wait for in-flight bullets to drain (racy with the yield

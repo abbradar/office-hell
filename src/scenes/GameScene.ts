@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
-import { stopMusicLoop } from '../audio/music/loop';
+import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
+import { stageTest } from '../content/testStage';
 import type { Entity } from '../entities/Entity';
 import { EntityPool } from '../entities/EntityPool';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
+import { audioTimeFromEntry, getStageState, nextEntryOfKind } from '../script/stageQueue';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 
@@ -21,6 +23,10 @@ export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
 
 export type GameSceneData = {
   practice?: WaveDef;
+  // When true, run the diagnostics test stage (content/testStage.ts) instead
+  // of the normal stage. Surfaces an extra debug HUD line built from the
+  // music clock + stage queue introspection.
+  test?: boolean;
 };
 
 export class GameScene extends Phaser.Scene {
@@ -33,6 +39,8 @@ export class GameScene extends Phaser.Scene {
   private bg!: Phaser.GameObjects.TileSprite;
   private specks!: Phaser.GameObjects.TileSprite;
   private practiceWave: WaveDef | null = null;
+  private testMode = false;
+  private debugHud: Phaser.GameObjects.Text | null = null;
   private playerKind!: PlayerKind;
 
   constructor() {
@@ -41,6 +49,7 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.practiceWave = data?.practice ?? null;
+    this.testMode = data?.test ?? false;
   }
 
   create(): void {
@@ -83,7 +92,16 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player = this.player;
 
-    const stageKind = this.practiceWave ? makeWaveStage(this.practiceWave) : stage;
+    // Sync test stage: pin player invincible for the whole run so dying
+    // doesn't interrupt the music/dialog timing checks. Pushed once with no
+    // pop — bombs still push/pop on top, but the base depth stays at 1.
+    if (this.testMode) this.player.pushInvincible();
+
+    const stageKind = this.testMode
+      ? stageTest
+      : this.practiceWave
+        ? makeWaveStage(this.practiceWave)
+        : stage;
     this.pool.spawn(stageKind, 0, 0, 0, 0);
 
     for (const c of DAMAGE_CLASSES) {
@@ -120,6 +138,13 @@ export class GameScene extends Phaser.Scene {
       .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: '#aaaaaa' })
       .setScrollFactor(0)
       .setDepth(100);
+
+    if (this.testMode) {
+      this.debugHud = this.add
+        .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: '#6cf0a8' })
+        .setScrollFactor(0)
+        .setDepth(100);
+    }
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (this.practiceWave) {
@@ -161,17 +186,57 @@ export class GameScene extends Phaser.Scene {
     // the same frame (or the frame before) a cutscene begins, and it pops into
     // view as physics integrates.
     this.pool.update(time, delta);
+    // Touhou soft pause: corridor scroll freezes during dialog (keeps the
+    // visual "time stopped" cue), but the player can keep moving — Player
+    // gates its own firing/bombing on pool.dialogActive.
     if (!this.pool.paused) {
       this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
       this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
-
-      this.player.controlUpdate();
     }
+    this.player.controlUpdate();
 
     const hostile = this.pool.damages.player.countActive(true);
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(`hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
 
     this.bossNameText.setText(this.pool.bossName ?? '');
+
+    if (this.debugHud) this.debugHud.setText(this.formatDebugLine());
   }
+
+  private formatDebugLine(): string {
+    const m = getMusicTime();
+    const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
+
+    const state = getStageState();
+    let nextPart = '';
+    let blockedPart = '';
+    if (state) {
+      const nextSpawn = nextEntryOfKind('spawn');
+      const nextDialog = nextEntryOfKind('dialog');
+      // Pick whichever is sooner by audio-time gate. Either may be null.
+      const nextEntry = pickSooner(nextSpawn, nextDialog);
+      if (nextEntry) {
+        const at = audioTimeFromEntry(nextEntry);
+        const atStr = at !== null ? `@${at.toFixed(1)}s` : '';
+        nextPart = `  next: ${nextEntry.name} ${atStr}`.trimEnd();
+      }
+      if (state.pendingFilters.length > 0) {
+        blockedPart = `  blocked: ${state.pendingFilters.join(', ')}`;
+      }
+    }
+
+    return `${trackPart}${nextPart}${blockedPart}`;
+  }
+}
+
+function pickSooner(
+  a: ReturnType<typeof nextEntryOfKind>,
+  b: ReturnType<typeof nextEntryOfKind>,
+): ReturnType<typeof nextEntryOfKind> {
+  if (!a) return b;
+  if (!b) return a;
+  const at = audioTimeFromEntry(a) ?? Number.POSITIVE_INFINITY;
+  const bt = audioTimeFromEntry(b) ?? Number.POSITIVE_INFINITY;
+  return at <= bt ? a : b;
 }

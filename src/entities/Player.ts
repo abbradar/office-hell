@@ -123,21 +123,25 @@ export class Player extends Entity {
 
     this.x = Phaser.Math.Clamp(this.x, half, GAME_W - half);
 
-    const firing = isTouchDevice || this.fireKey.isDown;
-    if (firing) {
-      const now = this.scene.time.now;
-      if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
-        this.lastFireMs = now;
-        const fy = this.y - FIRE_OFFSET_Y;
-        this.pool.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
-        this.pool.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
-        this.pool.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
-        shoot();
+    // Fire and bomb are gated on dialog state — Touhou soft pause lets the
+    // player keep moving and dodging during a dialog, but suppresses offence.
+    if (!this.pool.dialogActive) {
+      const firing = isTouchDevice || this.fireKey.isDown;
+      if (firing) {
+        const now = this.scene.time.now;
+        if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
+          this.lastFireMs = now;
+          const fy = this.y - FIRE_OFFSET_Y;
+          this.pool.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
+          this.pool.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+          this.pool.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+          shoot();
+        }
       }
-    }
 
-    if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
-      if (this.kind.consumeBomb(this)) activateBomb(this, this.pool);
+      if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
+        if (this.kind.consumeBomb(this)) activateBomb(this, this.pool);
+      }
     }
   }
 }

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 
@@ -16,6 +17,7 @@ export class EndScene extends Phaser.Scene {
   }
 
   create(): void {
+    stopMusicLoop();
     this.cameras.main.setBackgroundColor('#10101a');
 
     const title = this.won ? 'STAGE CLEAR' : 'GAME OVER';
