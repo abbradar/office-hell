@@ -1,16 +1,23 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { activateBomb } from '../content/bomb';
+import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
+import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
 import { isLeftHeld, isRightHeld } from '../input/touch';
-import type { EntityKind } from '../script/types';
+import type { DamageClass } from '../script/types';
 import { Entity } from './Entity';
 import type { EntityPool } from './EntityPool';
 
 const FIRE_INTERVAL_MS = 140;
 const PLAYER_BULLET_SPEED = 700;
 const FIRE_OFFSET_Y = 24;
+// Side streams: two extra bullets fanned outward so the player covers a wider
+// horizontal slice and clipping enemies on the way past is more forgiving.
+const FIRE_SIDE_OFFSET_X = 6;
+const FIRE_SIDE_VX = 40;
 
 export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
@@ -20,12 +27,25 @@ export class Player extends Entity {
   // frame is honoured before any input or firing happens.
   controlsEnabled = true;
 
+  // Narrow the inherited Entity.kind: we always construct with a PlayerKind, and
+  // scripts can then reach kind-specific config (like character) without a cast.
+  declare kind: PlayerKind;
+
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
+  private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
 
-  constructor(scene: Phaser.Scene, pool: EntityPool, kind: EntityKind) {
+  // Counter, not a flag — a second bomb fired during an existing invincibility
+  // window must extend it, not corrupt the saved damagedBy classes that the
+  // first bomb stashed away.
+  private invincibleDepth = 0;
+  private savedDamagedBy: DamageClass[] = [];
+
+  private hitboxGfx: Phaser.GameObjects.Graphics;
+
+  constructor(scene: Phaser.Scene, pool: EntityPool, kind: PlayerKind) {
     super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -47,14 +67,49 @@ export class Player extends Entity {
 
     if (kind.animKey) this.play(kind.animKey);
 
+    kind.render(this);
+
+    // Touhou-style hitbox marker: a bright dot the player can centre on dense
+    // bullet streams. Sits above the sprite in z-order.
+    this.hitboxGfx = scene.add.graphics();
+    this.hitboxGfx.fillStyle(0xff3344, 0.9);
+    this.hitboxGfx.fillCircle(0, 0, kind.hitboxRadius);
+    this.hitboxGfx.lineStyle(1, 0xffffff, 0.9);
+    this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
+    this.hitboxGfx.setDepth(this.depth + 1);
+
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
     this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+  }
+
+  get character(): CharacterDef {
+    return this.kind.character;
+  }
+
+  pushInvincible(): void {
+    if (this.invincibleDepth === 0) {
+      this.savedDamagedBy = this.activeDamagedBy.slice();
+      this.setDamagedByClasses([]);
+    }
+    this.invincibleDepth++;
+  }
+
+  popInvincible(): void {
+    if (this.invincibleDepth === 0) return;
+    this.invincibleDepth--;
+    if (this.invincibleDepth === 0 && this.alive) {
+      this.setDamagedByClasses(this.savedDamagedBy);
+    }
   }
 
   controlUpdate(): void {
+    this.hitboxGfx.setPosition(this.x, this.y);
+    this.hitboxGfx.setVisible(this.alive);
+
     if (!this.alive || !this.controlsEnabled) return;
 
     let dir = 0;
@@ -73,9 +128,16 @@ export class Player extends Entity {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
-        this.pool.spawn(playerBullet, this.x, this.y - FIRE_OFFSET_Y, 0, -PLAYER_BULLET_SPEED);
+        const fy = this.y - FIRE_OFFSET_Y;
+        this.pool.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
+        this.pool.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.pool.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
         shoot();
       }
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
+      if (this.kind.consumeBomb(this)) activateBomb(this, this.pool);
     }
   }
 }

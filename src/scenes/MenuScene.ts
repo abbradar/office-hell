@@ -4,6 +4,7 @@ import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
+import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -21,18 +22,16 @@ export class MenuScene extends Phaser.Scene {
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {
+        ...FONT_TITLE,
         color: '#ff5577',
-        fontSize: '48px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5);
 
     const startLabel = isTouchDevice ? '▶ TAP TO START' : '▶ PRESS Z';
     const startText = this.add
       .text(GAME_W / 2, GAME_H * 0.5, startLabel, {
+        ...FONT_MENU,
         color: '#ffffff',
-        fontSize: '28px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -48,20 +47,19 @@ export class MenuScene extends Phaser.Scene {
     const practiceLabel = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE (T)';
     const practiceText = this.add
       .text(GAME_W / 2, GAME_H * 0.62, practiceLabel, {
+        ...FONT_DIALOGUE_LG,
         color: '#ffd96a',
-        fontSize: '20px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
     const controlsText = isTouchDevice
-      ? 'on-screen buttons: move\nfire is automatic on touch devices'
-      : '← → arrows: move\nZ: fire';
+      ? 'on-screen buttons: move\nfire is automatic on touch devices\n(no excuses on touch — yet)'
+      : '← → arrows: move\nZ: fire\nX: excuse (clears bullets, 3 per run)';
     this.add
       .text(GAME_W / 2, GAME_H * 0.8, controlsText, {
+        ...FONT_DEBUG,
         color: '#888888',
-        fontSize: '14px',
         align: 'center',
       })
       .setOrigin(0.5);

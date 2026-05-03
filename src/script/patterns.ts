@@ -1,7 +1,12 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
-import type { EntityKind } from './types';
+import type { EntityKind, ScriptYield } from './types';
+
+// Phaser arcade physics integrates px/sec velocity against wall-clock delta;
+// scripts tick once per scene update. We assume the configured 60fps loop so
+// "frames to traverse D at S" = D / (S / 60).
+const SCRIPT_FPS = 60;
 
 // True once the entity's center is past any screen edge — i.e. it's at least
 // half hidden. Suppress firing in that case so off-screen exits don't keep
@@ -57,6 +62,25 @@ export function spread(
   for (let i = 0; i < count; i++) {
     shootAt(self, kind, start + i * step, speed);
   }
+}
+
+// Drive the entity from its current position to (tx, ty) at `speed`, then
+// stop. Computes heading + travel time for you and yields until it lands.
+// Snaps to the exact target on arrival to absorb sub-pixel rounding so the
+// next script step starts from a clean coordinate.
+export function* moveTo(self: Entity, tx: number, ty: number, speed: number): Generator<ScriptYield, void, void> {
+  const dx = tx - self.x;
+  const dy = ty - self.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6 || speed <= 0) {
+    self.setVelocity(0, 0);
+    return;
+  }
+  self.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+  yield Math.max(1, Math.round((dist / speed) * SCRIPT_FPS));
+  self.setVelocity(0, 0);
+  self.x = tx;
+  self.y = ty;
 }
 
 export function arc(

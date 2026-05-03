@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
-import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
+import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from '../script/types';
 import { INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
@@ -25,6 +25,9 @@ export class EntityPool {
   // pool.update from GameScene.update) this is guaranteed to be set.
   player!: Player;
   paused = false;
+  // Name shown in the HUD header during a boss fight. Set and cleared by the
+  // boss's own script — the pool/HUD don't infer it from entity state.
+  bossName: string | null = null;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -71,7 +74,7 @@ export class EntityPool {
     e.alive = true;
     e.gen++;
     e.hasEnteredScreen = false;
-    e.onDeath = null;
+    e.onDeathQueue = null;
 
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
@@ -117,6 +120,29 @@ export class EntityPool {
     this.waiting.push({ framesLeft, entity: e, iter });
   }
 
+  // Drop any pending wait entry for this entity. Used by the bomb to tear off
+  // a bullet's running script before grafting on the "fly to bin" script —
+  // otherwise the original homing/sweeping script would keep mutating velocity
+  // and override the new motion.
+  stopScript(e: Entity): void {
+    for (let i = 0; i < this.waiting.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
+      if (this.waiting[i]!.entity === e) {
+        const last = this.waiting.length - 1;
+        // biome-ignore lint/style/noNonNullAssertion: lastW is waiting.length - 1
+        if (i !== last) this.waiting[i] = this.waiting[last]!;
+        this.waiting.pop();
+        return;
+      }
+    }
+  }
+
+  // Start a script on an already-spawned entity. Pair with stopScript first if
+  // the entity might already have one running.
+  runScript(e: Entity, script: EntityScript): void {
+    this.schedule(e, script(e), 1);
+  }
+
   private advance(e: Entity, iter: ScriptIter): void {
     const r = iter.next();
     if (r.done) return;
@@ -126,8 +152,7 @@ export class EntityPool {
       this.beginDialogue(r.value.dialogue, e, iter);
     } else if (r.value.until.alive) {
       const gen = e.gen;
-      r.value.until.onDeath ??= [];
-      r.value.until.onDeath.push(() => {
+      r.value.until.onDeath(() => {
         if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
       });
     } else {
@@ -173,7 +198,7 @@ export class EntityPool {
     }
 
     e.alive = false;
-    e.onDeath = null;
+    e.onDeathQueue = null;
     e.kind = INERT_KIND;
     e.hp = null;
     e.setActive(false).setVisible(false);

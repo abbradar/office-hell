@@ -2,7 +2,6 @@ import { BULLET_RADIUS, GAME_H } from '../config';
 import type { Entity } from '../entities/Entity';
 import { aimed, arc, ring, spread } from '../script/patterns';
 import { EntityKind } from '../script/types';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from './characters';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
@@ -43,7 +42,7 @@ export const streamer = new EntityKind({
   sprite: 'coworker1',
   animKey: 'coworker1_walk',
   hitboxRadius: 10,
-  hp: 2,
+  hp: 3,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: streamerScript,
@@ -67,7 +66,7 @@ export const fanShooter = new EntityKind({
   sprite: 'coworker1',
   animKey: 'coworker1_walk',
   hitboxRadius: 12,
-  hp: 4,
+  hp: 6,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: fanShooterScript,
@@ -93,7 +92,7 @@ export const ringSpinner = new EntityKind({
   sprite: 'coworker2',
   animKey: 'coworker2_walk',
   hitboxRadius: 12,
-  hp: 5,
+  hp: 7,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: ringSpinnerScript,
@@ -132,7 +131,7 @@ export const driver = new EntityKind({
   sprite: 'coworker2',
   animKey: 'coworker2_walk',
   hitboxRadius: 12,
-  hp: 6,
+  hp: 9,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: driverScript,
@@ -141,6 +140,13 @@ export const driver = new EntityKind({
 // --- Boss: enters from top, anchors, cycles three attack patterns until dead ---
 
 function* bossScript(self: Entity) {
+  // Claim the HUD header for this fight; release it on death (covers both
+  // natural defeat and forced cleanup via release(), which calls die() too).
+  self.pool.bossName = 'The Boss';
+  self.onDeath(() => {
+    self.pool.bossName = null;
+  });
+
   // Entry — boss flies down from above to his fight position. He's spawned
   // unhittable (damagedByClass: [] override at the spawn site) so player bullets
   // pass through during entrance and dialogue.
@@ -150,7 +156,7 @@ function* bossScript(self: Entity) {
   yield 20;
 
   // Pre-fight dialogue.
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  const ch = self.pool.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss1', frame: 1, name: 'The Boss' },
@@ -200,7 +206,7 @@ export const bossOne = new EntityKind({
   sprite: 'boss1',
   animKey: 'boss1_walk',
   hitboxRadius: 18,
-  hp: 30,
+  hp: 65,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: bossScript,

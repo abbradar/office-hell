@@ -1,4 +1,8 @@
 import Phaser from 'phaser';
+import boss1Url from '../assets/sprites/boss1.png';
+import coworker1Url from '../assets/sprites/coworker1.png';
+import coworker2Url from '../assets/sprites/coworker2.png';
+import playerSpriteUrl from '../assets/sprites/player.png';
 import { initBuses } from '../audio/buses';
 import menuLoopUrl from '../audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.mp3';
 import { CLICK_SFX_KEY, MENU_LOOP_KEY } from '../audio/keys';
@@ -6,10 +10,6 @@ import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
 import clickSfxUrl from '../audio/sfx/switch20.wav';
 import { BULLET_RADIUS, GAME_H, GAME_W } from '../config';
-import boss1Url from '../sprites/boss1.png';
-import coworker1Url from '../sprites/coworker1.png';
-import coworker2Url from '../sprites/coworker2.png';
-import playerSpriteUrl from '../sprites/player.png';
 
 export const PLAYER_FRAME_W = 48;
 export const PLAYER_FRAME_H = 48;
@@ -40,6 +40,27 @@ export class BootScene extends Phaser.Scene {
       frameWidth: ENEMY_FRAME_W,
       frameHeight: ENEMY_FRAME_H,
     });
+    // Sales & important-client placeholders — reuse coworker sheets until the
+    // custom character art for each lands. The keys are reserved so swapping
+    // in the real sprites is just changing these URLs.
+    this.load.spritesheet('sales', coworker1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('importantClient', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('gymBro', boss1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    // Shrunk-old-man (stage boss "Mr. Hodges") placeholder until the retiree
+    // art lands.
+    this.load.spritesheet('shrunkOldMan', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
 
     this.load.audio(MENU_LOOP_KEY, menuLoopUrl);
     this.load.audio(CLICK_SFX_KEY, clickSfxUrl);
@@ -57,6 +78,46 @@ export class BootScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 1);
     g.fillRect(1, 1, 4, 5);
     g.generateTexture('playerBullet', 6, 14);
+    g.clear();
+
+    // Report bullet placeholder — paper-coloured rectangle with a darker border.
+    // Will be swapped for an actual paper sprite later.
+    const rw = 8;
+    const rh = 10;
+    g.fillStyle(0xc0b890, 1);
+    g.fillRect(0, 0, rw, rh);
+    g.fillStyle(0xf0e8d0, 1);
+    g.fillRect(1, 1, rw - 2, rh - 2);
+    g.generateTexture('reportBullet', rw, rh);
+    g.clear();
+
+    // Missed-call bullet placeholder — red square with a white core, to read as
+    // "phone notification" at a glance and stand out from the round white bullet.
+    // Will be swapped for an actual missed-call sprite later.
+    const mc = 8;
+    g.fillStyle(0xff5577, 1);
+    g.fillRect(0, 0, mc, mc);
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(2, 2, mc - 4, mc - 4);
+    g.generateTexture('missedCall', mc, mc);
+    g.clear();
+
+    // Trash bin placeholder for the bomb effect — flat front-on can with a lid
+    // overhang and a few vertical ribs. Drawn high enough that the player can
+    // tell at a glance where their bullets are being yanked toward.
+    const tw = 36;
+    const th = 42;
+    g.fillStyle(0x222222, 1);
+    g.fillRect(4, 8, tw - 8, th - 8);
+    g.fillStyle(0x666666, 1);
+    g.fillRect(2, 8, tw - 4, th - 8);
+    g.fillStyle(0x888888, 1);
+    g.fillRect(0, 0, tw, 8);
+    g.fillStyle(0x4a4a4a, 1);
+    g.fillRect(9, 14, 2, th - 20);
+    g.fillRect(17, 14, 2, th - 20);
+    g.fillRect(25, 14, 2, th - 20);
+    g.generateTexture('trashBin', tw, th);
     g.clear();
 
     const cw = GAME_W;
@@ -100,7 +161,7 @@ export class BootScene extends Phaser.Scene {
     // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
     // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
     // standard 1-0-1-2 sequence for a smooth gait.
-    for (const key of ['coworker1', 'coworker2', 'boss1']) {
+    for (const key of ['coworker1', 'coworker2', 'boss1', 'sales', 'importantClient', 'gymBro', 'shrunkOldMan']) {
       this.anims.create({
         key: `${key}_walk`,
         frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),

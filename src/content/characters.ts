@@ -29,12 +29,6 @@ export const CHARACTERS: CharacterDef[] = [
 
 export const CHARACTER_REGISTRY_KEY = 'selectedCharacter';
 
-export const DEFAULT_CHARACTER: CharacterDef = (() => {
-  const first = CHARACTERS[0];
-  if (!first) throw new Error('CHARACTERS roster is empty');
-  return first;
-})();
-
 // Returns the character the player picked on the select screen, or undefined
 // if nothing was set yet (e.g. running a scene directly via dev tooling).
 // Hides the unavoidable cast for registry.get's any-typed return in one place.

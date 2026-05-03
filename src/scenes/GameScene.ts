@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from '../content/characters';
+import { getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import type { Entity } from '../entities/Entity';
@@ -10,9 +10,12 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
 import { DAMAGE_CLASSES } from '../script/types';
+import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
 const SPECKS_SCROLL_PX_PER_MS = 0.55;
+
+const HEADER_H = 28;
 
 export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
 
@@ -25,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   private pool!: EntityPool;
   private hud!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
+  private bombsText!: Phaser.GameObjects.Text;
+  private bossNameText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
   private specks!: Phaser.GameObjects.TileSprite;
   private practiceWave: WaveDef | null = null;
@@ -46,12 +51,35 @@ export class GameScene extends Phaser.Scene {
 
     this.pool = new EntityPool(this);
 
+    this.add.rectangle(0, 0, GAME_W, HEADER_H, 0x000000, 0.55).setOrigin(0, 0).setDepth(99);
+    this.add
+      .rectangle(0, HEADER_H - 1, GAME_W, 1, 0xffffff, 0.18)
+      .setOrigin(0, 0)
+      .setDepth(99);
+
     this.hpText = this.add
-      .text(GAME_W - 8, 8, '', { color: '#ff5577', fontSize: '24px' })
-      .setOrigin(1, 0)
+      .text(8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ff5577' })
+      .setOrigin(0, 0.5)
+      .setDepth(100);
+    this.bombsText = this.add
+      .text(GAME_W - 8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ffd866' })
+      .setOrigin(1, 0.5)
+      .setDepth(100);
+    this.bossNameText = this.add
+      .text(GAME_W / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: '#ffffff' })
+      .setOrigin(0.5)
       .setDepth(100);
 
-    this.playerKind = new PlayerKind({ hpText: this.hpText, practice: this.practiceWave !== null });
+    const character = getSelectedCharacter(this);
+    if (!character)
+      throw new Error('GameScene started without a selected character — go through CharacterSelect first');
+
+    this.playerKind = new PlayerKind({
+      hpText: this.hpText,
+      bombsText: this.bombsText,
+      practice: this.practiceWave !== null,
+      character,
+    });
     this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player = this.player;
 
@@ -88,7 +116,10 @@ export class GameScene extends Phaser.Scene {
         .setDepth(101);
     }
 
-    this.hud = this.add.text(8, 8, '', { color: '#aaaaaa', fontSize: '12px' }).setScrollFactor(0).setDepth(100);
+    this.hud = this.add
+      .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: '#aaaaaa' })
+      .setScrollFactor(0)
+      .setDepth(100);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (this.practiceWave) {
@@ -138,11 +169,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     const hostile = this.pool.damages.player.countActive(true);
-    const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
-    const ch = getSelectedCharacter(this) ?? DEFAULT_CHARACTER;
+    const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire   X: excuse';
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(
-      `${ch.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,
+      `${this.player.character.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,
     );
+
+    this.bossNameText.setText(this.pool.bossName ?? '');
   }
 }

@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
+import { FONT_DEBUG, FONT_DIALOGUE_LG } from './fonts';
 
 export type DialoguePortrait = {
   sprite: string;
@@ -35,14 +36,11 @@ const TEXT_BOX_RADIUS = 10;
 const NAME_BG_FILL = 0xffd96a;
 const NAME_BG_ALPHA = 0.95;
 const NAME_COLOR = '#1a1a2a';
-const NAME_FONT_SIZE = '15px';
 const NAME_PAD_X = 8;
 const NAME_PAD_Y = 3;
 const TEXT_COLOR = '#f4f4f8';
-const TEXT_FONT_SIZE = '15px';
 const TEXT_LINE_SPACING = 4;
 const HINT_COLOR = '#ffd96a';
-const HINT_FONT_SIZE = '12px';
 const INACTIVE_TINT = 0x4a4a6a;
 const ACTIVE_TINT = 0xffffff;
 const TYPE_INTERVAL_MS = 18;
@@ -107,18 +105,16 @@ export class DialogueManager {
 
     const nameText = this.scene.add
       .text(0, 0, '', {
+        ...FONT_DIALOGUE_LG,
         color: NAME_COLOR,
-        fontSize: NAME_FONT_SIZE,
-        fontFamily: 'system-ui, sans-serif',
         fontStyle: 'bold',
       })
       .setOrigin(0, 0);
     container.add(nameText);
 
     const bodyText = this.scene.add.text(TEXT_BOX_MARGIN + TEXT_BOX_PAD, TEXT_BOX_Y + TEXT_BOX_PAD + 24, '', {
+      ...FONT_DIALOGUE_LG,
       color: TEXT_COLOR,
-      fontSize: TEXT_FONT_SIZE,
-      fontFamily: 'system-ui, sans-serif',
       wordWrap: { width: GAME_W - TEXT_BOX_MARGIN * 2 - TEXT_BOX_PAD * 2 },
     });
     bodyText.setLineSpacing(TEXT_LINE_SPACING);
@@ -130,9 +126,8 @@ export class DialogueManager {
         TEXT_BOX_Y + TEXT_BOX_H - TEXT_BOX_PAD,
         isTouchDevice ? '▼ tap' : '▼ Z',
         {
+          ...FONT_DEBUG,
           color: HINT_COLOR,
-          fontSize: HINT_FONT_SIZE,
-          fontFamily: 'system-ui, sans-serif',
         },
       )
       .setOrigin(1, 1)

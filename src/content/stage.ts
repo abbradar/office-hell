@@ -1,10 +1,16 @@
 import type Phaser from 'phaser';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
+import { moveTo } from '../script/patterns';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
-import { DEFAULT_CHARACTER, getSelectedCharacter } from './characters';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
+import { colleaguesWave } from './release/colleague';
+import { gymBroWave } from './release/gymBro';
+import { internsWave } from './release/intern';
+import { janitorsWave } from './release/janitor';
+import { salesClientWave } from './release/salesClient';
+import { shrunkOldManWave } from './release/shrunkOldMan';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -102,6 +108,12 @@ export const WAVES: WaveDef[] = [
   { id: 'w2', name: 'Wave 2 — Fan shooters', script: wave2 },
   { id: 'w3', name: 'Wave 3 — Ring spinners', script: wave3 },
   { id: 'w4', name: 'Wave 4 — Drivers', script: wave4 },
+  { id: 'r-interns', name: 'Release — Interns', script: internsWave },
+  { id: 'r-janitor', name: 'Release — Janitor', script: janitorsWave },
+  { id: 'r-colleagues', name: 'Release — Colleagues', script: colleaguesWave },
+  { id: 'r-sales-client', name: 'Release — Sales & Client', script: salesClientWave },
+  { id: 'r-gym-bro', name: 'Release — Gym Bro', script: gymBroWave },
+  { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];
@@ -113,17 +125,14 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   p.controlsEnabled = false;
   p.body.setCollideWorldBounds(false);
 
-  p.setVelocity(0, -PLAYER_OUTRO_SPEED);
-  while (p.y > PLAYER_OUTRO_PAUSE_Y) yield 0;
-  p.setVelocity(0, 0);
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  yield* moveTo(p, p.x, PLAYER_OUTRO_PAUSE_Y, PLAYER_OUTRO_SPEED);
+  const ch = p.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [{ speaker: 'left', text: 'I did it. This time, I did it.' }],
   });
 
-  p.setVelocity(0, -PLAYER_OUTRO_SPEED);
-  while (p.y > PLAYER_OUTRO_EXIT_Y) yield 0;
+  yield* moveTo(p, p.x, PLAYER_OUTRO_EXIT_Y, PLAYER_OUTRO_SPEED);
 }
 
 function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
@@ -133,7 +142,7 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
   // first wave plays normally.
   const p = self.pool.player;
   p.controlsEnabled = false;
-  const ch = getSelectedCharacter(self.scene) ?? DEFAULT_CHARACTER;
+  const ch = p.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     lines: [
@@ -172,7 +181,10 @@ function* stageScript(self: Entity) {
   yield 240;
 
   yield* wave4(self);
-  // bossWave waits for the field to clear before opening dialogue, so no fixed delay here.
+  // shrunkOldManWave and bossWave each wait for the field to clear before
+  // opening their dialogue, so no fixed delay between waves here.
+
+  yield* shrunkOldManWave(self);
 
   yield* bossWave(self);
   // Boss is dead. Don't wait for in-flight bullets to drain (racy with the yield
