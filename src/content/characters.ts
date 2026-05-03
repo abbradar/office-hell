@@ -12,14 +12,14 @@ export type CharacterDef = {
 // real per-character art (and stat differences) can swap in without touching the menu/select scene.
 export const CHARACTERS: CharacterDef[] = [
   {
-    id: 'intern',
+    id: 'female',
     name: 'The Intern',
     blurb: 'fresh blood, optimistic, shoots fast',
     sprite: 'player',
     frame: 0,
   },
   {
-    id: 'veteran',
+    id: 'male',
     name: 'The Veteran',
     blurb: 'jaded, caffeinated, hits harder',
     sprite: 'player',
