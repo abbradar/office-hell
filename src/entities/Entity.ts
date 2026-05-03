@@ -82,11 +82,45 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   die(): void {
     this.alive = false;
     this.body.enable = false;
+    // Reset hit-feedback state so the next pool reuse starts clean — no
+    // lingering red tint or shifted origin from a mid-flash death.
+    this.clearTint();
+    this.setOrigin(0.5, 0.5);
     const cbs = this.onDeathQueue;
     if (cbs) for (const cb of cbs) cb();
   }
 
   takeDamage(amount: number): void {
     this.kind.takeDamage(this, amount);
+  }
+
+  // Visual hit feedback: ~250ms red tint + a small horizontal shake. Called
+  // from EntityKind.takeDamage on non-killing hits. The shake is rendered
+  // via origin offset (origin is render-only, so the body keeps its real
+  // position — no physics interaction). Both effects gate on alive + gen
+  // so an entity that dies or gets re-spawned mid-flash doesn't stomp the
+  // new state.
+  flashDamage(): void {
+    if (!this.alive || this.kind.sprite === null) return;
+    const myGen = this.gen;
+
+    this.setTint(0xff5555);
+    this.scene.time.delayedCall(250, () => {
+      if (this.alive && this.gen === myGen) this.clearTint();
+    });
+
+    // Damped horizontal shake — six steps over ~210ms, amplitudes shrinking
+    // to 0 so the sprite settles back on centre. Origin is a fraction of
+    // width; converting from a target pixel offset keeps the shake size
+    // consistent across enemy sprite sizes.
+    const stepMs = 35;
+    const px = [3, -3, 2, -2, 1, 0];
+    for (let i = 0; i < px.length; i++) {
+      this.scene.time.delayedCall(i * stepMs, () => {
+        if (!this.alive || this.gen !== myGen) return;
+        // biome-ignore lint/style/noNonNullAssertion: index bounded by px.length
+        this.setOrigin(0.5 + px[i]! / this.width, 0.5);
+      });
+    }
   }
 }

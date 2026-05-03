@@ -19,7 +19,7 @@ export class MenuScene extends Phaser.Scene {
     // the loop keeps playing across CharacterSelect / TestMenu / End. The
     // call is idempotent for the same key — calling it again on a return to
     // the menu (e.g. from EndScene) just no-ops while the loop is alive.
-    playMusicLoop(MENU_LOOP_KEY);
+    playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {

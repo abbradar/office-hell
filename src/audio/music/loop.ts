@@ -2,15 +2,23 @@
 // (menu → character select → test menu all share the same menu loop;
 // stage music persists across cutscenes inside GameScene).
 //
-// Two playback modes:
-//   - playMusicLoop(key)        — single sound, loop: true
-//   - playMusicWithIntro(i, l)  — intro plays once, loop scheduled to start
-//                                 sample-accurately at the intro's end
+// Three playback modes:
+//   - playMusicLoop(key)                       single sound, loop: true
+//   - playMusicLoop(key, { crossfadeMs: N })   two ping-ponging sounds with
+//                                              N ms overlap on each wrap
+//   - playMusicWithIntro(intro, loop)          intro plays once, loop scheduled
+//                                              to start sample-accurately at
+//                                              the intro's end (loop: true)
 //
 // Sample-accurate looping requires Vorbis (.ogg) sources — MP3 prepends
 // ~1100 priming samples that would click at the seam. The intro→loop
 // hand-off uses Phaser's `delay` config which schedules via Web Audio's
 // AudioContext.currentTime, so the seam is also gapless.
+//
+// Why crossfade if Vorbis is gapless? Because the menu loop is (by design)
+// listened to for minutes at a stretch, and a perceptible "wrap" — even
+// with a clean musical seam — gets noticeable. A 1s crossfade dissolves
+// the boundary entirely.
 
 import Phaser from 'phaser';
 import { musicBus, routeSound } from '../buses';
@@ -23,40 +31,101 @@ export function setMusicManager(sm: Phaser.Sound.BaseSoundManager): void {
 
 type LoopState = {
   key: string;
-  sound: Phaser.Sound.BaseSound;
+  // One sound for non-crossfaded loops (loop: true on Phaser side); two
+  // sounds for crossfaded loops, ping-ponging via manual scheduling.
+  sounds: Phaser.Sound.BaseSound[];
   intro: Phaser.Sound.BaseSound | null;
+  // Active timer for the next ping-pong wrap, only set on crossfaded loops.
+  scheduled: ReturnType<typeof setTimeout> | null;
 };
 
 let current: LoopState | null = null;
-// Set to audioCtx.currentTime the moment the active track's sound.play()
-// actually fires. Reset to null at the moment a new track is requested so
-// `getMusicTime()` correctly reports "not playing yet" while the new track
-// is loading or waiting for context unlock.
+// Set to audioCtx.currentTime the moment the active track's first sound
+// actually starts playing. Reset to null when a new track is requested so
+// `getMusicTime()` correctly reports "not playing yet" while loading or
+// waiting for context unlock. Not bumped on subsequent ping-pong wraps —
+// the clock keeps advancing across the loop boundary.
 let trackStartCtxTime: number | null = null;
 
 const DEFAULT_VOL = 0.5;
 
-export function playMusicLoop(key: string, opts: { volume?: number } = {}): void {
+export function playMusicLoop(
+  key: string,
+  opts: { volume?: number; crossfadeMs?: number } = {},
+): void {
   if (!_sm) return;
   if (current?.key === key) return;
   stopMusicLoop();
   trackStartCtxTime = null;
 
   const volume = opts.volume ?? DEFAULT_VOL;
-  const sound = _sm.add(key, { loop: true, volume });
+  const crossfadeMs = opts.crossfadeMs ?? 0;
+
+  if (crossfadeMs <= 0) {
+    playLoopSimple(key, volume);
+  } else {
+    playLoopCrossfaded(key, volume, crossfadeMs);
+  }
+}
+
+function playLoopSimple(key: string, volume: number): void {
+  // biome-ignore lint/style/noNonNullAssertion: caller guarded
+  const sm = _sm!;
+  const sound = sm.add(key, { loop: true, volume });
   if (musicBus) routeSound(sound, musicBus);
 
   const start = (): void => {
     sound.play();
     trackStartCtxTime = musicBus?.context.currentTime ?? null;
   };
-  if (_sm.locked) {
-    _sm.once(Phaser.Sound.Events.UNLOCKED, start);
-  } else {
-    start();
-  }
+  if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, start);
+  else start();
 
-  current = { key, sound, intro: null };
+  current = { key, sounds: [sound], intro: null, scheduled: null };
+}
+
+function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): void {
+  // biome-ignore lint/style/noNonNullAssertion: caller guarded
+  const sm = _sm!;
+  // Two non-looping sound instances of the same buffer. We manually re-play
+  // them in alternation, scheduling the next start (crossfadeMs) before the
+  // current one ends so the gain ramps overlap.
+  const a = sm.add(key, { volume: 0 });
+  const b = sm.add(key, { volume: 0 });
+  if (musicBus) {
+    routeSound(a, musicBus);
+    routeSound(b, musicBus);
+  }
+  const sounds = [a, b];
+  let active = 0;
+
+  const state: LoopState = { key, sounds, intro: null, scheduled: null };
+
+  const playPing = (): void => {
+    // biome-ignore lint/style/noNonNullAssertion: bounded by sounds.length
+    const incoming = sounds[active]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounded by sounds.length
+    const outgoing = sounds[1 - active]!;
+
+    incoming.play();
+    rampGain(incoming, volume, crossfadeMs);
+    if (outgoing.isPlaying) {
+      rampGain(outgoing, 0, crossfadeMs);
+    }
+
+    if (trackStartCtxTime === null) {
+      trackStartCtxTime = musicBus?.context.currentTime ?? null;
+    }
+
+    active = 1 - active;
+    const durMs = incoming.totalDuration * 1000;
+    state.scheduled = setTimeout(playPing, Math.max(0, durMs - crossfadeMs));
+  };
+
+  if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, playPing);
+  else playPing();
+
+  current = state;
 }
 
 export function playMusicWithIntro(
@@ -94,13 +163,16 @@ export function playMusicWithIntro(
     start();
   }
 
-  current = { key: loopKey, sound: loop, intro };
+  current = { key: loopKey, sounds: [loop], intro, scheduled: null };
 }
 
 export function stopMusicLoop(): void {
   if (!current) return;
-  current.sound.stop();
-  current.sound.destroy();
+  if (current.scheduled !== null) clearTimeout(current.scheduled);
+  for (const s of current.sounds) {
+    s.stop();
+    s.destroy();
+  }
   if (current.intro) {
     current.intro.stop();
     current.intro.destroy();
@@ -130,6 +202,21 @@ export function getCurrentTrackInfo(): { introDuration: number; loopDuration: nu
   if (!current) return null;
   return {
     introDuration: current.intro?.totalDuration ?? 0,
-    loopDuration: current.sound.totalDuration,
+    loopDuration: current.sounds[0]?.totalDuration ?? 0,
   };
+}
+
+// Ramp the underlying GainNode directly. We deliberately don't touch
+// `sound.volume` so Phaser's per-frame WebAudioSound.update() doesn't snap
+// the gain back to the (untouched) volume property and fight our ramp.
+// The constructor `volume: 0` keeps Phaser's tracked value at 0 forever;
+// gain alone goes 0 → target → 0 → target → ... across the ping-pong.
+function rampGain(sound: Phaser.Sound.BaseSound, target: number, durMs: number): void {
+  const ws = sound as unknown as { volumeNode?: GainNode };
+  if (!ws.volumeNode || !musicBus) return;
+  const ctx = musicBus.context;
+  const now = ctx.currentTime;
+  ws.volumeNode.gain.cancelScheduledValues(now);
+  ws.volumeNode.gain.setValueAtTime(ws.volumeNode.gain.value, now);
+  ws.volumeNode.gain.linearRampToValueAtTime(target, now + durMs / 1000);
 }

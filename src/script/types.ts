@@ -44,7 +44,15 @@ export class EntityKind {
   takeDamage(self: Entity, amount: number): void {
     if (self.hp === null) return;
     self.hp -= amount;
-    if (self.hp <= 0) self.die();
+    if (self.hp <= 0) {
+      self.die();
+    } else {
+      // Non-killing hit: pop a quick red flash + shake so the player sees
+      // the damage register. Skipped on the killing blow because the
+      // entity is removed from the active list within the same frame and
+      // any flash would never paint.
+      self.flashDamage();
+    }
   }
 }
 

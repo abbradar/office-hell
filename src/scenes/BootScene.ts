@@ -217,7 +217,9 @@ export class BootScene extends Phaser.Scene {
     setMusicManager(this.sound);
     setVoiceCap(CLICK_SFX_KEY, 4);
 
-    playMusicLoop(MENU_LOOP_KEY);
+    // 1s self-crossfade dissolves the loop seam; the menu sits open long
+    // enough that a hard wrap (even a sample-accurate one) gets perceptible.
+    playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
 
     this.scene.start('Menu');
   }
