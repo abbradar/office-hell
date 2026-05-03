@@ -49,6 +49,46 @@ export class BootScene extends Phaser.Scene {
     g.generateTexture('playerBullet', 6, 14);
     g.clear();
 
+    // Report bullet placeholder — paper-coloured rectangle with a darker border.
+    // Will be swapped for an actual paper sprite later.
+    const rw = 8;
+    const rh = 10;
+    g.fillStyle(0xc0b890, 1);
+    g.fillRect(0, 0, rw, rh);
+    g.fillStyle(0xf0e8d0, 1);
+    g.fillRect(1, 1, rw - 2, rh - 2);
+    g.generateTexture('reportBullet', rw, rh);
+    g.clear();
+
+    // Missed-call bullet placeholder — red square with a white core, to read as
+    // "phone notification" at a glance and stand out from the round white bullet.
+    // Will be swapped for an actual missed-call sprite later.
+    const mc = 8;
+    g.fillStyle(0xff5577, 1);
+    g.fillRect(0, 0, mc, mc);
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(2, 2, mc - 4, mc - 4);
+    g.generateTexture('missedCall', mc, mc);
+    g.clear();
+
+    // Trash bin placeholder for the bomb effect — flat front-on can with a lid
+    // overhang and a few vertical ribs. Drawn high enough that the player can
+    // tell at a glance where their bullets are being yanked toward.
+    const tw = 36;
+    const th = 42;
+    g.fillStyle(0x222222, 1);
+    g.fillRect(4, 8, tw - 8, th - 8);
+    g.fillStyle(0x666666, 1);
+    g.fillRect(2, 8, tw - 4, th - 8);
+    g.fillStyle(0x888888, 1);
+    g.fillRect(0, 0, tw, 8);
+    g.fillStyle(0x4a4a4a, 1);
+    g.fillRect(9, 14, 2, th - 20);
+    g.fillRect(17, 14, 2, th - 20);
+    g.fillRect(25, 14, 2, th - 20);
+    g.generateTexture('trashBin', tw, th);
+    g.clear();
+
     const cw = GAME_W;
     const ch = 128;
     g.fillStyle(0x1a1a28, 1);

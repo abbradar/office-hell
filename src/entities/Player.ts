@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
 import { isLeftHeld, isRightHeld } from '../input/touch';
+import type { DamageClass } from '../script/types';
 import { Entity } from './Entity';
 import type { EntityPool } from './EntityPool';
 
@@ -28,7 +30,14 @@ export class Player extends Entity {
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
+  private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
+
+  // Counter, not a flag — a second bomb fired during an existing invincibility
+  // window must extend it, not corrupt the saved damagedBy classes that the
+  // first bomb stashed away.
+  private invincibleDepth = 0;
+  private savedDamagedBy: DamageClass[] = [];
 
   constructor(scene: Phaser.Scene, pool: EntityPool, kind: PlayerKind) {
     super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
@@ -52,15 +61,34 @@ export class Player extends Entity {
 
     if (kind.animKey) this.play(kind.animKey);
 
+    kind.render(this);
+
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
     this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   }
 
   get character(): CharacterDef {
     return this.kind.character;
+  }
+
+  pushInvincible(): void {
+    if (this.invincibleDepth === 0) {
+      this.savedDamagedBy = this.activeDamagedBy.slice();
+      this.setDamagedByClasses([]);
+    }
+    this.invincibleDepth++;
+  }
+
+  popInvincible(): void {
+    if (this.invincibleDepth === 0) return;
+    this.invincibleDepth--;
+    if (this.invincibleDepth === 0 && this.alive) {
+      this.setDamagedByClasses(this.savedDamagedBy);
+    }
   }
 
   controlUpdate(): void {
@@ -85,6 +113,10 @@ export class Player extends Entity {
         this.pool.spawn(playerBullet, this.x, this.y - FIRE_OFFSET_Y, 0, -PLAYER_BULLET_SPEED);
         shoot();
       }
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
+      if (this.kind.consumeBomb(this)) activateBomb(this, this.pool);
     }
   }
 }

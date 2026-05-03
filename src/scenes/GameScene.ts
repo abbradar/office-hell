@@ -139,7 +139,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const hostile = this.pool.damages.player.countActive(true);
-    const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire';
+    const controls = isTouchDevice ? 'buttons: move   tap: fire' : '← →: move   Z: fire   X: excuse';
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(
       `${this.player.character.name}   ${controls}   hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`,

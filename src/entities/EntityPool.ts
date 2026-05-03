@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
-import type { DamageClass, EntityKind, ScriptYield, SpawnOpts } from '../script/types';
+import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from '../script/types';
 import { INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
@@ -115,6 +115,29 @@ export class EntityPool {
 
   private schedule(e: Entity, iter: ScriptIter, framesLeft: number): void {
     this.waiting.push({ framesLeft, entity: e, iter });
+  }
+
+  // Drop any pending wait entry for this entity. Used by the bomb to tear off
+  // a bullet's running script before grafting on the "fly to bin" script —
+  // otherwise the original homing/sweeping script would keep mutating velocity
+  // and override the new motion.
+  stopScript(e: Entity): void {
+    for (let i = 0; i < this.waiting.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
+      if (this.waiting[i]!.entity === e) {
+        const last = this.waiting.length - 1;
+        // biome-ignore lint/style/noNonNullAssertion: lastW is waiting.length - 1
+        if (i !== last) this.waiting[i] = this.waiting[last]!;
+        this.waiting.pop();
+        return;
+      }
+    }
+  }
+
+  // Start a script on an already-spawned entity. Pair with stopScript first if
+  // the entity might already have one running.
+  runScript(e: Entity, script: EntityScript): void {
+    this.schedule(e, script(e), 1);
   }
 
   private advance(e: Entity, iter: ScriptIter): void {

@@ -4,6 +4,9 @@ import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
+import { colleaguesWave } from './release/colleague';
+import { internsWave } from './release/intern';
+import { janitorsWave } from './release/janitor';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -101,6 +104,9 @@ export const WAVES: WaveDef[] = [
   { id: 'w2', name: 'Wave 2 — Fan shooters', script: wave2 },
   { id: 'w3', name: 'Wave 3 — Ring spinners', script: wave3 },
   { id: 'w4', name: 'Wave 4 — Drivers', script: wave4 },
+  { id: 'r-interns', name: 'Release — Interns', script: internsWave },
+  { id: 'r-janitor', name: 'Release — Janitor', script: janitorsWave },
+  { id: 'r-colleagues', name: 'Release — Colleagues', script: colleaguesWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];

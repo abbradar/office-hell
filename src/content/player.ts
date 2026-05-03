@@ -6,6 +6,7 @@ import { EntityKind } from '../script/types';
 import type { CharacterDef } from './characters';
 
 export const PLAYER_HP = 2;
+export const PLAYER_BOMBS = 3;
 
 export type PlayerKindOpts = {
   hpText: Phaser.GameObjects.Text;
@@ -18,6 +19,7 @@ export class PlayerKind extends EntityKind {
   private hpText: Phaser.GameObjects.Text;
   private practice: boolean;
   hits = 0;
+  bombs = PLAYER_BOMBS;
 
   constructor(opts: PlayerKindOpts) {
     super({
@@ -31,14 +33,14 @@ export class PlayerKind extends EntityKind {
     this.character = opts.character;
     this.hpText = opts.hpText;
     this.practice = opts.practice ?? false;
-    this.render(PLAYER_HP);
   }
 
-  private render(hp: number): void {
+  render(self: Entity): void {
     if (this.practice) {
       this.hpText.setText(`hits: ${this.hits}`);
     } else {
-      this.hpText.setText('♥'.repeat(Math.max(0, hp)));
+      const hearts = '♥'.repeat(Math.max(0, self.hp ?? 0));
+      this.hpText.setText(`${hearts}\nexcuses: ${this.bombs}`);
     }
   }
 
@@ -46,10 +48,18 @@ export class PlayerKind extends EntityKind {
     hit();
     if (this.practice) {
       this.hits++;
-      this.render(self.hp ?? 0);
-      return;
+    } else {
+      super.takeDamage(self, amount);
     }
-    super.takeDamage(self, amount);
-    if (self.hp !== null) this.render(self.hp);
+    this.render(self);
+  }
+
+  // Returns true if a bomb was consumed. The Player asks before triggering so
+  // we can both gate the visual effect and update the HUD in one place.
+  consumeBomb(self: Entity): boolean {
+    if (this.bombs <= 0) return false;
+    this.bombs--;
+    this.render(self);
+    return true;
   }
 }
