@@ -155,7 +155,7 @@ const MONSTER_QUEUE: StageQueue = [
   {
     name: 'final_boss music',
     kind: 'music',
-    filters: [trackEnded],
+    filters: [],
     action: () => playMusicLoop(MONSTER_FINAL_BOSS_KEY),
   },
   {
