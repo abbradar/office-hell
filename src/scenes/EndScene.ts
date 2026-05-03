@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
+import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 
 export type EndSceneData = { won: boolean };
 
@@ -23,24 +24,22 @@ export class EndScene extends Phaser.Scene {
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.32, title, {
+        ...FONT_TITLE,
         color: titleColor,
-        fontSize: '44px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5);
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.32 + 56, subtitle, {
+        ...FONT_DIALOGUE_SM,
         color: '#aaaaaa',
-        fontSize: '14px',
       })
       .setOrigin(0.5);
 
     const restart = this.add
       .text(GAME_W / 2, GAME_H * 0.6, '▶ TAP TO RESTART', {
+        ...FONT_MENU,
         color: '#ffffff',
-        fontSize: '24px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5);
 

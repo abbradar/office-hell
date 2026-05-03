@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
+import boss1Url from '../assets/sprites/boss1.png';
+import coworker1Url from '../assets/sprites/coworker1.png';
+import coworker2Url from '../assets/sprites/coworker2.png';
+import playerSpriteUrl from '../assets/sprites/player.png';
 import { setAudioContext } from '../audio/sfx';
 import { BULLET_RADIUS, GAME_W } from '../config';
-import boss1Url from '../sprites/boss1.png';
-import coworker1Url from '../sprites/coworker1.png';
-import coworker2Url from '../sprites/coworker2.png';
-import playerSpriteUrl from '../sprites/player.png';
 
 export const PLAYER_FRAME_W = 48;
 export const PLAYER_FRAME_H = 48;
@@ -41,6 +41,16 @@ export class BootScene extends Phaser.Scene {
       frameHeight: ENEMY_FRAME_H,
     });
     this.load.spritesheet('importantClient', coworker2Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    this.load.spritesheet('gymBro', boss1Url, {
+      frameWidth: ENEMY_FRAME_W,
+      frameHeight: ENEMY_FRAME_H,
+    });
+    // Shrunk-old-man (stage boss "Mr. Hodges") placeholder until the retiree
+    // art lands.
+    this.load.spritesheet('shrunkOldMan', coworker2Url, {
       frameWidth: ENEMY_FRAME_W,
       frameHeight: ENEMY_FRAME_H,
     });
@@ -141,7 +151,7 @@ export class BootScene extends Phaser.Scene {
     // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
     // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
     // standard 1-0-1-2 sequence for a smooth gait.
-    for (const key of ['coworker1', 'coworker2', 'boss1', 'sales', 'importantClient']) {
+    for (const key of ['coworker1', 'coworker2', 'boss1', 'sales', 'importantClient', 'gymBro', 'shrunkOldMan']) {
       this.anims.create({
         key: `${key}_walk`,
         frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),

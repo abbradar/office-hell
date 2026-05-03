@@ -18,7 +18,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // Bumped on every spawn so deferred callbacks (e.g. onDeath) can detect
   // that the entity they captured has since died and been reused for something else.
   gen = 0;
-  onDeath: (() => void)[] | null = null;
+  onDeathQueue: (() => void)[] | null = null;
   hasEnteredScreen = false;
   // Live damagedBy membership — initialised at spawn from kind or SpawnOpts override,
   // mutable at runtime via setDamagedByClasses (e.g. to make a boss hittable post-intro).
@@ -58,6 +58,11 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     return { dialogue: opts };
   }
 
+  onDeath(cb: () => void): void {
+    this.onDeathQueue ??= [];
+    this.onDeathQueue.push(cb);
+  }
+
   setDamagedByClasses(classes: DamageClass[]): void {
     const cur = this.activeDamagedBy;
     // Group.add() runs a createCallback that resets body properties (velocity,
@@ -77,8 +82,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   die(): void {
     this.alive = false;
     this.body.enable = false;
-    const cbs = this.onDeath;
-    this.onDeath = null;
+    const cbs = this.onDeathQueue;
     if (cbs) for (const cb of cbs) cb();
   }
 

@@ -1,6 +1,6 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { spread } from '../../script/patterns';
+import { moveTo, spread } from '../../script/patterns';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -17,8 +17,10 @@ const SWEEP_BULLETS_PER_STEP = 3;
 const SWEEP_SPREAD = Math.PI / 22;
 const SWEEP_SPEED = 160;
 
+const ENTRY_SPEED = 110;
+const ENTRY_Y = 80;
 const ADVANCE_SPEED = 70;
-const ADVANCE_FRAMES = 50;
+const ADVANCE_DY = 58;
 const REST_FRAMES = 40;
 
 function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void, void> {
@@ -33,9 +35,7 @@ function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void
 }
 
 function* janitorScript(self: Entity) {
-  self.setVelocity(0, 110);
-  yield 60;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
   self.say('Watch the wet floor!', 110);
   yield 80;
 
@@ -46,9 +46,7 @@ function* janitorScript(self: Entity) {
   yield* sweep(self, leftToRight);
 
   // Shuffle forward a touch, rest, then second swipe from the new position.
-  self.setVelocity(0, ADVANCE_SPEED);
-  yield ADVANCE_FRAMES;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x, self.y + ADVANCE_DY, ADVANCE_SPEED);
   yield REST_FRAMES;
 
   yield* sweep(self, leftToRight);

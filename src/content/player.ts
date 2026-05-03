@@ -10,6 +10,7 @@ export const PLAYER_BOMBS = 3;
 
 export type PlayerKindOpts = {
   hpText: Phaser.GameObjects.Text;
+  bombsText: Phaser.GameObjects.Text;
   practice?: boolean;
   character: CharacterDef;
 };
@@ -17,6 +18,7 @@ export type PlayerKindOpts = {
 export class PlayerKind extends EntityKind {
   readonly character: CharacterDef;
   private hpText: Phaser.GameObjects.Text;
+  private bombsText: Phaser.GameObjects.Text;
   private practice: boolean;
   hits = 0;
   bombs = PLAYER_BOMBS;
@@ -32,15 +34,17 @@ export class PlayerKind extends EntityKind {
     });
     this.character = opts.character;
     this.hpText = opts.hpText;
+    this.bombsText = opts.bombsText;
     this.practice = opts.practice ?? false;
   }
 
   render(self: Entity): void {
     if (this.practice) {
       this.hpText.setText(`hits: ${this.hits}`);
+      this.bombsText.setText('');
     } else {
-      const hearts = '♥'.repeat(Math.max(0, self.hp ?? 0));
-      this.hpText.setText(`${hearts}\nexcuses: ${this.bombs}`);
+      this.hpText.setText('♥'.repeat(Math.max(0, self.hp ?? 0)));
+      this.bombsText.setText('✱'.repeat(this.bombs));
     }
   }
 

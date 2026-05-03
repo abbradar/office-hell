@@ -1,6 +1,6 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { ring } from '../../script/patterns';
+import { moveTo, ring } from '../../script/patterns';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { missedCallBullet } from './missedCallBullet';
 
@@ -11,7 +11,7 @@ import { missedCallBullet } from './missedCallBullet';
 // and exits left; otherwise mirror.
 
 const ENTER_SPEED = 130;
-const ENTER_FRAMES = 90;
+const ENTER_DX = 195;
 const HOLD_FRAMES = 70;
 const RING_COUNT = 12;
 const BULLET_SPEED = 130;
@@ -22,9 +22,7 @@ function* colleagueScript(self: Entity) {
   const fromLeft = self.x < GAME_W / 2;
   const dir = fromLeft ? 1 : -1;
 
-  self.setVelocity(dir * ENTER_SPEED, 0);
-  yield ENTER_FRAMES;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x + dir * ENTER_DX, self.y, ENTER_SPEED);
 
   self.say('Got a quick call?', HOLD_FRAMES);
   yield HOLD_FRAMES;

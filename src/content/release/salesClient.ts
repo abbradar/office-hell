@@ -1,6 +1,6 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { aimed, ring } from '../../script/patterns';
+import { aimed, moveTo, ring } from '../../script/patterns';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
@@ -14,8 +14,8 @@ import { reportBullet } from './reportBullet';
 // Both scripts share PHASE_A_* and PHASE_B_* timings so the pair pulses on
 // the same beat, with the client's intro 50 frames behind to interleave.
 
-const ENTRY_SPEED = 100;
-const ENTRY_FRAMES = 70;
+const ENTRY_SPEED = 60;
+const ENTRY_Y = 40;
 
 const SALES_X = GAME_W * 0.3;
 const CLIENT_X = GAME_W * 0.7;
@@ -45,9 +45,7 @@ const CLOUD_COUNT_B = 4;
 const CLOUD_SPREAD_B = Math.PI / 3;
 
 function* salesScript(self: Entity) {
-  self.setVelocity(0, ENTRY_SPEED * 0.6);
-  yield ENTRY_FRAMES;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
   self.say("Brew her some coffee. She's an important client.", 130);
   yield 130;
@@ -75,9 +73,7 @@ function* salesScript(self: Entity) {
 }
 
 function* clientScript(self: Entity) {
-  self.setVelocity(0, ENTRY_SPEED * 0.6);
-  yield ENTRY_FRAMES;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
   // Wait through sales's announcement before chiming in.
   yield 130;

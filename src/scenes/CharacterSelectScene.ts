@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
 import { isTouchDevice } from '../input/device';
+import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 
 export type CharacterSelectData = {
   next: string;
@@ -52,9 +53,8 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     this.add
       .text(GAME_W / 2, 70, 'CHOOSE A SHIFT WORKER', {
+        ...FONT_MENU,
         color: '#ffd96a',
-        fontSize: '24px',
-        fontStyle: 'bold',
       })
       .setOrigin(0.5);
 
@@ -73,16 +73,16 @@ export class CharacterSelectScene extends Phaser.Scene {
       : '← →: switch   Z/Enter: select   Esc: back';
     this.add
       .text(GAME_W / 2, GAME_H - 96, hint, {
+        ...FONT_DEBUG,
         color: '#888888',
-        fontSize: '12px',
         align: 'center',
       })
       .setOrigin(0.5);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 56, '← back', {
+        ...FONT_DIALOGUE_SM,
         color: '#888888',
-        fontSize: '14px',
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -118,18 +118,16 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     const nameText = this.add
       .text(cx, cy + CARD_H / 2 - 64, ch.name, {
+        ...FONT_DIALOGUE_LG,
         color: '#ffffff',
-        fontSize: '16px',
         fontStyle: 'bold',
-        fontFamily: 'system-ui, sans-serif',
       })
       .setOrigin(0.5);
 
     const blurbText = this.add
       .text(cx, cy + CARD_H / 2 - 32, ch.blurb, {
+        ...FONT_DEBUG,
         color: '#aaaaaa',
-        fontSize: '11px',
-        fontFamily: 'system-ui, sans-serif',
         align: 'center',
         wordWrap: { width: CARD_W - 16 },
       })

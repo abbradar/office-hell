@@ -13,13 +13,9 @@ function* reportBulletScript(self: Entity) {
   // slightly-rotated heading without ever changing magnitude.
   const v = self.body.velocity;
   const speed = Math.hypot(v.x, v.y);
-  let age = 0;
-  while (true) {
+  for (let age = 0; age < HOMING_DECAY_FRAMES; age++) {
     yield 0;
-    age++;
-    const decay = Math.max(0, 1 - age / HOMING_DECAY_FRAMES);
-    if (decay <= 0) continue;
-    const rate = HOMING_RATE_START * decay;
+    const rate = HOMING_RATE_START * (1 - age / HOMING_DECAY_FRAMES);
     const cv = self.body.velocity;
     const cur = Math.atan2(cv.y, cv.x);
     let diff = self.angleToPlayer() - cur;
@@ -29,6 +25,8 @@ function* reportBulletScript(self: Entity) {
     const turn = Math.max(-rate, Math.min(rate, diff));
     self.setMotion(cur + turn, speed);
   }
+  // Past the decay window: drop the script entirely. Velocity is already set,
+  // so physics carries the bullet straight until it leaves the screen.
 }
 
 export const reportBullet = new EntityKind({

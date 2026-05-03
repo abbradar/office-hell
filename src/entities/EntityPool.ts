@@ -25,6 +25,9 @@ export class EntityPool {
   // pool.update from GameScene.update) this is guaranteed to be set.
   player!: Player;
   paused = false;
+  // Name shown in the HUD header during a boss fight. Set and cleared by the
+  // boss's own script — the pool/HUD don't infer it from entity state.
+  bossName: string | null = null;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -71,7 +74,7 @@ export class EntityPool {
     e.alive = true;
     e.gen++;
     e.hasEnteredScreen = false;
-    e.onDeath = null;
+    e.onDeathQueue = null;
 
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
@@ -149,8 +152,7 @@ export class EntityPool {
       this.beginDialogue(r.value.dialogue, e, iter);
     } else if (r.value.until.alive) {
       const gen = e.gen;
-      r.value.until.onDeath ??= [];
-      r.value.until.onDeath.push(() => {
+      r.value.until.onDeath(() => {
         if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
       });
     } else {
@@ -196,7 +198,7 @@ export class EntityPool {
     }
 
     e.alive = false;
-    e.onDeath = null;
+    e.onDeathQueue = null;
     e.kind = INERT_KIND;
     e.hp = null;
     e.setActive(false).setVisible(false);

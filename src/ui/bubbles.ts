@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
+import { FONT_DIALOGUE_SM } from './fonts';
 
 const BUBBLE_DEPTH = 50;
 const PADDING_X = 8;
 const PADDING_Y = 5;
-const FONT_SIZE = '13px';
 const TAIL_HEIGHT = 8;
 const TAIL_HALF_WIDTH = 5;
 const OFFSET_Y = 30;
@@ -40,9 +40,8 @@ export class BubbleManager {
 
     const txt = this.scene.add
       .text(0, 0, text, {
+        ...FONT_DIALOGUE_SM,
         color: TEXT_COLOR,
-        fontSize: FONT_SIZE,
-        fontFamily: 'system-ui, sans-serif',
         fontStyle: 'bold',
       })
       .setOrigin(0.5);
