@@ -8,7 +8,7 @@
 // makes sense.
 
 import type Phaser from 'phaser';
-import { getCurrentTrackInfo, getMusicTime } from '../audio/music/loop';
+import { getCurrentTrackInfo, getMusicTime, isMusicFinished } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from './types';
 
@@ -188,13 +188,14 @@ export const audioGap = (seconds: number): StageFilter => ({
   },
 });
 
-// Gate: wait until the currently-playing track reaches its next loop boundary
-// (intro→loop hand-off, or the next loop iteration end). Snapping music
-// switches to this filter prevents hard cuts in the middle of a bar; the new
-// track takes over right as the old one would have wrapped around.
+// Gate: wait until the currently-playing track is at a clean transition
+// point — either its next loop boundary (for looping tracks) or natural
+// end-of-buffer (for one-shot tracks started with `loop: false`). Snapping
+// music switches to this filter prevents hard cuts in the middle of a bar
+// for loops, and lets a one-shot drive the schedule by simply ending.
 //
-// "Boundary" is computed once when the entry first becomes current — it's
-// the next iteration end at-or-after that activation point — so combining
+// For loops: boundary is computed once when the entry first becomes current
+// (next iteration end at-or-after that activation point), so combining
 // with audioGap behaves as `wait MAX(audioGap, trackEnded)`.
 //
 // Returns true when no track is playing (nothing to wait for) so this can be
@@ -204,6 +205,9 @@ export const trackEnded: StageFilter = {
   ready: () => {
     const m = getMusicTime();
     if (m === null) return true;
+    // One-shot tracks: ready when the sound's 'complete' event has fired.
+    // No need for boundary math — there's no loop to align to.
+    if (isMusicFinished() === true) return true;
     const info = getCurrentTrackInfo();
     if (info === null || info.loopDuration <= 0) return true;
     const start = _state?.currentEntryActivatedAt;

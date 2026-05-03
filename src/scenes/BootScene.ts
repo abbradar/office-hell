@@ -4,6 +4,12 @@ import coworker1Url from '../assets/sprites/coworker1.png';
 import coworker2Url from '../assets/sprites/coworker2.png';
 import playerSpriteUrl from '../assets/sprites/player.png';
 import menuLoopUrl from '../assets/audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.ogg';
+import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
+import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
+import monsterIntroUrl from '../assets/audio/loops/monster_rpg/12okt.ogg';
+import monsterBattleUrl from '../assets/audio/loops/monster_rpg/battle.ogg';
+import monsterChaseUrl from '../assets/audio/loops/monster_rpg/chase.ogg';
+import monsterFinalBossUrl from '../assets/audio/loops/monster_rpg/final_boss.ogg';
 import stage1MetalLoopUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_loop.ogg';
 import stage1MetalOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_opening.ogg';
 import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_loop.ogg';
@@ -16,7 +22,13 @@ import { initBuses } from '../audio/buses';
 import {
   CLICK_SFX_KEY,
   HURT_SFX_KEY,
+  KAEDALUS_LONG_KEY,
+  KAEDALUS_SHORT_KEY,
   MENU_LOOP_KEY,
+  MONSTER_BATTLE_KEY,
+  MONSTER_CHASE_KEY,
+  MONSTER_FINAL_BOSS_KEY,
+  MONSTER_INTRO_KEY,
   SHOOT_SFX_KEY,
   STAGE1_METAL_LOOP_KEY,
   STAGE1_METAL_OPENING_KEY,
@@ -101,6 +113,12 @@ export class BootScene extends Phaser.Scene {
     this.load.audio(STAGE1_RETRO_02_LOOP_KEY, stage1Retro02LoopUrl);
     this.load.audio(STAGE1_METAL_OPENING_KEY, stage1MetalOpeningUrl);
     this.load.audio(STAGE1_METAL_LOOP_KEY, stage1MetalLoopUrl);
+    this.load.audio(KAEDALUS_LONG_KEY, kaedalusLongUrl);
+    this.load.audio(KAEDALUS_SHORT_KEY, kaedalusShortUrl);
+    this.load.audio(MONSTER_INTRO_KEY, monsterIntroUrl);
+    this.load.audio(MONSTER_BATTLE_KEY, monsterBattleUrl);
+    this.load.audio(MONSTER_CHASE_KEY, monsterChaseUrl);
+    this.load.audio(MONSTER_FINAL_BOSS_KEY, monsterFinalBossUrl);
 
     preloadInputIcons(this);
     preloadMuteIcons(this);

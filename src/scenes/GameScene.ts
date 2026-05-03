@@ -3,6 +3,8 @@ import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { PlayerKind } from '../content/player';
+import { stageKaedalus } from '../content/kaedalusStage';
+import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
 import type { Entity } from '../entities/Entity';
@@ -28,6 +30,10 @@ export type GameSceneData = {
   // of the normal stage. Surfaces an extra debug HUD line built from the
   // music clock + stage queue introspection.
   test?: boolean;
+  // Music-test stages — same debug HUD treatment as `test`, different
+  // stage definition. Mutually exclusive; if more than one is set, the
+  // first one in `chooseStageKind` wins.
+  music?: 'kaedalus' | 'monster-rpg';
 };
 
 export class GameScene extends Phaser.Scene {
@@ -41,6 +47,7 @@ export class GameScene extends Phaser.Scene {
   private specks!: Phaser.GameObjects.TileSprite;
   private practiceWave: WaveDef | null = null;
   private testMode = false;
+  private musicMode: 'kaedalus' | 'monster-rpg' | null = null;
   private debugHud: Phaser.GameObjects.Text | null = null;
   private playerKind!: PlayerKind;
 
@@ -51,6 +58,7 @@ export class GameScene extends Phaser.Scene {
   init(data: GameSceneData): void {
     this.practiceWave = data?.practice ?? null;
     this.testMode = data?.test ?? false;
+    this.musicMode = data?.music ?? null;
   }
 
   create(): void {
@@ -98,16 +106,21 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, this.pool, this.playerKind);
     this.pool.player = this.player;
 
-    // Sync test stage: pin player invincible for the whole run so dying
-    // doesn't interrupt the music/dialog timing checks. Pushed once with no
-    // pop — bombs still push/pop on top, but the base depth stays at 1.
-    if (this.testMode) this.player.pushInvincible();
+    // Music + sync test stages: pin player invincible for the whole run so
+    // dying doesn't interrupt the timing checks. Pushed once with no pop —
+    // bombs still push/pop on top, but the base depth stays at 1.
+    if (this.testMode || this.musicMode !== null) this.player.pushInvincible();
 
-    const stageKind = this.testMode
-      ? stageTest
-      : this.practiceWave
-        ? makeWaveStage(this.practiceWave)
-        : stage;
+    const stageKind =
+      this.musicMode === 'kaedalus'
+        ? stageKaedalus
+        : this.musicMode === 'monster-rpg'
+          ? stageMonsterRpg
+          : this.testMode
+            ? stageTest
+            : this.practiceWave
+              ? makeWaveStage(this.practiceWave)
+              : stage;
     this.pool.spawn(stageKind, 0, 0, 0, 0);
 
     for (const c of DAMAGE_CLASSES) {
@@ -145,12 +158,12 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
 
-    // Debug HUD (track / t / next / blocked) shown for both the real stage
-    // and the diagnostics test stage now that both run on the queue runner.
-    // Test stage gets the green tint as a "you're in test mode" cue;
-    // real-stage version is greyer so it recedes.
+    // Debug HUD (track / t / next / blocked) shown for the real stage and
+    // every test/music stage. Test/music modes get the green tint as a
+    // "you're in test mode" cue; real-stage version is greyer so it recedes.
+    const debugTinted = this.testMode || this.musicMode !== null;
     this.debugHud = this.add
-      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: this.testMode ? '#6cf0a8' : '#888888' })
+      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: debugTinted ? '#6cf0a8' : '#888888' })
       .setScrollFactor(0)
       .setDepth(100);
 

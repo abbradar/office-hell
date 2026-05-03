@@ -10,11 +10,9 @@ import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
 const ROW_SPACING = 44;
 const HEADER_Y = 60;
-const FULL_STAGE_Y = 130;
-const STAGE_TEST_Y = 165;
-const LIST_VIEW_TOP = 210;
+const HEADER_BUTTONS_TOP = 130;
+const HEADER_BUTTON_SPACING = 32;
 const LIST_VIEW_BOTTOM = GAME_H - 75;
-const LIST_VIEW_HEIGHT = LIST_VIEW_BOTTOM - LIST_VIEW_TOP;
 // Treat motion under this many game-pixels as a tap rather than a swipe.
 const DRAG_THRESHOLD = 6;
 
@@ -22,43 +20,56 @@ const HEADER_COLOR = '#6cf0a8';
 const ROW_COLOR = '#ffffff';
 const SELECTED_COLOR = '#ffd96a';
 
-// Special cursor positions for the two header buttons. Wave entries occupy
-// indices 0..WAVES.length-1; headers use these negative sentinels so we can
-// keep `wave: WaveDef[]` indexing intact without an off-by-N shift.
-type CursorTarget =
-  | { kind: 'fullStage' }
-  | { kind: 'stageTest' }
-  | { kind: 'wave'; index: number };
+// Each header button is a "shortcut" that bypasses CharacterSelect (uses the
+// first CHARACTERS entry as the default) and starts the game with whatever
+// scene-init data the entry specifies. Adding a new diagnostic stage =
+// adding a row here. Order matches cursor index: 0..HEADERS.length - 1.
+type HeaderButton = {
+  label: string;
+  // biome-ignore lint/suspicious/noExplicitAny: scene init data is opaque
+  data?: any;
+};
+const HEADERS: HeaderButton[] = [
+  { label: 'FULL STAGE (real)' },
+  { label: 'STAGE TEST (sync)', data: { test: true } },
+  { label: 'KAEDALUS (music test)', data: { music: 'kaedalus' } },
+  { label: 'MONSTER RPG (music test)', data: { music: 'monster-rpg' } },
+];
+
+type CursorTarget = { kind: 'header'; index: number } | { kind: 'wave'; index: number };
 
 export class TestMenuScene extends Phaser.Scene {
   private rows: Phaser.GameObjects.Text[] = [];
-  private fullStageText!: Phaser.GameObjects.Text;
-  private stageTestText!: Phaser.GameObjects.Text;
-  // 0 = full stage, 1 = stage test, 2..2+WAVES.length-1 = wave[i]
+  private headerTexts: Phaser.GameObjects.Text[] = [];
+  // 0..HEADERS.length-1 = headers, then HEADERS.length..HEADERS.length+WAVES.length-1 = waves
   private cursor = 0;
   private listContainer!: Phaser.GameObjects.Container;
   private scrollY = 0;
   private maxScroll = 0;
   private gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
+  // Computed at create time from HEADERS — wave list starts below the
+  // last header button + a small gap.
+  private listViewTop = 0;
+  private listViewHeight = 0;
 
   constructor() {
     super('TestMenu');
   }
 
   private get itemCount(): number {
-    return 2 + WAVES.length;
+    return HEADERS.length + WAVES.length;
   }
 
   private cursorTarget(c: number): CursorTarget {
-    if (c === 0) return { kind: 'fullStage' };
-    if (c === 1) return { kind: 'stageTest' };
-    return { kind: 'wave', index: c - 2 };
+    if (c < HEADERS.length) return { kind: 'header', index: c };
+    return { kind: 'wave', index: c - HEADERS.length };
   }
 
   create(): void {
     this.cameras.main.setBackgroundColor('#10101a');
     addMuteButton(this);
     this.rows = [];
+    this.headerTexts = [];
     this.scrollY = 0;
     this.gesture = null;
     this.cursor = 0;
@@ -77,47 +88,33 @@ export class TestMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Full-stage shortcut — runs the actual stage script (with music) instead
-    // of an isolated wave. Skips CharacterSelect to keep the iteration loop
-    // tight; uses the first character as the default.
-    this.fullStageText = this.add
-      .text(GAME_W / 2, FULL_STAGE_Y, '', {
-        ...FONT_MENU,
-        color: HEADER_COLOR,
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    this.fullStageText.on('pointerover', (p: Phaser.Input.Pointer) => {
-      if (isTouchDevice || p.isDown) return;
-      this.cursor = 0;
-      this.refresh();
-    });
-    this.fullStageText.on('pointerup', () => {
-      if (this.gesture?.moved) return;
-      this.cursor = 0;
-      this.start();
-    });
+    // Header shortcuts — full stage + each diagnostics test stage.
+    for (let i = 0; i < HEADERS.length; i++) {
+      const y = HEADER_BUTTONS_TOP + i * HEADER_BUTTON_SPACING;
+      const text = this.add
+        .text(GAME_W / 2, y, '', {
+          ...FONT_MENU,
+          color: HEADER_COLOR,
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      text.on('pointerover', (p: Phaser.Input.Pointer) => {
+        if (isTouchDevice || p.isDown) return;
+        this.cursor = i;
+        this.refresh();
+      });
+      text.on('pointerup', () => {
+        if (this.gesture?.moved) return;
+        this.cursor = i;
+        this.start();
+      });
+      this.headerTexts.push(text);
+    }
 
-    // Stage-test shortcut — runs the diagnostics queue stage with debug HUD.
-    this.stageTestText = this.add
-      .text(GAME_W / 2, STAGE_TEST_Y, '', {
-        ...FONT_MENU,
-        color: HEADER_COLOR,
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    this.stageTestText.on('pointerover', (p: Phaser.Input.Pointer) => {
-      if (isTouchDevice || p.isDown) return;
-      this.cursor = 1;
-      this.refresh();
-    });
-    this.stageTestText.on('pointerup', () => {
-      if (this.gesture?.moved) return;
-      this.cursor = 1;
-      this.start();
-    });
-
-    this.listContainer = this.add.container(0, LIST_VIEW_TOP);
+    // Wave list sits below the last header button.
+    this.listViewTop = HEADER_BUTTONS_TOP + HEADERS.length * HEADER_BUTTON_SPACING + 16;
+    this.listViewHeight = LIST_VIEW_BOTTOM - this.listViewTop;
+    this.listContainer = this.add.container(0, this.listViewTop);
 
     for (let i = 0; i < WAVES.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
@@ -134,7 +131,7 @@ export class TestMenuScene extends Phaser.Scene {
         // On touch, pointerover fires on tap and would yank the cursor mid-swipe.
         // On desktop, ignore it during a held drag so the cursor doesn't chase the mouse.
         if (isTouchDevice || p.isDown) return;
-        this.cursor = 2 + i;
+        this.cursor = HEADERS.length + i;
         this.refresh();
       });
       row.on('pointerup', () => {
@@ -142,7 +139,7 @@ export class TestMenuScene extends Phaser.Scene {
         // is still set here. If the gesture moved past threshold, treat it as a
         // swipe and skip the tap.
         if (this.gesture?.moved) return;
-        this.cursor = 2 + i;
+        this.cursor = HEADERS.length + i;
         this.start();
       });
       this.listContainer.add(row);
@@ -151,10 +148,10 @@ export class TestMenuScene extends Phaser.Scene {
 
     const maskGraphics = this.make.graphics({});
     maskGraphics.fillStyle(0xffffff);
-    maskGraphics.fillRect(0, LIST_VIEW_TOP, GAME_W, LIST_VIEW_HEIGHT);
+    maskGraphics.fillRect(0, this.listViewTop, GAME_W, this.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
-    this.maxScroll = Math.max(0, WAVES.length * ROW_SPACING - LIST_VIEW_HEIGHT);
+    this.maxScroll = Math.max(0, WAVES.length * ROW_SPACING - this.listViewHeight);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
@@ -181,7 +178,7 @@ export class TestMenuScene extends Phaser.Scene {
     );
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y < LIST_VIEW_TOP || p.y > LIST_VIEW_BOTTOM) {
+      if (p.y < this.listViewTop || p.y > LIST_VIEW_BOTTOM) {
         this.gesture = null;
         return;
       }
@@ -227,7 +224,7 @@ export class TestMenuScene extends Phaser.Scene {
 
   private setScroll(target: number): void {
     this.scrollY = Phaser.Math.Clamp(target, 0, this.maxScroll);
-    this.listContainer.y = LIST_VIEW_TOP - this.scrollY;
+    this.listContainer.y = this.listViewTop - this.scrollY;
   }
 
   private scrollToCursor(): void {
@@ -241,8 +238,8 @@ export class TestMenuScene extends Phaser.Scene {
     const top = target.index * ROW_SPACING;
     const bottom = top + ROW_SPACING;
     if (top < this.scrollY) this.setScroll(top);
-    else if (bottom > this.scrollY + LIST_VIEW_HEIGHT) {
-      this.setScroll(bottom - LIST_VIEW_HEIGHT);
+    else if (bottom > this.scrollY + this.listViewHeight) {
+      this.setScroll(bottom - this.listViewHeight);
     }
   }
 
@@ -255,11 +252,15 @@ export class TestMenuScene extends Phaser.Scene {
   private refresh(): void {
     const target = this.cursorTarget(this.cursor);
 
-    this.fullStageText.setText(`${target.kind === 'fullStage' ? '▶ ' : '  '}FULL STAGE (music test)`);
-    this.fullStageText.setColor(target.kind === 'fullStage' ? SELECTED_COLOR : HEADER_COLOR);
-
-    this.stageTestText.setText(`${target.kind === 'stageTest' ? '▶ ' : '  '}STAGE TEST (sync)`);
-    this.stageTestText.setColor(target.kind === 'stageTest' ? SELECTED_COLOR : HEADER_COLOR);
+    for (let i = 0; i < HEADERS.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
+      const header = HEADERS[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounded by headerTexts.length
+      const text = this.headerTexts[i]!;
+      const selected = target.kind === 'header' && target.index === i;
+      text.setText(`${selected ? '▶ ' : '  '}${header.label}`);
+      text.setColor(selected ? SELECTED_COLOR : HEADER_COLOR);
+    }
 
     for (let i = 0; i < this.rows.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
@@ -274,14 +275,11 @@ export class TestMenuScene extends Phaser.Scene {
 
   private start(): void {
     const target = this.cursorTarget(this.cursor);
-    if (target.kind === 'fullStage') {
+    if (target.kind === 'header') {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
+      const header = HEADERS[target.index]!;
       this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
-      this.scene.start('Game');
-      return;
-    }
-    if (target.kind === 'stageTest') {
-      this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
-      this.scene.start('Game', { test: true });
+      this.scene.start('Game', header.data);
       return;
     }
     const wave = WAVES[target.index];

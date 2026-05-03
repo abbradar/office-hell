@@ -37,6 +37,14 @@ type LoopState = {
   intro: Phaser.Sound.BaseSound | null;
   // Active timer for the next ping-pong wrap, only set on crossfaded loops.
   scheduled: ReturnType<typeof setTimeout> | null;
+  // True for tracks started with `loop: false`. Read by the `trackEnded`
+  // filter so it can fire the moment the one-shot finishes (rather than
+  // chasing a never-arriving loop boundary).
+  oneShot: boolean;
+  // Set to true by the sound's 'complete' handler when a one-shot finishes.
+  // `getMusicTime()` keeps returning post-complete time (so audio-time gates
+  // resolve naturally), but `trackEnded` and `oneShotFinished` flip true.
+  finished: boolean;
 };
 
 let current: LoopState | null = null;
@@ -51,7 +59,7 @@ const DEFAULT_VOL = 0.5;
 
 export function playMusicLoop(
   key: string,
-  opts: { volume?: number; crossfadeMs?: number } = {},
+  opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {},
 ): void {
   if (!_sm) return;
   if (current?.key === key) return;
@@ -60,8 +68,14 @@ export function playMusicLoop(
 
   const volume = opts.volume ?? DEFAULT_VOL;
   const crossfadeMs = opts.crossfadeMs ?? 0;
+  const loop = opts.loop ?? true;
 
-  if (crossfadeMs <= 0) {
+  if (!loop) {
+    // One-shot: play through once and stop. trackEnded fires when the sound
+    // completes; current.key + getMusicTime() stay live so subsequent
+    // entries can still gate against this track's clock if they want.
+    playOneShot(key, volume);
+  } else if (crossfadeMs <= 0) {
     playLoopSimple(key, volume);
   } else {
     playLoopCrossfaded(key, volume, crossfadeMs);
@@ -81,7 +95,40 @@ function playLoopSimple(key: string, volume: number): void {
   if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, start);
   else start();
 
-  current = { key, sounds: [sound], intro: null, scheduled: null };
+  current = { key, sounds: [sound], intro: null, scheduled: null, oneShot: false, finished: false };
+}
+
+function playOneShot(key: string, volume: number): void {
+  // biome-ignore lint/style/noNonNullAssertion: caller guarded
+  const sm = _sm!;
+  const sound = sm.add(key, { loop: false, volume });
+  if (musicBus) routeSound(sound, musicBus);
+
+  const state: LoopState = {
+    key,
+    sounds: [sound],
+    intro: null,
+    scheduled: null,
+    oneShot: true,
+    finished: false,
+  };
+
+  // Mark finished on natural end so trackEnded can fire. We don't tear the
+  // state down — getMusicTime() keeps reporting (now-stalled) time so any
+  // audio-time filter on a *next* entry resolves cleanly until the next
+  // playMusicLoop call replaces this state.
+  sound.once(Phaser.Sound.Events.COMPLETE, () => {
+    if (current === state) state.finished = true;
+  });
+
+  const start = (): void => {
+    sound.play();
+    trackStartCtxTime = musicBus?.context.currentTime ?? null;
+  };
+  if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, start);
+  else start();
+
+  current = state;
 }
 
 function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): void {
@@ -99,7 +146,14 @@ function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): v
   const sounds = [a, b];
   let active = 0;
 
-  const state: LoopState = { key, sounds, intro: null, scheduled: null };
+  const state: LoopState = {
+    key,
+    sounds,
+    intro: null,
+    scheduled: null,
+    oneShot: false,
+    finished: false,
+  };
 
   const playPing = (): void => {
     // biome-ignore lint/style/noNonNullAssertion: bounded by sounds.length
@@ -163,7 +217,24 @@ export function playMusicWithIntro(
     start();
   }
 
-  current = { key: loopKey, sounds: [loop], intro, scheduled: null };
+  current = {
+    key: loopKey,
+    sounds: [loop],
+    intro,
+    scheduled: null,
+    oneShot: false,
+    finished: false,
+  };
+}
+
+// Has the active track finished playing? Returns false for looping tracks
+// (they never finish), true for one-shots whose 'complete' event has fired,
+// null when no track is active. Read by the stage queue's `trackEnded`
+// filter so a one-shot music entry can naturally gate the next entry on
+// "music has run out".
+export function isMusicFinished(): boolean | null {
+  if (!current) return null;
+  return current.finished;
 }
 
 export function stopMusicLoop(): void {
