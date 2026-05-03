@@ -140,13 +140,6 @@ export const driver = new EntityKind({
 // --- Boss: enters from top, anchors, cycles three attack patterns until dead ---
 
 function* bossScript(self: Entity) {
-  // Claim the HUD header for this fight; release it on death (covers both
-  // natural defeat and forced cleanup via release(), which calls die() too).
-  self.pool.bossName = 'The Boss';
-  self.onDeath(() => {
-    self.pool.bossName = null;
-  });
-
   // Entry — boss flies down from above to his fight position. He's spawned
   // unhittable (damagedByClass: [] override at the spawn site) so player bullets
   // pass through during entrance and dialogue.
@@ -167,6 +160,14 @@ function* bossScript(self: Entity) {
       { speaker: 'left', text: 'That… does not mean anything.' },
       { speaker: 'right', text: "Let's circle back on that — after your performance review." },
     ],
+  });
+
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.pool.bossName = 'The Boss';
+  self.onDeath(() => {
+    self.pool.bossName = null;
   });
 
   // Become hittable.

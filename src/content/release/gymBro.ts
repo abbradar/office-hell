@@ -35,6 +35,14 @@ function* gymBroScript(self: Entity) {
     ],
   });
 
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.pool.bossName = 'Brad';
+  self.onDeath(() => {
+    self.pool.bossName = null;
+  });
+
   self.setDamagedByClasses(['enemy']);
   self.say('Skip day cancelled!', POST_DIALOGUE_HOLD);
   yield POST_DIALOGUE_HOLD;

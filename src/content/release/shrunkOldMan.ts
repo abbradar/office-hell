@@ -46,13 +46,6 @@ const PHASE_C_COUNT = 9;
 const PHASE_C_SPEED = 115;
 
 function* shrunkOldManScript(self: Entity) {
-  // Claim the HUD header for this fight; release it on death (covers both
-  // natural defeat and forced cleanup via release(), which calls die() too).
-  self.pool.bossName = 'Mr. Hodges';
-  self.onDeath(() => {
-    self.pool.bossName = null;
-  });
-
   // Slow shuffle to anchor — spawned unhittable, so the player can't melt him
   // before he's said his piece. Damage is re-enabled after the dialogue.
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
@@ -76,6 +69,14 @@ function* shrunkOldManScript(self: Entity) {
       { speaker: 'left', text: "I'm not staying late for someone else's backlog." },
       { speaker: 'right', text: 'Please. I have nowhere else to leave them.' },
     ],
+  });
+
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.pool.bossName = 'Mr. Hodges';
+  self.onDeath(() => {
+    self.pool.bossName = null;
   });
 
   self.setDamagedByClasses(['enemy']);
