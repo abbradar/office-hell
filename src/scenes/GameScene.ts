@@ -13,6 +13,7 @@ import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
 import { audioTimeFromEntry, getStageState, nextEntryOfKind } from '../script/stageQueue';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
 const SPECKS_SCROLL_PX_PER_MS = 0.55;
@@ -70,14 +71,19 @@ export class GameScene extends Phaser.Scene {
       .text(8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ff5577' })
       .setOrigin(0, 0.5)
       .setDepth(100);
+    // Bombs sit just right of HP (was top-right) so the new top-right
+    // mute button doesn't overlap them. Allowing ~64px of HP slot covers
+    // the widest hp string ("♥♥") at FONT_MENU 16px.
     this.bombsText = this.add
-      .text(GAME_W - 8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ffd866' })
-      .setOrigin(1, 0.5)
+      .text(72, HEADER_H / 2, '', { ...FONT_MENU, color: '#ffd866' })
+      .setOrigin(0, 0.5)
       .setDepth(100);
     this.bossNameText = this.add
       .text(GAME_W / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(100);
+
+    addMuteButton(this);
 
     const character = getSelectedCharacter(this);
     if (!character)

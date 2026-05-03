@@ -3,6 +3,7 @@ import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 
 export type EndSceneData = { won: boolean };
@@ -21,6 +22,7 @@ export class EndScene extends Phaser.Scene {
   create(): void {
     stopMusicLoop();
     this.cameras.main.setBackgroundColor('#10101a');
+    addMuteButton(this);
 
     const title = this.won ? 'STAGE CLEAR' : 'GAME OVER';
     const titleColor = this.won ? '#6cf0a8' : '#f06c6c';

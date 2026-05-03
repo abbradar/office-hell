@@ -3,6 +3,7 @@ import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 
 export type CharacterSelectData = {
@@ -51,6 +52,7 @@ export class CharacterSelectScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#10101a');
+    addMuteButton(this);
 
     this.add
       .text(GAME_W / 2, 70, 'CHOOSE A SHIFT WORKER', {

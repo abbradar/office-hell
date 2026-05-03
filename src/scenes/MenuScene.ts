@@ -5,6 +5,7 @@ import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 
 export class MenuScene extends Phaser.Scene {
@@ -20,6 +21,8 @@ export class MenuScene extends Phaser.Scene {
     // call is idempotent for the same key — calling it again on a return to
     // the menu (e.g. from EndScene) just no-ops while the loop is alive.
     playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
+
+    addMuteButton(this);
 
     this.add
       .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {

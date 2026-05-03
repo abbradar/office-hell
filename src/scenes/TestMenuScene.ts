@@ -4,6 +4,7 @@ import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
@@ -56,6 +57,7 @@ export class TestMenuScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#10101a');
+    addMuteButton(this);
     this.rows = [];
     this.scrollY = 0;
     this.gesture = null;

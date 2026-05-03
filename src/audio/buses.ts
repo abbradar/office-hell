@@ -1,14 +1,22 @@
 // Bus architecture inspired by docs/dead-grid-audio-implementation-guide.md.
 // Phaser owns the AudioContext; we insert a compressor + named buses between
-// our sounds and Phaser's masterVolumeNode so that SFX and music have separate
+// our sounds and Phaser's master chain so that SFX and music have separate
 // gain trims and a shared limiter before the master bus.
 //
 //   sfxBus  ─┐
-//            ├─► compressor ─► phaserMaster ─► destination
+//            ├─► compressor ─► soundManager.destination ─► (Phaser master) ─► ctx.destination
 //   musicBus ┘
 //
-// Phaser sounds default to routing into phaserMaster directly; routeSound()
-// re-wires a single sound's volumeNode to one of our buses instead.
+// `soundManager.destination` is `masterMuteNode`, which is upstream of
+// `masterVolumeNode` in Phaser's internal chain — connecting there means
+// `scene.sound.mute = true` (which zeroes masterMuteNode.gain) actually
+// silences everything we've routed. Hooking into masterVolumeNode directly
+// would bypass the mute and leave the toggle inert for every bus-routed
+// sound.
+//
+// Phaser sounds default to routing through that destination too;
+// routeSound() pulls a single sound's volumeNode out of that chain and
+// re-attaches it to one of our buses.
 
 import Phaser from 'phaser';
 
@@ -35,7 +43,7 @@ export function initBuses(soundManager: Phaser.Sound.BaseSoundManager): void {
 
   sfxBus.connect(compressor);
   musicBus.connect(compressor);
-  compressor.connect(soundManager.masterVolumeNode);
+  compressor.connect(soundManager.destination);
 }
 
 export function routeSound(sound: Phaser.Sound.BaseSound, dest: AudioNode): void {

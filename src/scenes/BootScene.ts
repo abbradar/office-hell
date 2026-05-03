@@ -28,6 +28,7 @@ import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
 import { BULLET_RADIUS, GAME_H, GAME_W } from '../config';
 import { preloadInputIcons } from '../ui/inputIcons';
+import { preloadMuteIcons } from '../ui/muteButton';
 
 export const PLAYER_FRAME_W = 48;
 export const PLAYER_FRAME_H = 48;
@@ -102,6 +103,7 @@ export class BootScene extends Phaser.Scene {
     this.load.audio(STAGE1_METAL_LOOP_KEY, stage1MetalLoopUrl);
 
     preloadInputIcons(this);
+    preloadMuteIcons(this);
 
     const g = this.add.graphics();
 
