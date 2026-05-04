@@ -20,7 +20,7 @@ import {
   type StageQueue,
   screenClear,
   trackEnded,
-} from '../script/stageQueue';
+} from '../script/state';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import { bossOne } from './kinds';

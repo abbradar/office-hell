@@ -66,7 +66,7 @@ walks the queue and gates each entry on its filters. **Read
 [src/docs/stage-design.md](src/docs/stage-design.md) before editing
 content/stage.ts or adding new stages.** Both the real stage and the
 sync-test stage use the same runner, so changes to
-[src/script/stageQueue.ts](src/script/stageQueue.ts) affect both.
+[src/script/state.ts](src/script/state.ts) affect both.
 
 ### Audio model
 
@@ -118,13 +118,13 @@ is `number | { until: Entity } | { dialogue: DialogueOpts }`:
 Stage queue actions can be either a sync function or one of these
 generators. For audio-time waits inside an action, prefer
 `yield* waitAudioSeconds(s)` from
-[src/script/stageQueue.ts](src/script/stageQueue.ts) over `yield N` —
+[src/script/state.ts](src/script/state.ts) over `yield N` —
 it falls back to frame yields in practice mode where music isn't playing.
 
 ### Debug HUD
 
 `GameScene` always renders a second HUD line (track / t / next entry /
-blocked filters) sourced from `getMusicTime()` + `getStageState()`. Grey
+blocked filters) sourced from `getMusicTime()` + `pool.stage`. Grey
 during normal play, green during the sync-test stage. Useful any time
 you're working on stage timing.
 

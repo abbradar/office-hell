@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
 import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { type Action, characterAnimKey, type Direction } from '../content/animations';
 import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
@@ -65,7 +66,10 @@ export class Player extends Entity {
     for (const c of kind.damageClass) pool.damages[c].add(this);
     for (const c of kind.damagedByClass) pool.damagedBy[c].add(this);
 
-    if (kind.animKey) this.play(kind.animKey);
+    // Initial pose so the very first rendered frame has a valid character anim;
+    // subsequent frames are driven by updateAnim().
+    this.facing = 'up';
+    this.updateAnim();
 
     kind.render(this);
 
@@ -104,6 +108,34 @@ export class Player extends Entity {
     if (this.invincibleDepth === 0 && this.alive) {
       this.setDamagedByClasses(this.savedDamagedBy);
     }
+  }
+
+  // Player anim rules: while no enemies are on screen the corridor's still
+  // scrolling and the MC reads as running into it (run + up). Once an enemy
+  // is up, she stands her ground (idle + up) unless she sidesteps, in which
+  // case she runs sideways. damagedBy.enemy is the live enemy roster — bullets
+  // sit in damages.player but not here, so a wave's leftover bullets don't
+  // freeze her in idle after the enemy has already left.
+  override updateAnim(): void {
+    const sheet = this.kind.sprite;
+    if (sheet === null) return;
+    const enemyOnScreen = this.pool.damagedBy.enemy.countActive(true) > 0;
+    const vx = this.body.velocity.x;
+    let action: Action;
+    let dir: Direction;
+    if (!enemyOnScreen) {
+      action = 'run';
+      dir = 'up';
+    } else if (vx !== 0) {
+      action = 'run';
+      dir = vx > 0 ? 'right' : 'left';
+    } else {
+      action = 'idle';
+      dir = 'up';
+    }
+    this.facing = dir;
+    const key = characterAnimKey(sheet, action, dir);
+    if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 
   controlUpdate(): void {

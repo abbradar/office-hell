@@ -12,7 +12,7 @@ two stages currently shipped.
 
 ## Data model
 
-Defined in [`src/script/stageQueue.ts`](../script/stageQueue.ts).
+Defined in [`src/script/state.ts`](../script/state.ts).
 
 ```ts
 type StageEntry = {
@@ -23,8 +23,8 @@ type StageEntry = {
 };
 
 type StageFilter = {
-  label: string;                    // shown in HUD's "blocked: ..." segment
-  ready: (self: Entity) => boolean; // polled once per frame
+  label: string;                                       // shown in HUD's "blocked: ..." segment
+  ready: (self: Entity, state: StageState) => boolean; // polled once per frame
 };
 
 type StageQueue = StageEntry[];
@@ -46,7 +46,7 @@ a generator the pool advances frame by frame.
 1. Stamp `currentEntryActivatedAt = getMusicTime()?.time` (used by
    `trackEnded` to compute the loop-boundary it should snap to).
 2. Poll filters once per frame. While any filter reports not-ready, yield 1
-   and repeat. The labels of pending filters land in `_state.pendingFilters`
+   and repeat. The labels of pending filters land in `state.pendingFilters`
    for the HUD.
 3. Call `action(self)`. If it returns a generator, `yield*` it (entry stays
    "current" through any internal yields).
@@ -56,13 +56,15 @@ While a dialog box is open, `pool.update` early-returns on `pool.paused`, so
 the runner generator is paused too. The audio context keeps ticking, so any
 audio-time filter automatically catches up the moment the dialog closes.
 
-Module-level state (`_state`) is exposed via `getStageState()`,
-`nextEntryOfKind(kind)`, and `audioTimeFromEntry(entry)` so the debug HUD in
-`GameScene` can introspect the queue without coupling to it.
+A `StageState` instance is created per run by `runStageQueue` and parked on
+`pool.stage` for the duration. The instance owns `nextEntryOfKind(kind)` as
+a method, and `audioTimeFromEntry(entry)` is exported as a free function so
+the debug HUD in `GameScene` can introspect the queue via `pool.stage`
+without coupling to the runner.
 
 ## Filter library
 
-All in [`src/script/stageQueue.ts`](../script/stageQueue.ts).
+All in [`src/script/state.ts`](../script/state.ts).
 
 | Filter | Ready when | Notes |
 |---|---|---|
@@ -148,7 +150,7 @@ Launched from the practice menu's "▶ STAGE TEST (sync)" entry.
 ## Debug HUD
 
 `GameScene` always renders a second HUD line under the main one, fed from
-`getMusicTime()` + `getStageState()`:
+`getMusicTime()` + `pool.stage`:
 
 ```
 track: stage1Retro01Loop  t: 12.34s  next: wave 2 @28.0s  blocked: t≥20.0s, enemies clear
@@ -168,7 +170,7 @@ Coloured grey on the real stage, green on the test stage as a visual
 ## Adding a new stage
 
 1. Define a `StageQueue` literal — entries with `name`, `kind`, `filters`,
-   `action`. Reuse helpers from [`stageQueue.ts`](../script/stageQueue.ts)
+   `action`. Reuse helpers from [`state.ts`](../script/state.ts)
    for filters; reuse spawn helpers from
    [`content/kinds.ts`](../content/kinds.ts) and
    [`content/release/`](../content/release/) for entity definitions.
@@ -180,7 +182,7 @@ Coloured grey on the real stage, green on the test stage as a visual
 ## Adding a new filter
 
 Append a `StageFilter` constant or factory to
-[`stageQueue.ts`](../script/stageQueue.ts). Two requirements:
+[`state.ts`](../script/state.ts). Two requirements:
 
 - `label` should be short and stable — it shows up verbatim in the debug
   HUD's `blocked: ...` segment and in any tooling that scrapes the queue.
@@ -188,9 +190,9 @@ Append a `StageFilter` constant or factory to
   every entry that has it in its filter list.
 
 For filters that need state across polls (e.g. "wait N seconds from now"),
-either close over module-level state in `_state` (see how `audioGap` reads
-`lastFireAudioTime`) or factor it into a generator helper like
-`waitAudioSeconds` and call it from inside an action instead.
+either read it off the `state: StageState` arg `ready` receives (see how
+`audioGap` pulls `lastFireAudioTime`) or factor it into a generator helper
+like `waitAudioSeconds` and call it from inside an action instead.
 
 ## Known limitations / future work
 
@@ -206,5 +208,5 @@ either close over module-level state in `_state` (see how `audioGap` reads
   `trackEnded` makes the seam musically clean but doesn't blend.
 - **Practice mode debug line is sparse.** Single-wave runs from
   `makeWaveStage` don't go through the queue runner, so the HUD shows
-  `track: (none)  t: -`. Could be hidden when both `getStageState()` and
+  `track: (none)  t: -`. Could be hidden when both `pool.stage` and
   `getMusicTime()` are null.

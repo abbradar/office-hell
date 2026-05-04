@@ -61,7 +61,6 @@ function makeVacationScript(role: Role): EntityScript {
 
 export const vacationItaly = new EntityKind({
   sprite: 'vacationItaly',
-  animKey: 'vacationItaly_run_down',
   hitboxRadius: 12,
   hp: 16,
   damageClass: ['player'],

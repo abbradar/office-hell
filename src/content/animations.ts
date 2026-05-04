@@ -45,6 +45,17 @@ export function characterFrames(action: Action, dir: Direction): number[] {
   return Array.from({ length: frameCount }, (_, i) => base + i);
 }
 
+// Pick the cardinal direction that best matches a 2D velocity. Dominant axis
+// wins; ties (and a degenerate zero vector) fall through to 'down', which
+// matches how new enemies enter — a sensible default direction for an entity
+// that hasn't started moving yet.
+export function directionFromVelocity(vx: number, vy: number): Direction {
+  const ax = Math.abs(vx);
+  const ay = Math.abs(vy);
+  if (ax > ay) return vx >= 0 ? 'right' : 'left';
+  return vy >= 0 ? 'down' : 'up';
+}
+
 // Register every (action × direction) animation for a single sheet. Looped,
 // since the player and any future NPC reuses these as continuous states.
 export function registerCharacterAnims(scene: Phaser.Scene, sheetKey: string): void {

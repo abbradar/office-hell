@@ -1,5 +1,5 @@
 // Diagnostics stage for verifying dialog/physics-pause sync against the
-// music clock. Defined as a declarative queue (see script/stageQueue.ts) so
+// music clock. Defined as a declarative queue (see script/state.ts) so
 // the schedule reads top-to-bottom and each entry's gates are visible inline.
 //
 // Schedule (all times in seconds, relative to the *current* music track —
@@ -30,7 +30,7 @@ import {
   type StageQueue,
   screenClear,
   trackEnded,
-} from '../script/stageQueue';
+} from '../script/state';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import { bossOne } from './kinds';

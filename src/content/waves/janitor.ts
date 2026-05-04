@@ -1,6 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
+import { checkStageOnce } from '../../script/state';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -36,7 +37,9 @@ function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void
 
 function* janitorScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-  self.say('Watch the wet floor!', 110);
+  if (checkStageOnce(self, 'janitorWetFloorShown')) {
+    self.say('Watch the wet floor!', 110);
+  }
   yield 80;
 
   // Pin the sweep direction once — both passes go the same way, like a real
@@ -57,7 +60,6 @@ function* janitorScript(self: Entity) {
 
 export const janitor = new EntityKind({
   sprite: 'janitor',
-  animKey: 'janitor_run_down',
   hitboxRadius: 12,
   hp: 24,
   damageClass: ['player'],

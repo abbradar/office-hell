@@ -111,7 +111,6 @@ function* shrunkOldManScript(self: Entity) {
 
 export const shrunkOldMan = new EntityKind({
   sprite: 'geezer',
-  animKey: 'geezer_run_down',
   hitboxRadius: 16,
   hp: 72,
   damageClass: ['player'],

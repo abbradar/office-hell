@@ -87,7 +87,6 @@ function* bossScript(self: Entity) {
 
 export const bossOne = new EntityKind({
   sprite: 'boss',
-  animKey: 'boss_run_down',
   hitboxRadius: 18,
   hp: 65,
   damageClass: ['player'],

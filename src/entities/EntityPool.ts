@@ -1,5 +1,7 @@
 import type Phaser from 'phaser';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
+import { directionFromVelocity } from '../content/animations';
+import type { StageState } from '../script/state';
 import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from '../script/types';
 import { INERT_KIND } from '../script/types';
 import { BubbleManager } from '../ui/bubbles';
@@ -31,6 +33,11 @@ export class EntityPool {
   // Name shown in the HUD header during a boss fight. Set and cleared by the
   // boss's own script — the pool/HUD don't infer it from entity state.
   bossName: string | null = null;
+  // Live state for the currently-running stage queue, or null when no stage
+  // is running. Owned and managed by `runStageQueue`; surfaced on the pool
+  // so wave scripts spawned mid-stage (which only see `self`) can reach it
+  // via `self.pool.stage`, and so the GameScene HUD has a stable read point.
+  stage: StageState | null = null;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -82,15 +89,10 @@ export class EntityPool {
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
       e.setVisible(true);
-      if (kind.animKey) {
-        e.play(kind.animKey);
-      } else {
-        e.anims.stop();
-      }
     } else {
       e.setVisible(false);
-      e.anims.stop();
     }
+    e.anims.stop();
     e.setActive(true);
 
     // Group.add() runs a createCallback that overwrites body properties
@@ -111,6 +113,13 @@ export class EntityPool {
       e.setPosition(x, y);
       body.enable = false;
     }
+
+    // After velocity is committed: seed facing from the entry velocity so an
+    // idle (vx=vy=0) spawn picks a direction that matches what the script will
+    // move the entity in, rather than the field default. updateAnim itself
+    // bails for entities whose sprite isn't a character sheet (bullets, etc.).
+    e.facing = directionFromVelocity(vx, vy);
+    e.updateAnim();
 
     const script = opts.script ?? kind.defaultScript ?? null;
     if (script) this.schedule(e, script(e), 1);
@@ -252,6 +261,8 @@ export class EntityPool {
         this.release(e, i);
         continue;
       }
+
+      e.updateAnim();
 
       const inX = e.x >= -CULL_MARGIN && e.x <= GAME_W + CULL_MARGIN;
       const inY = e.y >= -CULL_MARGIN && e.y <= GAME_H + CULL_MARGIN;

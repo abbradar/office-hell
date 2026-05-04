@@ -12,7 +12,7 @@ import { EntityPool } from '../entities/EntityPool';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
-import { audioTimeFromEntry, getStageState, nextEntryOfKind } from '../script/stageQueue';
+import { audioTimeFromEntry, type StageEntry } from '../script/state';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -213,6 +213,11 @@ export class GameScene extends Phaser.Scene {
 
       this.player.controlUpdate();
     }
+    // Player isn't part of pool.active, so its anim doesn't get the per-tick
+    // refresh that pooled entities get inside pool.update — drive it here. Run
+    // even while paused so the dialogue's first frame doesn't show a stale anim
+    // from before the cutscene started.
+    this.player.updateAnim();
 
     const hostile = this.pool.damages.player.countActive(true);
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
@@ -227,11 +232,11 @@ export class GameScene extends Phaser.Scene {
     const m = getMusicTime();
     const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
 
-    const state = getStageState();
+    const state = this.pool.stage;
     const secondLineParts: string[] = [];
     if (state) {
-      const nextSpawn = nextEntryOfKind('spawn');
-      const nextDialog = nextEntryOfKind('dialog');
+      const nextSpawn = state.nextEntryOfKind('spawn');
+      const nextDialog = state.nextEntryOfKind('dialog');
       // Pick whichever is sooner by audio-time gate. Either may be null.
       const nextEntry = pickSooner(nextSpawn, nextDialog);
       if (nextEntry) {
@@ -248,10 +253,7 @@ export class GameScene extends Phaser.Scene {
   }
 }
 
-function pickSooner(
-  a: ReturnType<typeof nextEntryOfKind>,
-  b: ReturnType<typeof nextEntryOfKind>,
-): ReturnType<typeof nextEntryOfKind> {
+function pickSooner(a: StageEntry | null, b: StageEntry | null): StageEntry | null {
   if (!a) return b;
   if (!b) return a;
   const at = audioTimeFromEntry(a) ?? Number.POSITIVE_INFINITY;

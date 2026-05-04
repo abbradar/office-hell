@@ -6,6 +6,13 @@
 // content/stage.ts. The two coexist; new stages (like testStage) prefer the
 // queue model for clarity, and the imperative stage can migrate later if it
 // makes sense.
+//
+// State for a running stage is owned by `runStageQueue`, threaded through
+// filters as a second argument, and parked on `pool.stage` for the
+// duration so wave scripts spawned mid-stage (which don't otherwise see
+// the runner) can reach it via `self.pool.stage`. There is no module-level
+// state — multiple stages cannot run concurrently in the same pool, but
+// the type system pushes you to acknowledge that explicitly.
 
 import type Phaser from 'phaser';
 import { getCurrentTrackInfo, getMusicTime, isMusicFinished } from '../audio/music/loop';
@@ -18,7 +25,7 @@ export type StageFilter = {
   // the user sees exactly which gates are pending.
   label: string;
   // True when this filter is satisfied right now. Polled once per frame.
-  ready: (self: Entity) => boolean;
+  ready: (self: Entity, state: StageState) => boolean;
 };
 
 export type StageEntryKind = 'spawn' | 'dialog' | 'music' | 'misc';
@@ -38,39 +45,58 @@ export type StageEntry = {
 
 export type StageQueue = StageEntry[];
 
-// Snapshot read by the debug HUD. Null when no queue is currently running.
-export type StageState = {
-  queue: StageQueue;
-  index: number;
-  current: StageEntry | null;
-  pendingFilters: string[];
+// Per-run state for a stage. Created by `runStageQueue`, stashed on
+// `pool.stage` while the queue is running, cleared when the queue ends.
+export class StageState {
+  readonly queue: StageQueue;
+  index = 0;
+  current: StageEntry | null = null;
+  pendingFilters: string[] = [];
   // Audio time (seconds, from current track start) at which the previous
   // entry's action returned. Null at queue start, becomes null again after
   // a music switch entry until the new track is reported playing. Used by
   // the `audioGap(s)` filter to gate "N seconds since the last entry fired".
-  lastFireAudioTime: number | null;
+  lastFireAudioTime: number | null = null;
   // Audio time at which the *current* entry became the cursor (i.e. when
   // its filters started polling). Used by `trackEnded` to compute the next
   // loop-boundary >= this point — that boundary is fixed for the entry,
   // not chased forward as the entry waits.
-  currentEntryActivatedAt: number | null;
-};
+  currentEntryActivatedAt: number | null = null;
+  // Per-run scratchpad for scripts that need stage-scoped state — e.g. an
+  // intro dialogue that should fire at most once per stage even if multiple
+  // entities of the same kind spawn together. Cleared when the queue ends.
+  globals: Record<string, unknown> = {};
 
-let _state: StageState | null = null;
-
-export function getStageState(): StageState | null {
-  return _state;
-}
-
-// Find the next entry from the current cursor of the given kind, or null if
-// none remain. Used by the HUD to surface "next wave" / "next dialog" etc.
-export function nextEntryOfKind(kind: StageEntryKind): StageEntry | null {
-  if (!_state) return null;
-  for (let i = _state.index; i < _state.queue.length; i++) {
-    const entry = _state.queue[i];
-    if (entry && entry.kind === kind) return entry;
+  constructor(queue: StageQueue) {
+    this.queue = queue;
   }
-  return null;
+
+  // Find the next entry from the current cursor of the given kind, or null
+  // if none remain. Used by the HUD to surface "next wave" / "next dialog".
+  nextEntryOfKind(kind: StageEntryKind): StageEntry | null {
+    for (let i = this.index; i < this.queue.length; i++) {
+      const entry = this.queue[i];
+      if (entry && entry.kind === kind) return entry;
+    }
+    return null;
+  }
+
+  // Set-on-first-call guard. True the first time it's called for `key`
+  // within this stage run; false thereafter.
+  once(key: string): boolean {
+    if (this.globals[key]) return false;
+    this.globals[key] = true;
+    return true;
+  }
+
+  // Counter-based variant: true for the first `max` calls under `key`,
+  // false thereafter.
+  count(key: string, max: number): boolean {
+    const n = (this.globals[key] as number | undefined) ?? 0;
+    if (n >= max) return false;
+    this.globals[key] = n + 1;
+    return true;
+  }
 }
 
 // First entry of `kind` whose filters include an `audioTimeAtLeast` — used
@@ -85,21 +111,15 @@ export function audioTimeFromEntry(entry: StageEntry): number | null {
 }
 
 export function* runStageQueue(self: Entity, queue: StageQueue): Generator<ScriptYield, void, void> {
-  _state = {
-    queue,
-    index: 0,
-    current: null,
-    pendingFilters: [],
-    lastFireAudioTime: null,
-    currentEntryActivatedAt: null,
-  };
+  const state = new StageState(queue);
+  self.pool.stage = state;
   try {
     for (let i = 0; i < queue.length; i++) {
       const entry = queue[i];
       if (!entry) continue;
-      _state.index = i;
-      _state.current = entry;
-      _state.currentEntryActivatedAt = getMusicTime()?.time ?? null;
+      state.index = i;
+      state.current = entry;
+      state.currentEntryActivatedAt = getMusicTime()?.time ?? null;
 
       // Poll filters once per frame. Cheap, and matches the cadence of
       // existing frame-counted scripts. While a dialog is open, pool.update
@@ -109,9 +129,9 @@ export function* runStageQueue(self: Entity, queue: StageQueue): Generator<Scrip
       while (true) {
         const pending: string[] = [];
         for (const f of entry.filters) {
-          if (!f.ready(self)) pending.push(f.label);
+          if (!f.ready(self, state)) pending.push(f.label);
         }
-        _state.pendingFilters = pending;
+        state.pendingFilters = pending;
         if (pending.length === 0) break;
         yield 1;
       }
@@ -123,10 +143,10 @@ export function* runStageQueue(self: Entity, queue: StageQueue): Generator<Scrip
       // Stamp the audio clock for the next entry's audioGap. May be null if
       // music isn't playing (e.g. action was a music switch and the new
       // track hasn't started yet) — audioGap will block until music is up.
-      _state.lastFireAudioTime = getMusicTime()?.time ?? null;
+      state.lastFireAudioTime = getMusicTime()?.time ?? null;
     }
   } finally {
-    _state = null;
+    self.pool.stage = null;
   }
 }
 
@@ -148,6 +168,23 @@ export function* waitAudioSeconds(seconds: number): Generator<ScriptYield, void,
     if (cur === null || cur.time >= target) return;
     yield 1;
   }
+}
+
+// Helpers for entity scripts spawned mid-stage that aren't directly given
+// state — they fish it off the pool. Returns true when no stage is running
+// (demo waves spawn a single wave with no surrounding stage), so the demo
+// path still gets the full single-shot behaviour.
+
+export function checkStageOnce(self: Entity, key: string): boolean {
+  const state = self.pool.stage;
+  if (state === null) return true;
+  return state.once(key);
+}
+
+export function checkStageCount(self: Entity, key: string, max: number): boolean {
+  const state = self.pool.stage;
+  if (state === null) return true;
+  return state.count(key, max);
 }
 
 // --- filters ---------------------------------------------------------------
@@ -177,9 +214,9 @@ export const musicReady: StageFilter = {
 // for it to gate against and it would block forever.
 export const audioGap = (seconds: number): StageFilter => ({
   label: `+${seconds.toFixed(1)}s`,
-  ready: () => {
+  ready: (_self, state) => {
     const m = getMusicTime();
-    const last = _state?.lastFireAudioTime;
+    const last = state.lastFireAudioTime;
     if (last == null || m === null) return false;
     return m.time >= last + seconds;
   },
@@ -199,7 +236,7 @@ export const audioGap = (seconds: number): StageFilter => ({
 // safely added to the very first music entry of a stage.
 export const trackEnded: StageFilter = {
   label: 'track end',
-  ready: () => {
+  ready: (_self, state) => {
     const m = getMusicTime();
     if (m === null) return true;
     // One-shot tracks: ready when the sound's 'complete' event has fired.
@@ -207,7 +244,7 @@ export const trackEnded: StageFilter = {
     if (isMusicFinished() === true) return true;
     const info = getCurrentTrackInfo();
     if (info === null || info.loopDuration <= 0) return true;
-    const start = _state?.currentEntryActivatedAt;
+    const start = state.currentEntryActivatedAt;
     if (start == null) return true;
 
     let nextBoundary: number;

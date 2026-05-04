@@ -120,14 +120,6 @@ export class BootScene extends Phaser.Scene {
     const barX = cx - barW / 2;
     const barY = cy - barH / 2;
 
-    this.add
-      .text(cx, cy - 60, 'OFFICE HELL', {
-        color: '#ff5577',
-        fontSize: '36px',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
     this.loadingText = this.add
       .text(cx, cy - 24, 'loading…', {
         color: '#888888',

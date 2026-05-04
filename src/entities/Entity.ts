@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
+import { characterAnimKey, type Direction, directionFromVelocity } from '../content/animations';
 import { type DamageClass, type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import type { EntityPool } from './EntityPool';
+
+// Below this speed (px/sec) we treat the entity as standing still and switch
+// to the idle animation. moveTo and the boss script call setVelocity(0, 0)
+// exactly, so the threshold mainly guards against floating-point drift.
+const ANIM_MOVE_THRESHOLD = 1;
 
 export class Entity extends Phaser.Physics.Arcade.Sprite {
   // Phaser typings flag body as Body | StaticBody | null because GameObject
@@ -23,6 +29,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // Live damagedBy membership — initialised at spawn from kind or SpawnOpts override,
   // mutable at runtime via setDamagedByClasses (e.g. to make a boss hittable post-intro).
   activeDamagedBy: DamageClass[] = [];
+  // Last direction we picked for this entity. Persists across stop/start so a
+  // running enemy that pauses keeps facing the way it was going instead of
+  // snapping back to a default. Reset on spawn to match the initial velocity.
+  facing: Direction = 'down';
 
   setMotion(angleRad: number, speed: number): void {
     this.setVelocity(Math.cos(angleRad) * speed, Math.sin(angleRad) * speed);
@@ -100,6 +110,22 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // position — no physics interaction). Both effects gate on alive + gen
   // so an entity that dies or gets re-spawned mid-flash doesn't stomp the
   // new state.
+  // Pick the run/idle animation to play this frame. Default rule: run when
+  // moving, idle when stopped, direction inferred from current velocity.
+  // Bullets and other static-texture entities have no character anims
+  // registered for their sprite key, so the existence probe bails them out.
+  // Player overrides this to factor in whether enemies are on screen.
+  updateAnim(): void {
+    const sheet = this.kind.sprite;
+    if (sheet === null) return;
+    if (!this.scene.anims.exists(characterAnimKey(sheet, 'idle', 'down'))) return;
+    const v = this.body.velocity;
+    const moving = Math.hypot(v.x, v.y) > ANIM_MOVE_THRESHOLD;
+    if (moving) this.facing = directionFromVelocity(v.x, v.y);
+    const key = characterAnimKey(sheet, moving ? 'run' : 'idle', this.facing);
+    if (this.anims.currentAnim?.key !== key) this.play(key);
+  }
+
   flashDamage(): void {
     if (!this.alive || this.kind.sprite === null) return;
     const myGen = this.gen;

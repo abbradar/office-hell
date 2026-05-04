@@ -17,7 +17,7 @@ import {
   runStageQueue,
   type StageQueue,
   trackEnded,
-} from '../script/stageQueue';
+} from '../script/state';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';

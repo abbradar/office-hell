@@ -47,7 +47,7 @@ const CLOUD_SPREAD_B = Math.PI / 3;
 function* salesScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
-  self.say("Brew her some coffee. She's an important client.", 130);
+  self.say("Brew her some coffee.\nShe's an important client.", 130);
   yield 130;
   yield HOLD_AFTER_TALK;
 
@@ -100,7 +100,6 @@ function* clientScript(self: Entity) {
 
 export const sales = new EntityKind({
   sprite: 'sales',
-  animKey: 'sales_run_down',
   hitboxRadius: 13,
   hp: 57,
   damageClass: ['player'],
@@ -110,7 +109,6 @@ export const sales = new EntityKind({
 
 export const importantClient = new EntityKind({
   sprite: 'vip',
-  animKey: 'vip_run_down',
   hitboxRadius: 13,
   hp: 57,
   damageClass: ['player'],

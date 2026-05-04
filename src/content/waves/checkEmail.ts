@@ -1,6 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, ring } from '../../script/patterns';
+import { checkStageCount } from '../../script/state';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -38,7 +39,9 @@ function* checkEmailScript(self: Entity) {
   self.setVelocity(0, ENTRY_SPEED);
   yield Math.round(((ENTRY_Y + 30) / ENTRY_SPEED) * 60);
   self.setVelocity(0, 0);
-  self.say('Could you check\nthis email?', HOLD_FRAMES);
+  if (checkStageCount(self, 'checkEmailSayCount', 3)) {
+    self.say('Could you check\nthis email?', HOLD_FRAMES);
+  }
   yield HOLD_FRAMES;
 
   for (let i = 0; i < VOLLEYS; i++) {
@@ -53,7 +56,6 @@ function* checkEmailScript(self: Entity) {
 
 export const checkEmailCoworker = new EntityKind({
   sprite: 'checkEmail',
-  animKey: 'checkEmail_run_down',
   hitboxRadius: 12,
   hp: 14,
   damageClass: ['player'],

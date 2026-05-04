@@ -2,6 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
+import { checkStageOnce } from '../../script/state';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { questionBullet } from './questionBullet';
 
@@ -54,6 +55,18 @@ function* barrage(self: Entity): Generator<ScriptYield, void, void> {
 function* oversleeperScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
+  if (checkStageOnce(self, 'oversleeperIntroShown')) {
+    const ch = self.pool.player.character;
+    yield self.dialogue({
+      left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+      right: { sprite: 'overslept', frame: 1, name: 'Coworker' },
+      lines: [
+        { speaker: 'right', text: 'Damn, overslept a bit.' },
+        { speaker: 'left', text: "It's 9 PM." },
+      ],
+    });
+  }
+
   for (let i = 0; i < BARRAGES; i++) {
     if (!self.alive) return;
     self.say(QUESTIONS[i] ?? 'And then?', SAY_FRAMES);
@@ -67,7 +80,6 @@ function* oversleeperScript(self: Entity) {
 
 export const oversleeper = new EntityKind({
   sprite: 'overslept',
-  animKey: 'overslept_run_down',
   hitboxRadius: 12,
   hp: 22,
   damageClass: ['player'],

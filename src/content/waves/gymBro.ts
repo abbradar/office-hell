@@ -78,7 +78,6 @@ function* gymBroScript(self: Entity) {
 
 export const gymBro = new EntityKind({
   sprite: 'gymBro',
-  animKey: 'gymBro_run_down',
   hitboxRadius: 18,
   hp: 60,
   damageClass: ['player'],
