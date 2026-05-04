@@ -1,8 +1,4 @@
 import Phaser from 'phaser';
-import boss1Url from '../assets/sprites/boss1.png';
-import coworker1Url from '../assets/sprites/coworker1.png';
-import coworker2Url from '../assets/sprites/coworker2.png';
-import playerSpriteUrl from '../assets/sprites/player.png';
 import menuLoopUrl from '../assets/audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.ogg';
 import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
 import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
@@ -18,6 +14,10 @@ import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_ret
 import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
 import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
+import boss1Url from '../assets/sprites/boss1.png';
+import coworker1Url from '../assets/sprites/coworker1.png';
+import coworker2Url from '../assets/sprites/coworker2.png';
+import playerSpriteUrl from '../assets/sprites/player.png';
 import { initBuses } from '../audio/buses';
 import {
   CLICK_SFX_KEY,

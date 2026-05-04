@@ -17,8 +17,8 @@ import {
   enemiesClear,
   musicReady,
   runStageQueue,
-  screenClear,
   type StageQueue,
+  screenClear,
   trackEnded,
 } from '../script/stageQueue';
 import { EntityKind } from '../script/types';
