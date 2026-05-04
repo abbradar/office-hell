@@ -31,7 +31,11 @@ const BETWEEN_BARRAGES = 55;
 
 const SAY_FRAMES = 90;
 
-const QUESTIONS = ['Wait — what did I miss?', 'Any updates from the standup?', 'Just a quick recap?'] as const;
+const QUESTIONS = [
+  'Phew, got a nice sleep in the meeting room!',
+  'Any updates from the standup?',
+  'Just a quick recap?',
+] as const;
 
 function* barrage(self: Entity): Generator<ScriptYield, void, void> {
   // Lock heading at the start of the barrage. Each bullet then travels along
