@@ -3,6 +3,7 @@ import { hit } from '../audio/sfx/events';
 import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';
+import { characterAnimKey } from './animations';
 import type { CharacterDef } from './characters';
 
 export const PLAYER_HP = 2;
@@ -26,7 +27,9 @@ export class PlayerKind extends EntityKind {
   constructor(opts: PlayerKindOpts) {
     super({
       sprite: opts.character.sprite,
-      animKey: 'player_walk',
+      // Default loop is walk-down. Direction-aware switching can layer on top
+      // by calling the matching mcAnimKey(...) at the call site.
+      animKey: characterAnimKey(opts.character.sprite, 'run', 'down'),
       hitboxRadius: PLAYER_HITBOX_RADIUS,
       hp: PLAYER_HP,
       damageClass: [],

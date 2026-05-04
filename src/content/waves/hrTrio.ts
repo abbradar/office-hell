@@ -130,7 +130,7 @@ function makeHrScript(role: Role): EntityScript {
 
 export const hr = new EntityKind({
   sprite: 'hr',
-  animKey: 'hr_walk',
+  animKey: 'hr_run_down',
   hitboxRadius: 12,
   hp: 22,
   damageClass: ['player'],

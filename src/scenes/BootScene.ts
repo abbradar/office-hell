@@ -1,257 +1,113 @@
 import Phaser from 'phaser';
-import menuLoopUrl from '../assets/audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.ogg';
-import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
-import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
-import monsterIntroUrl from '../assets/audio/loops/monster_rpg/12okt.ogg';
-import monsterBattleUrl from '../assets/audio/loops/monster_rpg/battle.ogg';
-import monsterChaseUrl from '../assets/audio/loops/monster_rpg/chase.ogg';
-import monsterFinalBossUrl from '../assets/audio/loops/monster_rpg/final_boss.ogg';
-import stage1MetalLoopUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_loop.ogg';
-import stage1MetalOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_metal_opening.ogg';
-import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_loop.ogg';
-import stage1RetroOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_opening.ogg';
-import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_02_loop.ogg';
-import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
-import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
-import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
-import boss1Url from '../assets/sprites/boss1.png';
-import coworker1Url from '../assets/sprites/coworker1.png';
-import coworker2Url from '../assets/sprites/coworker2.png';
-import playerSpriteUrl from '../assets/sprites/player.png';
 import { initBuses } from '../audio/buses';
-import {
-  CLICK_SFX_KEY,
-  HURT_SFX_KEY,
-  KAEDALUS_LONG_KEY,
-  KAEDALUS_SHORT_KEY,
-  MENU_LOOP_KEY,
-  MONSTER_BATTLE_KEY,
-  MONSTER_CHASE_KEY,
-  MONSTER_FINAL_BOSS_KEY,
-  MONSTER_INTRO_KEY,
-  SHOOT_SFX_KEY,
-  STAGE1_METAL_LOOP_KEY,
-  STAGE1_METAL_OPENING_KEY,
-  STAGE1_RETRO_01_LOOP_KEY,
-  STAGE1_RETRO_02_LOOP_KEY,
-  STAGE1_RETRO_OPENING_KEY,
-} from '../audio/keys';
+import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop, setMusicManager } from '../audio/music/loop';
-import { setSoundManager, setVoiceCap } from '../audio/sfx/pool';
-import { BULLET_RADIUS, GAME_H, GAME_W } from '../config';
+import { configureVoiceCaps, preloadAudio } from '../audio/preload';
+import { setSoundManager } from '../audio/sfx/pool';
+import { GAME_H, GAME_W } from '../config';
+import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
+import { generateTextures } from '../content/textures';
+import { isTouchDevice } from '../input/device';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
 
-export const PLAYER_FRAME_W = 48;
-export const PLAYER_FRAME_H = 48;
-export const ENEMY_FRAME_W = 48;
-export const ENEMY_FRAME_H = 48;
-
 export class BootScene extends Phaser.Scene {
+  // Set in showLoadingUI() during preload(). Phaser guarantees preload runs
+  // before create(), so by the time anyone reads it the assignment is in.
+  private loadingText!: Phaser.GameObjects.Text;
+
   constructor() {
     super('Boot');
   }
 
   preload(): void {
+    // The loading screen is all `preload()` does now — the synchronous
+    // bullet/trash/corridor texture generation moved into `content/textures`,
+    // which runs as its own promise in `create()` so network requests get
+    // kicked off before we burn CPU on canvas draws.
     this.showLoadingUI();
-
-    this.load.spritesheet('player', playerSpriteUrl, {
-      frameWidth: PLAYER_FRAME_W,
-      frameHeight: PLAYER_FRAME_H,
-    });
-    this.load.spritesheet('coworker1', coworker1Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    this.load.spritesheet('coworker2', coworker2Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    this.load.spritesheet('boss1', boss1Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    // Sales & important-client placeholders — reuse coworker sheets until the
-    // custom character art for each lands. The keys are reserved so swapping
-    // in the real sprites is just changing these URLs.
-    this.load.spritesheet('sales', coworker1Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    this.load.spritesheet('importantClient', coworker2Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    this.load.spritesheet('gymBro', boss1Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    // Shrunk-old-man (stage boss "Mr. Hodges") placeholder until the retiree
-    // art lands.
-    this.load.spritesheet('shrunkOldMan', coworker2Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    // HR coordinator placeholder — reused for the bickering trio until the
-    // dedicated HR sheet lands.
-    this.load.spritesheet('hr', coworker1Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-    // IT Admin placeholder — reused coworker sheet until the sysop art lands.
-    this.load.spritesheet('itAdmin', coworker2Url, {
-      frameWidth: ENEMY_FRAME_W,
-      frameHeight: ENEMY_FRAME_H,
-    });
-
-    this.load.audio(MENU_LOOP_KEY, menuLoopUrl);
-    this.load.audio(CLICK_SFX_KEY, clickSfxUrl);
-    this.load.audio(SHOOT_SFX_KEY, shootSfxUrl);
-    this.load.audio(HURT_SFX_KEY, hurtSfxUrl);
-    this.load.audio(STAGE1_RETRO_OPENING_KEY, stage1RetroOpeningUrl);
-    this.load.audio(STAGE1_RETRO_01_LOOP_KEY, stage1Retro01LoopUrl);
-    this.load.audio(STAGE1_RETRO_02_LOOP_KEY, stage1Retro02LoopUrl);
-    this.load.audio(STAGE1_METAL_OPENING_KEY, stage1MetalOpeningUrl);
-    this.load.audio(STAGE1_METAL_LOOP_KEY, stage1MetalLoopUrl);
-    this.load.audio(KAEDALUS_LONG_KEY, kaedalusLongUrl);
-    this.load.audio(KAEDALUS_SHORT_KEY, kaedalusShortUrl);
-    this.load.audio(MONSTER_INTRO_KEY, monsterIntroUrl);
-    this.load.audio(MONSTER_BATTLE_KEY, monsterBattleUrl);
-    this.load.audio(MONSTER_CHASE_KEY, monsterChaseUrl);
-    this.load.audio(MONSTER_FINAL_BOSS_KEY, monsterFinalBossUrl);
-
-    preloadInputIcons(this);
-    preloadMuteIcons(this);
-
-    const g = this.add.graphics();
-
-    const bd = BULLET_RADIUS * 2;
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(BULLET_RADIUS, BULLET_RADIUS, BULLET_RADIUS);
-    g.generateTexture('bullet', bd, bd);
-    g.clear();
-
-    g.fillStyle(0x6cf0a8, 1);
-    g.fillRect(0, 0, 6, 14);
-    g.fillStyle(0xffffff, 1);
-    g.fillRect(1, 1, 4, 5);
-    g.generateTexture('playerBullet', 6, 14);
-    g.clear();
-
-    // Report bullet placeholder — paper-coloured rectangle with a darker border.
-    // Will be swapped for an actual paper sprite later.
-    const rw = 8;
-    const rh = 10;
-    g.fillStyle(0xc0b890, 1);
-    g.fillRect(0, 0, rw, rh);
-    g.fillStyle(0xf0e8d0, 1);
-    g.fillRect(1, 1, rw - 2, rh - 2);
-    g.generateTexture('reportBullet', rw, rh);
-    g.clear();
-
-    // Missed-call bullet placeholder — red square with a white core, to read as
-    // "phone notification" at a glance and stand out from the round white bullet.
-    // Will be swapped for an actual missed-call sprite later.
-    const mc = 8;
-    g.fillStyle(0xff5577, 1);
-    g.fillRect(0, 0, mc, mc);
-    g.fillStyle(0xffffff, 1);
-    g.fillRect(2, 2, mc - 4, mc - 4);
-    g.generateTexture('missedCall', mc, mc);
-    g.clear();
-
-    // Trash bin placeholder for the bomb effect — flat front-on can with a lid
-    // overhang and a few vertical ribs. Drawn high enough that the player can
-    // tell at a glance where their bullets are being yanked toward.
-    const tw = 36;
-    const th = 42;
-    g.fillStyle(0x222222, 1);
-    g.fillRect(4, 8, tw - 8, th - 8);
-    g.fillStyle(0x666666, 1);
-    g.fillRect(2, 8, tw - 4, th - 8);
-    g.fillStyle(0x888888, 1);
-    g.fillRect(0, 0, tw, 8);
-    g.fillStyle(0x4a4a4a, 1);
-    g.fillRect(9, 14, 2, th - 20);
-    g.fillRect(17, 14, 2, th - 20);
-    g.fillRect(25, 14, 2, th - 20);
-    g.generateTexture('trashBin', tw, th);
-    g.clear();
-
-    const cw = GAME_W;
-    const ch = 128;
-    g.fillStyle(0x1a1a28, 1);
-    g.fillRect(0, 0, cw, ch);
-    g.fillStyle(0x3a3a55, 1);
-    g.fillRect(0, 0, 40, ch);
-    g.fillRect(cw - 40, 0, 40, ch);
-    g.fillStyle(0x6262a0, 1);
-    g.fillRect(38, 0, 2, ch);
-    g.fillRect(cw - 40, 0, 2, ch);
-    g.fillStyle(0x303048, 1);
-    g.fillRect(40, 0, cw - 80, 2);
-    g.generateTexture('corridor', cw, ch);
-    g.clear();
-
-    const sw = GAME_W;
-    const sh = 256;
-    g.fillStyle(0xa0a8d0, 1);
-    for (let i = 0; i < 32; i++) {
-      g.fillRect(Phaser.Math.Between(48, sw - 48), Phaser.Math.Between(0, sh - 1), 2, 2);
-    }
-    g.fillStyle(0x8090c0, 0.7);
-    for (let i = 0; i < 24; i++) {
-      g.fillRect(Phaser.Math.Between(48, sw - 48), Phaser.Math.Between(0, sh - 1), 1, 1);
-    }
-    g.generateTexture('corridor_specks', sw, sh);
-
-    g.destroy();
   }
 
   create(): void {
-    this.anims.create({
-      key: 'player_walk',
-      frames: this.anims.generateFrameNumbers('player', { start: 0, end: 5 }),
-      frameRate: 10,
-      repeat: -1,
-    });
-
-    // Coworker / boss sheets are 3 cols × 6 rows of 48×48 (RPG-Maker style).
-    // Frames 0–2 are the south-facing walk cycle; ping-pong them with the
-    // standard 1-0-1-2 sequence for a smooth gait.
-    for (const key of [
-      'coworker1',
-      'coworker2',
-      'boss1',
-      'sales',
-      'importantClient',
-      'gymBro',
-      'shrunkOldMan',
-      'hr',
-      'itAdmin',
-    ]) {
-      this.anims.create({
-        key: `${key}_walk`,
-        frames: this.anims.generateFrameNumbers(key, { frames: [1, 0, 1, 2] }),
-        frameRate: 6,
-        repeat: -1,
-      });
-    }
-
     initBuses(this.sound);
     setSoundManager(this.sound);
     setMusicManager(this.sound);
-    setVoiceCap(CLICK_SFX_KEY, 4);
-    // Shoot fires hot during boss patterns + player auto-fire. The sample is
-    // ~250ms, peak concurrency is ~3-4 in normal play; a cap of 8 lets
-    // dense ring volleys stack without clipping the player's own shots.
-    setVoiceCap(SHOOT_SFX_KEY, 8);
+    configureVoiceCaps();
 
-    // 1s self-crossfade dissolves the loop seam; the menu sits open long
-    // enough that a hard wrap (even a sample-accurate one) gets perceptible.
-    playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
+    // Queue the heavy stuff (character sheets + gameplay audio) and kick the
+    // loader. Phaser is happy to run a second pass after preload — the
+    // existing PROGRESS handler refills the bar for this batch.
+    preloadCharacterSheets(this);
+    preloadAudio(this);
+    preloadInputIcons(this);
+    preloadMuteIcons(this);
+    this.load.start();
 
-    this.scene.start('Menu');
+    // Kick off dynamic-import of every other scene in parallel with the asset
+    // stream and the user-gesture wait. Vite splits each into its own chunk;
+    // the content/script modules they depend on tag along. Each scene
+    // registers itself as soon as its own chunk lands, instead of waiting on
+    // the slowest one in a single Promise.all batch.
+    const menuPromise = import('../scenes/MenuScene').then((m) => this.scene.add('Menu', m.MenuScene));
+    const gamePromise = import('../scenes/GameScene').then((m) => this.scene.add('Game', m.GameScene));
+    const endPromise = import('../scenes/EndScene').then((m) => this.scene.add('End', m.EndScene));
+    const testMenuPromise = import('../scenes/TestMenuScene').then((m) => this.scene.add('TestMenu', m.TestMenuScene));
+    const charSelectPromise = import('../scenes/CharacterSelectScene').then((m) =>
+      this.scene.add('CharacterSelect', m.CharacterSelectScene),
+    );
+
+    // Fonts are dynamic-imported too: the woff2 URL imports + FontFace
+    // registration code live in ui/fonts and would otherwise pin into the boot
+    // chunk. The loading-screen text uses the Phaser/system default font, so
+    // we don't need fonts to render the bar — just to keep MenuScene from
+    // measuring text against the wrong family.
+    const fontsPromise = import('../ui/fonts').then((m) => m.preloadFonts());
+
+    const assetsPromise = new Promise<void>((resolve, reject) => {
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+        try {
+          // Anims tie into spritesheets that just landed — register now.
+          registerAllCharacterAnims(this);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    // Texture generation last: it's pure CPU/canvas, so deferring it as a
+    // microtask lets the synchronous download kick-offs above get into flight
+    // before we start blocking on draws.
+    const texturesPromise = Promise.resolve().then(() => generateTextures(this));
+
+    Promise.all([
+      assetsPromise,
+      menuPromise,
+      gamePromise,
+      endPromise,
+      testMenuPromise,
+      charSelectPromise,
+      fontsPromise,
+      texturesPromise,
+    ]).then(() => {
+      const promptText = isTouchDevice ? 'tap to continue' : 'press any key or click to continue';
+      this.loadingText.setText(promptText);
+
+      const onGesture = () => {
+        // 1s self-crossfade dissolves the loop seam; the menu sits open long
+        // enough that a hard wrap (even a sample-accurate one) gets perceptible.
+        // Browsers also require a user gesture to unlock the AudioContext —
+        // this handler is that gesture, which is why we don't start the loop
+        // until the player presses something.
+        playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
+        this.scene.start('Menu');
+      };
+
+      // Register both — a laptop with a touch screen can produce either, and
+      // there's no harm in listening for both since we only fire once.
+      this.input.once(Phaser.Input.Events.POINTER_DOWN, onGesture);
+      this.input.keyboard?.once(Phaser.Input.Keyboard.Events.ANY_KEY_DOWN, onGesture);
+    });
   }
 
   private showLoadingUI(): void {
@@ -272,7 +128,7 @@ export class BootScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.add
+    this.loadingText = this.add
       .text(cx, cy - 24, 'loading…', {
         color: '#888888',
         fontSize: '14px',

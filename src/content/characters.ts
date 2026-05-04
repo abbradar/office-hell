@@ -8,21 +8,22 @@ export type CharacterDef = {
   frame: number;
 };
 
-// Both characters reuse the player sprite for now — the roster shape is what we want stable;
-// real per-character art (and stat differences) can swap in without touching the menu/select scene.
+// Two cosmetic skins, mechanically identical — same HP, same speed, same
+// firing. The roster exists so the player can pick a face; the blurb is
+// honest about the lack of difference.
 export const CHARACTERS: CharacterDef[] = [
   {
     id: 'female',
-    name: 'The Intern',
-    blurb: 'fresh blood, optimistic, shoots fast',
-    sprite: 'player',
+    name: 'Jane',
+    blurb: 'tired, miserable, no different from John',
+    sprite: 'mc_female',
     frame: 0,
   },
   {
     id: 'male',
-    name: 'The Veteran',
-    blurb: 'jaded, caffeinated, hits harder',
-    sprite: 'player',
+    name: 'John',
+    blurb: 'tired, miserable, no different from Jane',
+    sprite: 'mc_male',
     frame: 0,
   },
 ];

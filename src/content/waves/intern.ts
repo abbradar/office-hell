@@ -24,8 +24,8 @@ function makeInternScript(side: -1 | 1, talks: boolean): EntityScript {
 }
 
 export const intern = new EntityKind({
-  sprite: 'coworker1',
-  animKey: 'coworker1_walk',
+  sprite: 'checkEmail',
+  animKey: 'checkEmail_run_down',
   hitboxRadius: 11,
   hp: 2,
   damageClass: ['player'],

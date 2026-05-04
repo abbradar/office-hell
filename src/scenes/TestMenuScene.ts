@@ -284,6 +284,10 @@ export class TestMenuScene extends Phaser.Scene {
     }
     const wave = WAVES[target.index];
     if (!wave) return;
-    this.scene.start('CharacterSelect', { next: 'Game', nextData: { practice: wave } });
+    // Test menu always uses Jane (CHARACTERS[0], mc_female) — there's no
+    // mechanical difference between roster entries, so the character-select
+    // detour adds no value here.
+    this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
+    this.scene.start('Game', { practice: wave });
   }
 }

@@ -23,9 +23,13 @@ import {
 } from '../script/stageQueue';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
-import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
+import { bossOne } from './kinds';
+import { checkEmailCoworker } from './waves/checkEmail';
+import { colleague } from './waves/colleague';
+import { janitor } from './waves/janitor';
+import { oversleeper } from './waves/oversleeper';
 
-const PORTRAIT = { sprite: 'player', frame: 0, name: 'TEST' };
+const PORTRAIT = { sprite: 'mc_female', frame: 0, name: 'TEST' };
 
 const INTRO_DIALOG: DialogueOpts = {
   left: PORTRAIT,
@@ -44,24 +48,24 @@ const PRE_BOSS_DIALOG: DialogueOpts = {
 };
 
 function spawnWave1(self: Entity): void {
-  self.spawn(streamer, 80, -30, 0, 0);
-  self.spawn(streamer, GAME_W - 80, -30, 0, 0);
-  self.spawn(streamer, GAME_W * 0.5, -30, 0, 0);
+  self.spawn(checkEmailCoworker, 80, -30, 0, 0);
+  self.spawn(checkEmailCoworker, GAME_W - 80, -30, 0, 0);
+  self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0);
 }
 
 function spawnWave2(self: Entity): void {
-  self.spawn(fanShooter, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(fanShooter, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(oversleeper, GAME_W * 0.3, -30, 0, 0);
+  self.spawn(oversleeper, GAME_W * 0.7, -30, 0, 0);
 }
 
 function spawnWave3(self: Entity): void {
-  self.spawn(ringSpinner, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(ringSpinner, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
+  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
 }
 
 function spawnWave4(self: Entity): void {
-  self.spawn(driver, GAME_W * 0.25, -30, 0, 0);
-  self.spawn(driver, GAME_W * 0.75, -30, 0, 0);
+  self.spawn(colleague, -30, 240, 0, 0);
+  self.spawn(colleague, GAME_W + 30, 320, 0, 0);
 }
 
 const KAEDALUS_QUEUE: StageQueue = [

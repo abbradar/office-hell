@@ -17,19 +17,22 @@ import {
   runStageQueue,
   type StageQueue,
   trackEnded,
-  waitAudioSeconds,
 } from '../script/stageQueue';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
-import { bossOne, driver, fanShooter, ringSpinner, streamer } from './kinds';
-import { colleaguesWave } from './release/colleague';
-import { gymBroWave } from './release/gymBro';
-import { hrTrioWave } from './release/hrTrio';
-import { internsWave } from './release/intern';
-import { itAdminsWave } from './release/itAdmin';
-import { janitorsWave } from './release/janitor';
-import { salesClientWave } from './release/salesClient';
-import { shrunkOldManWave } from './release/shrunkOldMan';
+import { bossOne } from './kinds';
+import { checkEmailWave } from './waves/checkEmail';
+import { colleaguesWave } from './waves/colleague';
+import { fridayPartyWave } from './waves/fridayParty';
+import { gymBroWave } from './waves/gymBro';
+import { hrTrioWave } from './waves/hrTrio';
+import { internsWave } from './waves/intern';
+import { itAdminsWave } from './waves/itAdmin';
+import { janitorsWave } from './waves/janitor';
+import { oversleeperWave } from './waves/oversleeper';
+import { salesClientWave } from './waves/salesClient';
+import { shrunkOldManWave } from './waves/shrunkOldMan';
+import { vacationPhotosWave } from './waves/vacationPhotos';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -65,38 +68,6 @@ export function clearScreen(self: Entity): void {
   }
 }
 
-// Internal wave pacing is in audio seconds *relative to the wave's own start*.
-// `waitAudioSeconds` captures the music time on entry and yields until that
-// target elapses; in practice mode (no music) it falls back to a frame yield
-// at 60fps, preserving the original frame counts.
-function* wave1(self: Entity): Generator<ScriptYield, void, void> {
-  for (let i = 0; i < 3; i++) {
-    self.spawn(streamer, 80, -30, 0, 0);
-    yield* waitAudioSeconds(0.58); // was: yield 35
-    self.spawn(streamer, GAME_W - 80, -30, 0, 0);
-    yield* waitAudioSeconds(0.58); // was: yield 35
-  }
-}
-
-function* wave2(self: Entity): Generator<ScriptYield, void, void> {
-  for (let i = 0; i < 3; i++) {
-    self.spawn(fanShooter, GAME_W * (0.3 + (i % 2) * 0.4), -30, 0, 0);
-    yield* waitAudioSeconds(1.17); // was: yield 70
-  }
-}
-
-function* wave3(self: Entity): Generator<ScriptYield, void, void> {
-  self.spawn(ringSpinner, GAME_W * 0.3, -30, 0, 0);
-  yield* waitAudioSeconds(0.5); // was: yield 30
-  self.spawn(ringSpinner, GAME_W * 0.7, -30, 0, 0);
-}
-
-// biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
-function* wave4(self: Entity): Generator<ScriptYield, void, void> {
-  self.spawn(driver, GAME_W * 0.25, -30, 0, 0);
-  self.spawn(driver, GAME_W * 0.75, -30, 0, 0);
-}
-
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   // Don't open the encounter while wave-4 leftovers are still on screen.
   // Wait for enemies to clear, sweep in-flight bullets, brief beat, then bring on
@@ -119,17 +90,17 @@ export type WaveDef = {
 
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
-  { id: 'w1', name: 'Wave 1 — Streamers', script: wave1 },
-  { id: 'w2', name: 'Wave 2 — Fan shooters', script: wave2 },
-  { id: 'w3', name: 'Wave 3 — Ring spinners', script: wave3 },
-  { id: 'w4', name: 'Wave 4 — Drivers', script: wave4 },
-  { id: 'r-interns', name: 'Release — Interns', script: internsWave },
-  { id: 'r-janitor', name: 'Release — Janitor', script: janitorsWave },
-  { id: 'r-colleagues', name: 'Release — Colleagues', script: colleaguesWave },
-  { id: 'r-sales-client', name: 'Release — Sales & Client', script: salesClientWave },
-  { id: 'r-hr-trio', name: 'Release — HR Trio', script: hrTrioWave },
-  { id: 'r-it-admin', name: 'Release — IT Admin', script: itAdminsWave },
-  { id: 'r-gym-bro', name: 'Release — Gym Bro', script: gymBroWave },
+  { id: 'r-interns', name: 'Interns', script: internsWave },
+  { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
+  { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
+  { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
+  { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
+  { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },
+  { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
+  { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },
+  { id: 'r-vacation-photos', name: 'Vacation Photos', script: vacationPhotosWave },
+  { id: 'r-gym-bro', name: 'Gym Bro', script: gymBroWave },
+  { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
   { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
@@ -215,28 +186,30 @@ const STAGE_QUEUE: StageQueue = [
     action: () => playMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY),
   },
 
+  // Picks below are placeholders — easy to swap when you've decided which
+  // release waves should actually fill these slots.
   {
     name: 'wave 1',
     kind: 'spawn',
     filters: [musicReady],
     action: function* (self) {
-      yield* wave1(self);
+      yield* internsWave(self);
     },
   },
   {
     name: 'wave 2',
     kind: 'spawn',
-    filters: [audioGap(2.5)], // was: yield 150 between waves
+    filters: [audioGap(2.5)],
     action: function* (self) {
-      yield* wave2(self);
+      yield* checkEmailWave(self);
     },
   },
   {
     name: 'wave 3',
     kind: 'spawn',
-    filters: [audioGap(3.0)], // was: yield 180
+    filters: [audioGap(3.0)],
     action: function* (self) {
-      yield* wave3(self);
+      yield* colleaguesWave(self);
     },
   },
 
@@ -255,7 +228,7 @@ const STAGE_QUEUE: StageQueue = [
     kind: 'spawn',
     filters: [musicReady],
     action: function* (self) {
-      yield* wave4(self);
+      yield* vacationPhotosWave(self);
     },
   },
 

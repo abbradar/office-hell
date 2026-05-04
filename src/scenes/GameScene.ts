@@ -228,8 +228,7 @@ export class GameScene extends Phaser.Scene {
     const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
 
     const state = getStageState();
-    let nextPart = '';
-    let blockedPart = '';
+    const secondLineParts: string[] = [];
     if (state) {
       const nextSpawn = nextEntryOfKind('spawn');
       const nextDialog = nextEntryOfKind('dialog');
@@ -238,14 +237,14 @@ export class GameScene extends Phaser.Scene {
       if (nextEntry) {
         const at = audioTimeFromEntry(nextEntry);
         const atStr = at !== null ? `@${at.toFixed(1)}s` : '';
-        nextPart = `  next: ${nextEntry.name} ${atStr}`.trimEnd();
+        secondLineParts.push(`next: ${nextEntry.name} ${atStr}`.trimEnd());
       }
       if (state.pendingFilters.length > 0) {
-        blockedPart = `  blocked: ${state.pendingFilters.join(', ')}`;
+        secondLineParts.push(`blocked: ${state.pendingFilters.join(', ')}`);
       }
     }
 
-    return `${trackPart}${nextPart}${blockedPart}`;
+    return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }
 }
 

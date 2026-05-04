@@ -56,8 +56,8 @@ function* janitorScript(self: Entity) {
 }
 
 export const janitor = new EntityKind({
-  sprite: 'coworker2',
-  animKey: 'coworker2_walk',
+  sprite: 'janitor',
+  animKey: 'janitor_run_down',
   hitboxRadius: 12,
   hp: 24,
   damageClass: ['player'],

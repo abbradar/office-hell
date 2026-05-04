@@ -100,7 +100,7 @@ function* clientScript(self: Entity) {
 
 export const sales = new EntityKind({
   sprite: 'sales',
-  animKey: 'sales_walk',
+  animKey: 'sales_run_down',
   hitboxRadius: 13,
   hp: 57,
   damageClass: ['player'],
@@ -109,8 +109,8 @@ export const sales = new EntityKind({
 });
 
 export const importantClient = new EntityKind({
-  sprite: 'importantClient',
-  animKey: 'importantClient_walk',
+  sprite: 'vip',
+  animKey: 'vip_run_down',
   hitboxRadius: 13,
   hp: 57,
   damageClass: ['player'],

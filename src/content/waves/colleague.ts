@@ -38,8 +38,8 @@ function* colleagueScript(self: Entity) {
 }
 
 export const colleague = new EntityKind({
-  sprite: 'coworker2',
-  animKey: 'coworker2_walk',
+  sprite: 'sales',
+  animKey: 'sales_run_down',
   hitboxRadius: 12,
   hp: 12,
   damageClass: ['player'],

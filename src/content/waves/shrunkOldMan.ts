@@ -54,7 +54,7 @@ function* shrunkOldManScript(self: Entity) {
   const ch = self.pool.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    right: { sprite: 'shrunkOldMan', frame: 1, name: 'Mr. Hodges' },
+    right: { sprite: 'geezer', frame: 1, name: 'Mr. Hodges' },
     lines: [
       { speaker: 'right', text: 'Excuse me… do you have a minute?' },
       { speaker: 'left', text: 'Who are you?' },
@@ -110,8 +110,8 @@ function* shrunkOldManScript(self: Entity) {
 }
 
 export const shrunkOldMan = new EntityKind({
-  sprite: 'shrunkOldMan',
-  animKey: 'shrunkOldMan_walk',
+  sprite: 'geezer',
+  animKey: 'geezer_run_down',
   hitboxRadius: 16,
   hp: 72,
   damageClass: ['player'],
