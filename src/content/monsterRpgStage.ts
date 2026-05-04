@@ -10,21 +10,20 @@
 // going silent if the player reads slowly.
 //
 // Two boss tiers exercise the looping side: chase plays under boss 1, then
-// final_boss takes over for boss 2. Both snap on `trackEnded` so the
+// final_boss takes over for boss 2. Both snap via `waitTrackEnded` so the
 // loop-to-loop hand-off lands on a musical seam.
 
 import { MONSTER_BATTLE_KEY, MONSTER_CHASE_KEY, MONSTER_FINAL_BOSS_KEY, MONSTER_INTRO_KEY } from '../audio/keys';
-import { playMusicLoop } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
-  audioGap,
-  enemiesClear,
-  musicReady,
-  runStageQueue,
-  type StageQueue,
-  screenClear,
-  trackEnded,
+  markBeat,
+  runStage,
+  startMusicLoop,
+  waitEnemiesClear,
+  waitScreenClear,
+  waitSeconds,
+  waitTrackEnded,
 } from '../script/state';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
@@ -76,104 +75,68 @@ function spawnWave4(self: Entity): void {
   self.spawn(colleague, GAME_W + 30, 320, 0, 0);
 }
 
-const MONSTER_QUEUE: StageQueue = [
-  // Intro fanfare (12okt, 9.6s) loops while the opening dialog is open so
-  // the player isn't reading in silence if they're slow. battle takes over
-  // immediately once the dialog closes — no `trackEnded` gate, the runner
-  // just unblocks from the dialog yield and fires the next entry.
-  {
-    name: 'intro music',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicLoop(MONSTER_INTRO_KEY),
-  },
-  {
-    name: 'intro dialog',
-    kind: 'dialog',
-    filters: [],
-    action: function* (self) {
-      yield self.dialogue(INTRO_DIALOG);
-    },
-  },
+function* monsterRpgBody(self: Entity) {
+  // Intro fanfare (12okt, 9.6s) loops while the opening dialog is open
+  // so the player isn't reading in silence if they're slow. Battle
+  // theme takes over immediately once the dialog closes.
+  markBeat(self, 'intro music');
+  yield* startMusicLoop(MONSTER_INTRO_KEY);
+  markBeat(self, 'intro dialog');
+  yield self.dialogue(INTRO_DIALOG);
 
-  // Battle theme (one-shot, 2:37). Waves run during it; spaced loosely so
-  // the 4-wave block fits well inside the runtime.
-  {
-    name: 'battle music',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicLoop(MONSTER_BATTLE_KEY, { loop: false }),
-  },
-  { name: 'wave 1', kind: 'spawn', filters: [musicReady], action: spawnWave1 },
-  { name: 'wave 2', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave2 },
-  { name: 'wave 3', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave3 },
-  { name: 'wave 4', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave4 },
+  // Battle theme (one-shot, 2:37). Waves run during it; spaced loosely
+  // so the 4-wave block fits well inside the runtime.
+  markBeat(self, 'battle music');
+  yield* startMusicLoop(MONSTER_BATTLE_KEY, { loop: false });
 
-  // Boss 1: chase loop kicks in when the battle theme runs out (or the
-  // field is clear, whichever is later — both filters apply).
-  {
-    name: 'pre-boss 1 dialog',
-    kind: 'dialog',
-    filters: [trackEnded, enemiesClear],
-    action: function* (self) {
-      yield self.dialogue(PRE_BOSS1_DIALOG);
-    },
-  },
-  {
-    name: 'chase music',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicLoop(MONSTER_CHASE_KEY),
-  },
-  {
-    name: 'boss 1',
-    kind: 'spawn',
-    filters: [musicReady],
-    action: function* (self) {
-      // Reuse Mr. Hodges as a mid-tier boss (he's in waves/ already).
-      const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
-        damagedByClass: [],
-      });
-      yield { until: boss };
-    },
-  },
+  markBeat(self, 'wave 1');
+  spawnWave1(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 2');
+  spawnWave2(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 3');
+  spawnWave3(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 4');
+  spawnWave4(self);
 
-  // Boss 2: final_boss loop. Snap to chase's next boundary on the swap.
-  {
-    name: 'pre-boss 2 dialog',
-    kind: 'dialog',
-    filters: [enemiesClear],
-    action: function* (self) {
-      yield self.dialogue(PRE_BOSS2_DIALOG);
-    },
-  },
-  {
-    name: 'final_boss music',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicLoop(MONSTER_FINAL_BOSS_KEY),
-  },
-  {
-    name: 'boss 2',
-    kind: 'spawn',
-    filters: [musicReady],
-    action: function* (self) {
-      const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-        damagedByClass: [],
-      });
-      yield { until: boss };
-    },
-  },
+  // Boss 1: chase loop kicks in when the battle theme runs out and the
+  // field is clear. Battle theme being one-shot means `waitTrackEnded`
+  // fires on actual completion; then wait for residual enemies.
+  markBeat(self, 'pre-boss 1 dialog');
+  yield* waitTrackEnded();
+  yield* waitEnemiesClear(self);
+  yield self.dialogue(PRE_BOSS1_DIALOG);
 
-  {
-    name: 'end',
-    kind: 'misc',
-    filters: [screenClear],
-    action: (self) => {
-      self.scene.scene.start('End', { won: true });
-    },
-  },
-];
+  markBeat(self, 'chase music');
+  yield* startMusicLoop(MONSTER_CHASE_KEY);
+
+  markBeat(self, 'boss 1');
+  // Reuse Mr. Hodges as a mid-tier boss (he's in waves/ already).
+  const boss1 = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
+    damagedByClass: [],
+  });
+  yield { until: boss1 };
+
+  // Boss 2: final_boss loop.
+  markBeat(self, 'pre-boss 2 dialog');
+  yield* waitEnemiesClear(self);
+  yield self.dialogue(PRE_BOSS2_DIALOG);
+
+  markBeat(self, 'final_boss music');
+  yield* startMusicLoop(MONSTER_FINAL_BOSS_KEY);
+
+  markBeat(self, 'boss 2');
+  const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+    damagedByClass: [],
+  });
+  yield { until: boss2 };
+
+  markBeat(self, 'end');
+  yield* waitScreenClear(self);
+  self.scene.scene.start('End', { won: true });
+}
 
 export const stageMonsterRpg = new EntityKind({
   sprite: null,
@@ -181,5 +144,5 @@ export const stageMonsterRpg = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStageQueue(self, MONSTER_QUEUE),
+  defaultScript: (self) => runStage(self, monsterRpgBody),
 });

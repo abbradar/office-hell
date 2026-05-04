@@ -1,7 +1,31 @@
 import type { Entity } from '../entities/Entity';
 import type { DialogueOpts } from '../ui/dialogue';
 
-export type ScriptYield = number | { until: Entity } | { dialogue: DialogueOpts };
+// Yield kinds that don't open a sub-race. Used as the return type of a
+// racing generator — a race's loss/wakeup trigger is computed by the
+// inner and must itself be a leaf wait (no nested race) so the runner
+// has a finite, recursion-free trigger to install on the parent.
+export type NonRaceYield =
+  | number
+  | { until: Entity }
+  | { dialogue: DialogueOpts }
+  // Wait for the currently-playing track's natural completion (one-shot
+  // `complete` event). Resolves immediately when no track is playing or
+  // the active track has already finished. Loop tracks never complete
+  // and should not yield this — use `waitTrackEnded` which routes loops
+  // through a polling boundary computation instead.
+  | { untilMusicEnds: true };
+
+export type ScriptYield =
+  | NonRaceYield
+  // Race a sub-generator against a parent-side wait. `race` is the inner
+  // generator (does its own work, yielding any ScriptYield); `trigger`
+  // is a leaf wait installed on the parent in parallel. Whichever
+  // resolves first wakes the parent; the loser is cancelled via the
+  // engine's generation-bump mechanism. Pure cancellation — no result
+  // channel; callers infer outcome from world state.
+  | { race: Generator<ScriptYield, void, void>; trigger: NonRaceYield };
+
 export type EntityScript = (self: Entity) => Generator<ScriptYield, void, void>;
 
 export const DAMAGE_CLASSES = ['player', 'enemy'] as const;

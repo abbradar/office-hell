@@ -4,22 +4,21 @@
 // one as the boss-fight loop.
 //
 // The narrative cue is the music itself: when the long version yields to
-// the short, the boss appears. The hand-off is gated on `trackEnded` so
-// the swap snaps to the long track's natural loop boundary instead of
+// the short, the boss appears. The hand-off is gated by `waitTrackEnded`
+// so the swap snaps to the long track's natural loop boundary instead of
 // cutting mid-phrase.
 
 import { KAEDALUS_LONG_KEY, KAEDALUS_SHORT_KEY } from '../audio/keys';
-import { playMusicLoop } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
-  audioGap,
-  enemiesClear,
-  musicReady,
-  runStageQueue,
-  type StageQueue,
-  screenClear,
-  trackEnded,
+  markBeat,
+  runStage,
+  startMusicLoop,
+  waitEnemiesClear,
+  waitScreenClear,
+  waitSeconds,
+  waitTrackEnded,
 } from '../script/state';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
@@ -68,68 +67,49 @@ function spawnWave4(self: Entity): void {
   self.spawn(colleague, GAME_W + 30, 320, 0, 0);
 }
 
-const KAEDALUS_QUEUE: StageQueue = [
-  // Music kicks in immediately, intro dialog plays over it. trackEnded on
-  // the music entry returns true (no track yet), so the switch is instant.
-  {
-    name: 'long music',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicLoop(KAEDALUS_LONG_KEY),
-  },
-  {
-    name: 'intro dialog',
-    kind: 'dialog',
-    filters: [musicReady],
-    action: function* (self) {
-      yield self.dialogue(INTRO_DIALOG);
-    },
-  },
+function* kaedalusBody(self: Entity) {
+  // Music kicks in immediately, intro dialog plays over it.
+  markBeat(self, 'long music');
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
 
-  // A handful of waves while the long track plays — paced so all four can
-  // fit comfortably inside one iteration of the long loop (~3:36).
-  { name: 'wave 1', kind: 'spawn', filters: [audioGap(2.0)], action: spawnWave1 },
-  { name: 'wave 2', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave2 },
-  { name: 'wave 3', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave3 },
-  { name: 'wave 4', kind: 'spawn', filters: [audioGap(8.0)], action: spawnWave4 },
+  markBeat(self, 'intro dialog');
+  yield self.dialogue(INTRO_DIALOG);
+
+  // A handful of waves while the long track plays — paced so all four
+  // can fit comfortably inside one iteration of the long loop (~3:36).
+  yield* waitSeconds(2.0);
+  markBeat(self, 'wave 1');
+  spawnWave1(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 2');
+  spawnWave2(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 3');
+  spawnWave3(self);
+  yield* waitSeconds(8.0);
+  markBeat(self, 'wave 4');
+  spawnWave4(self);
 
   // Pre-boss beat: wait for the field to clear, deliver the cue dialog,
   // then snap the music switch to the long loop's next boundary.
-  {
-    name: 'pre-boss dialog',
-    kind: 'dialog',
-    filters: [enemiesClear],
-    action: function* (self) {
-      yield self.dialogue(PRE_BOSS_DIALOG);
-    },
-  },
-  {
-    name: 'short music',
-    kind: 'music',
-    filters: [trackEnded],
-    action: () => playMusicLoop(KAEDALUS_SHORT_KEY),
-  },
-  {
-    name: 'boss',
-    kind: 'spawn',
-    filters: [musicReady],
-    action: function* (self) {
-      const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-        damagedByClass: [],
-      });
-      yield { until: boss };
-    },
-  },
+  markBeat(self, 'pre-boss dialog');
+  yield* waitEnemiesClear(self);
+  yield self.dialogue(PRE_BOSS_DIALOG);
 
-  {
-    name: 'end',
-    kind: 'misc',
-    filters: [screenClear],
-    action: (self) => {
-      self.scene.scene.start('End', { won: true });
-    },
-  },
-];
+  markBeat(self, 'short music');
+  yield* waitTrackEnded();
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+
+  markBeat(self, 'boss');
+  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+    damagedByClass: [],
+  });
+  yield { until: boss };
+
+  markBeat(self, 'end');
+  yield* waitScreenClear(self);
+  self.scene.scene.start('End', { won: true });
+}
 
 export const stageKaedalus = new EntityKind({
   sprite: null,
@@ -137,5 +117,5 @@ export const stageKaedalus = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStageQueue(self, KAEDALUS_QUEUE),
+  defaultScript: (self) => runStage(self, kaedalusBody),
 });

@@ -117,7 +117,7 @@ is `number | { until: Entity } | { dialogue: DialogueOpts }`:
 
 Stage queue actions can be either a sync function or one of these
 generators. For audio-time waits inside an action, prefer
-`yield* waitAudioSeconds(s)` from
+`yield* waitSeconds(s)` from
 [src/script/state.ts](src/script/state.ts) over `yield N` —
 it falls back to frame yields in practice mode where music isn't playing.
 

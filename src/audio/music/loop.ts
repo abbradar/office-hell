@@ -37,14 +37,19 @@ type LoopState = {
   intro: Phaser.Sound.BaseSound | null;
   // Active timer for the next ping-pong wrap, only set on crossfaded loops.
   scheduled: ReturnType<typeof setTimeout> | null;
-  // True for tracks started with `loop: false`. Read by the `trackEnded`
-  // filter so it can fire the moment the one-shot finishes (rather than
-  // chasing a never-arriving loop boundary).
+  // True for tracks started with `loop: false`. Consumers (`waitTrackEnded`,
+  // `onceMusicComplete`) branch on this so they can fire the moment the
+  // one-shot finishes rather than chasing a never-arriving loop boundary.
   oneShot: boolean;
   // Set to true by the sound's 'complete' handler when a one-shot finishes.
   // `getMusicTime()` keeps returning post-complete time (so audio-time gates
-  // resolve naturally), but `trackEnded` and `oneShotFinished` flip true.
+  // resolve naturally), but `isMusicFinished()` flips true.
   finished: boolean;
+  // One-shot completion listeners. Fired exactly once each, at the moment
+  // the underlying sound's COMPLETE event lands. Cleared on track swap so a
+  // listener registered against the previous track never fires for a later
+  // one. Empty for loop-mode tracks — they never complete naturally.
+  onComplete: (() => void)[];
 };
 
 let current: LoopState | null = null;
@@ -68,8 +73,8 @@ export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?
   const loop = opts.loop ?? true;
 
   if (!loop) {
-    // One-shot: play through once and stop. trackEnded fires when the sound
-    // completes; current.key + getMusicTime() stay live so subsequent
+    // One-shot: play through once and stop. `waitTrackEnded` fires when the
+    // sound completes; current.key + getMusicTime() stay live so subsequent
     // entries can still gate against this track's clock if they want.
     playOneShot(key, volume);
   } else if (crossfadeMs <= 0) {
@@ -92,7 +97,15 @@ function playLoopSimple(key: string, volume: number): void {
   if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, start);
   else start();
 
-  current = { key, sounds: [sound], intro: null, scheduled: null, oneShot: false, finished: false };
+  current = {
+    key,
+    sounds: [sound],
+    intro: null,
+    scheduled: null,
+    oneShot: false,
+    finished: false,
+    onComplete: [],
+  };
 }
 
 function playOneShot(key: string, volume: number): void {
@@ -108,14 +121,19 @@ function playOneShot(key: string, volume: number): void {
     scheduled: null,
     oneShot: true,
     finished: false,
+    onComplete: [],
   };
 
-  // Mark finished on natural end so trackEnded can fire. We don't tear the
+  // Mark finished on natural end so waiters can fire. We don't tear the
   // state down — getMusicTime() keeps reporting (now-stalled) time so any
-  // audio-time filter on a *next* entry resolves cleanly until the next
-  // playMusicLoop call replaces this state.
+  // audio-time wait on a *next* entry resolves cleanly until the next
+  // playMusicLoop call replaces this state. Fire and clear listeners.
   sound.once(Phaser.Sound.Events.COMPLETE, () => {
-    if (current === state) state.finished = true;
+    if (current !== state) return;
+    state.finished = true;
+    const listeners = state.onComplete;
+    state.onComplete = [];
+    for (const cb of listeners) cb();
   });
 
   const start = (): void => {
@@ -150,6 +168,7 @@ function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): v
     scheduled: null,
     oneShot: false,
     finished: false,
+    onComplete: [],
   };
 
   const playPing = (): void => {
@@ -200,7 +219,7 @@ export function playMusicWithIntro(introKey: string, loopKey: string, opts: { vo
     // intro started — gapless given Vorbis sources.
     loop.play({ delay: intro.totalDuration });
     // Clock starts when the user hears music begin (= intro start), so a
-    // schedule like `audioTimeAtLeast(8)` fires 8s after the fanfare begins,
+    // schedule like `waitAudioTimeAtLeast(8)` fires 8s after the fanfare begins,
     // not 8s after the loop takes over.
     trackStartCtxTime = musicBus?.context.currentTime ?? null;
   };
@@ -217,14 +236,31 @@ export function playMusicWithIntro(introKey: string, loopKey: string, opts: { vo
     scheduled: null,
     oneShot: false,
     finished: false,
+    onComplete: [],
   };
+}
+
+// Register a one-shot listener for the active track's natural completion.
+// Fires immediately if no track is playing or the active track has already
+// finished. For loop-mode tracks the callback is dropped on the next track
+// swap (loops never complete naturally, so consumers should branch via
+// `getCurrentTrackInfo().oneShot` before calling this).
+export function onceMusicComplete(cb: () => void): void {
+  if (!current) {
+    cb();
+    return;
+  }
+  if (current.finished) {
+    cb();
+    return;
+  }
+  current.onComplete.push(cb);
 }
 
 // Has the active track finished playing? Returns false for looping tracks
 // (they never finish), true for one-shots whose 'complete' event has fired,
-// null when no track is active. Read by the stage queue's `trackEnded`
-// filter so a one-shot music entry can naturally gate the next entry on
-// "music has run out".
+// null when no track is active. Used by `waitTrackEnded` to short-circuit
+// when the one-shot has already wrapped up.
 export function isMusicFinished(): boolean | null {
   if (!current) return null;
   return current.finished;
@@ -241,6 +277,10 @@ export function stopMusicLoop(): void {
     current.intro.stop();
     current.intro.destroy();
   }
+  // Drop any unfired completion listeners — they were tied to *this* track.
+  // A new track's listeners go on the new state's onComplete; old ones must
+  // not fire when the next one-shot's COMPLETE event lands.
+  current.onComplete = [];
   current = null;
   trackStartCtxTime = null;
 }
@@ -256,17 +296,20 @@ export function getMusicTime(): { key: string; time: number } | null {
 }
 
 // Durations of the active track's intro (one-shot, plays once) and loop body
-// (loop: true, repeats indefinitely). Used by the stage-queue `trackEnded`
-// filter to compute the next loop-boundary timestamp so music switches snap
-// to a clean musical break instead of cutting mid-bar.
+// (loop: true, repeats indefinitely), plus a `oneShot` flag for tracks
+// started via `{ loop: false }`. Used by `waitTrackEnded` to compute the
+// next loop-boundary timestamp (loops) or branch to one-shot completion
+// (oneShot tracks) so music switches snap to a clean break instead of
+// cutting mid-bar.
 //
 // `introDuration` is 0 when the active track was started via playMusicLoop
 // (no intro segment). Returns null when no track is active.
-export function getCurrentTrackInfo(): { introDuration: number; loopDuration: number } | null {
+export function getCurrentTrackInfo(): { introDuration: number; loopDuration: number; oneShot: boolean } | null {
   if (!current) return null;
   return {
     introDuration: current.intro?.totalDuration ?? 0,
     loopDuration: current.sounds[0]?.totalDuration ?? 0,
+    oneShot: current.oneShot,
   };
 }
 

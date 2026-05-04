@@ -12,7 +12,6 @@ import { EntityPool } from '../entities/EntityPool';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
-import { audioTimeFromEntry, type StageEntry } from '../script/state';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -234,29 +233,8 @@ export class GameScene extends Phaser.Scene {
 
     const state = this.pool.stage;
     const secondLineParts: string[] = [];
-    if (state) {
-      const nextSpawn = state.nextEntryOfKind('spawn');
-      const nextDialog = state.nextEntryOfKind('dialog');
-      // Pick whichever is sooner by audio-time gate. Either may be null.
-      const nextEntry = pickSooner(nextSpawn, nextDialog);
-      if (nextEntry) {
-        const at = audioTimeFromEntry(nextEntry);
-        const atStr = at !== null ? `@${at.toFixed(1)}s` : '';
-        secondLineParts.push(`next: ${nextEntry.name} ${atStr}`.trimEnd());
-      }
-      if (state.pendingFilters.length > 0) {
-        secondLineParts.push(`blocked: ${state.pendingFilters.join(', ')}`);
-      }
-    }
+    if (state?.beat) secondLineParts.push(`beat: ${state.beat}`);
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }
-}
-
-function pickSooner(a: StageEntry | null, b: StageEntry | null): StageEntry | null {
-  if (!a) return b;
-  if (!b) return a;
-  const at = audioTimeFromEntry(a) ?? Number.POSITIVE_INFINITY;
-  const bt = audioTimeFromEntry(b) ?? Number.POSITIVE_INFINITY;
-  return at <= bt ? a : b;
 }

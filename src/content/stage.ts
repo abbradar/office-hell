@@ -5,18 +5,18 @@ import {
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
-import { playMusicLoop, playMusicWithIntro } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
-  audioGap,
-  enemiesClear,
-  firstLive,
-  musicReady,
-  runStageQueue,
-  type StageQueue,
-  trackEnded,
+  markBeat,
+  runStage,
+  startMusicLoop,
+  startMusicWithIntro,
+  waitEnemiesClear,
+  waitScreenClear,
+  waitSeconds,
+  waitTrackEnded,
 } from '../script/state';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
@@ -38,26 +38,6 @@ const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
 const PLAYER_OUTRO_EXIT_Y = -60;
 
-// Wait until every non-player entity (enemies and their bullets) has died or
-// left the play field — i.e. damages.player is empty of live entries.
-export function* waitForScreenCleared(self: Entity): Generator<ScriptYield, void, void> {
-  while (true) {
-    const e = firstLive(self.pool.damages.player);
-    if (!e) return;
-    yield { until: e };
-  }
-}
-
-// Wait until every enemy has died or left the screen. Bullets in flight are
-// not considered — the dedicated damagedBy.enemy group has only enemy entities.
-export function* waitForEnemiesCleared(self: Entity): Generator<ScriptYield, void, void> {
-  while (true) {
-    const e = firstLive(self.pool.damagedBy.enemy);
-    if (!e) return;
-    yield { until: e };
-  }
-}
-
 // Kill every non-player entity outright. die() only flips the alive flag and
 // fires onDeath; group cleanup happens later in pool.update, so we can iterate
 // the live children list directly.
@@ -73,7 +53,7 @@ function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   // Wait for enemies to clear, sweep in-flight bullets, brief beat, then bring on
   // the boss. He spawns unhittable (damagedByClass override) — his own script
   // handles entry, dialogue, and re-enabling damage after the dialogue ends.
-  yield* waitForEnemiesCleared(self);
+  yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
   const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
@@ -152,136 +132,67 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
   p.controlsEnabled = true;
 }
 
-// Top-level stage as a declarative queue. Order is the queue's order; gating
-// is in `filters`; what happens is in `action`. Inter-wave gaps use
-// `audioGap(s)` (audio-time-based) instead of frame counts so the schedule
-// is synced to the music. Music switches are themselves entries — the
-// per-track audio clock resets, so subsequent gaps are measured against the
-// new track's start.
-//
-// Frame yields still appear inside the actions for the *pre-music* beats
-// (intro pause, post-boss pause, etc.) — those run before / outside any
-// music context, so audio time isn't meaningful there.
-const STAGE_QUEUE: StageQueue = [
+// Top-level stage script. Sequential composition via `yield*`. Inter-wave
+// gaps use `waitSeconds(s)` (audio-time-based) so the schedule is
+// synced to music. Music switches are explicit `yield* startMusicLoop(...)`
+// calls — those yield until the requested track is ticking, so the next
+// step can assume music is up. Frame yields still appear in the pre/post
+// music beats where audio time isn't meaningful.
+function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
-  // No music yet, so frame yields are appropriate.
-  {
-    name: 'intro',
-    kind: 'dialog',
-    filters: [],
-    action: function* (self) {
-      self.pool.player.controlsEnabled = false;
-      yield 30; // 0.5s before monologue
-      yield* introMonologue(self);
-      yield 30; // 0.5s after monologue
-    },
-  },
+  markBeat(self, 'intro');
+  self.pool.player.controlsEnabled = false;
+  yield 30;
+  yield* introMonologue(self);
+  yield 30;
 
-  // Music kicks in: retro opening fanfare → loop. Wave 1 waits on musicReady
-  // so it spawns in time with the first downbeat of the loop.
-  {
-    name: 'music: retro 01',
-    kind: 'music',
-    filters: [],
-    action: () => playMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY),
-  },
+  // Retro opening fanfare → retro 01 loop. `startMusicWithIntro` yields
+  // until the track is actually ticking, so the wave below sees music up.
+  markBeat(self, 'music: retro 01');
+  yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
 
-  // Picks below are placeholders — easy to swap when you've decided which
-  // release waves should actually fill these slots.
-  {
-    name: 'wave 1',
-    kind: 'spawn',
-    filters: [musicReady],
-    action: function* (self) {
-      yield* internsWave(self);
-    },
-  },
-  {
-    name: 'wave 2',
-    kind: 'spawn',
-    filters: [audioGap(2.5)],
-    action: function* (self) {
-      yield* checkEmailWave(self);
-    },
-  },
-  {
-    name: 'wave 3',
-    kind: 'spawn',
-    filters: [audioGap(3.0)],
-    action: function* (self) {
-      yield* colleaguesWave(self);
-    },
-  },
+  markBeat(self, 'wave 1');
+  yield* internsWave(self);
+  yield* waitSeconds(2.5);
+  markBeat(self, 'wave 2');
+  yield* checkEmailWave(self);
+  yield* waitSeconds(3.0);
+  markBeat(self, 'wave 3');
+  yield* colleaguesWave(self);
 
-  // Halfway pivot to retro 02 — gap measured against retro 01's clock,
-  // then the new track's clock is what subsequent entries see. `trackEnded`
-  // snaps the swap to the next loop iteration end so the cut lands on a
-  // musical seam rather than mid-bar.
-  {
-    name: 'music: retro 02',
-    kind: 'music',
-    filters: [trackEnded],
-    action: () => playMusicLoop(STAGE1_RETRO_02_LOOP_KEY),
-  },
-  {
-    name: 'wave 4',
-    kind: 'spawn',
-    filters: [musicReady],
-    action: function* (self) {
-      yield* vacationPhotosWave(self);
-    },
-  },
+  // Halfway pivot — snap the music switch to the next loop boundary so
+  // the cut lands on a musical seam rather than mid-bar.
+  markBeat(self, 'music: retro 02');
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
+  markBeat(self, 'wave 4');
+  yield* vacationPhotosWave(self);
 
   // Mid-stage boss — internal script waits for field to clear, then plays
-  // its own dialogue + attack loop. The next entry (boss music) gates on
-  // his death via enemiesClear (his death drops him from damagedBy.enemy).
-  {
-    name: 'mr. hodges',
-    kind: 'spawn',
-    filters: [],
-    action: function* (self) {
-      yield* shrunkOldManWave(self);
-    },
-  },
+  // its own dialogue + attack loop. The metal music switch below gates on
+  // his death via waitEnemiesClear.
+  markBeat(self, 'mr. hodges');
+  yield* shrunkOldManWave(self);
 
-  {
-    name: 'music: metal',
-    kind: 'music',
-    filters: [enemiesClear, trackEnded],
-    action: () => playMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY),
-  },
-  {
-    name: 'final boss',
-    kind: 'spawn',
-    filters: [],
-    action: function* (self) {
-      yield* bossWave(self);
-    },
-  },
+  markBeat(self, 'music: metal');
+  yield* waitEnemiesClear(self);
+  yield* waitTrackEnded();
+  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+
+  markBeat(self, 'final boss');
+  yield* bossWave(self);
 
   // Outro: brief pause, sweep stragglers, brief pause, player exits.
-  // Frame yields again — by this point music is moot.
-  {
-    name: 'outro',
-    kind: 'dialog',
-    filters: [],
-    action: function* (self) {
-      yield 30; // 0.5s after boss death
-      clearScreen(self);
-      yield 30; // 0.5s before outro starts
-      yield* playerOutro(self);
-    },
-  },
+  markBeat(self, 'outro');
+  yield 30;
+  clearScreen(self);
+  yield 30;
+  yield* playerOutro(self);
 
-  {
-    name: 'end',
-    kind: 'misc',
-    filters: [],
-    action: (self) => {
-      self.scene.scene.start('End', { won: true });
-    },
-  },
-];
+  markBeat(self, 'end');
+  self.scene.scene.start('End', { won: true });
+}
 
 export const stage = new EntityKind({
   sprite: null,
@@ -289,7 +200,7 @@ export const stage = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStageQueue(self, STAGE_QUEUE),
+  defaultScript: (self) => runStage(self, stageBody),
 });
 
 export function makeWaveStage(wave: WaveDef): EntityKind {
@@ -298,7 +209,7 @@ export function makeWaveStage(wave: WaveDef): EntityKind {
     yield* wave.script(self);
     // Wait until everything non-player has cleared the field naturally before
     // handing back to the menu.
-    yield* waitForScreenCleared(self);
+    yield* waitScreenClear(self);
     self.scene.scene.start('TestMenu');
   }
   return new EntityKind({

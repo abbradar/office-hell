@@ -1,9 +1,10 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, arc, ring } from '../../script/patterns';
+import { waitEnemiesClear } from '../../script/state';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
-import { clearScreen, waitForEnemiesCleared } from '../stage';
+import { clearScreen } from '../stage';
 
 // Gym Bro (Brad): a stage boss who's desperate to leave the office early
 // because he's convinced his muscles are shrinking. Entrance and dialogue
@@ -89,7 +90,7 @@ export const gymBro = new EntityKind({
 // field, beat, then drop the boss in spawned-unhittable so his own script
 // can run entry + dialogue before becoming damageable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
-  yield* waitForEnemiesCleared(self);
+  yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
   const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {

@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { onceMusicComplete } from '../audio/music/loop';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import type { StageState } from '../script/state';
@@ -12,7 +13,42 @@ import type { Player } from './Player';
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
 type ScriptIter = Generator<ScriptYield, void, void>;
-type Wait = { framesLeft: number; entity: Entity; iter: ScriptIter };
+
+// One running generator instance plus the bookkeeping the engine needs to
+// route wakeups, races, and cancellations to the right iter.
+//
+// Lifecycle:
+//   - `generation` is bumped by `callIter` (each advance) and by `drop`
+//     (cancellation propagation). Wakeup reasons capture this at
+//     registration; on fire, mismatch = "the script moved on" → silent
+//     drop. That's the universal cancellation channel.
+//   - `racedParent` / `racedParentGeneration` set if this script is the
+//     inner of a `withTimeout` race. On natural completion the inner's
+//     done-handler calls back into `callIter(parent)` and the snapshot
+//     guards against the parent having moved on already.
+//   - `racedChild` set if this script is the outer of a race. On any
+//     advance of the outer that is *not* the inner-finishes path,
+//     `callIter` drops the child first — that's how a timeout (or any
+//     other path that wakes the outer) cancels the inner exactly once.
+type SceneScript = {
+  iter: ScriptIter;
+  entity: Entity;
+  generation: number;
+  racedParent: SceneScript | null;
+  racedParentGeneration: number;
+  racedChild: SceneScript | null;
+};
+
+// A parked iter scheduled to be advanced when its frame countdown hits
+// zero. Carries a `scheduledGeneration` snapshot — at fire time the
+// wakeup is dropped silently if the script's generation has moved on
+// (cancelled, advanced via another path, etc.).
+type Wait = {
+  framesLeft: number;
+  entity: Entity;
+  script: SceneScript;
+  scheduledGeneration: number;
+};
 
 export class EntityPool {
   readonly scene: Phaser.Scene;
@@ -34,15 +70,16 @@ export class EntityPool {
   // boss's own script — the pool/HUD don't infer it from entity state.
   bossName: string | null = null;
   // Live state for the currently-running stage queue, or null when no stage
-  // is running. Owned and managed by `runStageQueue`; surfaced on the pool
+  // is running. Owned and managed by `runStage`; surfaced on the pool
   // so wave scripts spawned mid-stage (which only see `self`) can reach it
   // via `self.pool.stage`, and so the GameScene HUD has a stable read point.
   stage: StageState | null = null;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
-  // Unsorted: each tick we walk the whole list, decrement, fire entries that hit zero.
-  // At most one entry per entity (a script's only suspended on one thing at a time).
+  // Unsorted: each tick we walk the whole list, decrement, fire entries that
+  // hit zero. An entity may have multiple entries simultaneously (e.g. a
+  // race carries the inner's wait and a separate timer wait on the outer).
   private readonly waiting: Wait[] = [];
 
   constructor(scene: Phaser.Scene) {
@@ -122,57 +159,145 @@ export class EntityPool {
     e.updateAnim();
 
     const script = opts.script ?? kind.defaultScript ?? null;
-    if (script) this.schedule(e, script(e), 1);
+    if (script) this.scheduleIter(this.makeScript(script(e), e), 1);
 
     this.active.push(e);
     return e;
   }
 
-  private schedule(e: Entity, iter: ScriptIter, framesLeft: number): void {
-    this.waiting.push({ framesLeft, entity: e, iter });
+  private makeScript(iter: ScriptIter, entity: Entity): SceneScript {
+    return {
+      iter,
+      entity,
+      generation: 0,
+      racedParent: null,
+      racedParentGeneration: 0,
+      racedChild: null,
+    };
   }
 
-  // Drop any pending wait entry for this entity. Used by the bomb to tear off
-  // a bullet's running script before grafting on the "fly to bin" script —
-  // otherwise the original homing/sweeping script would keep mutating velocity
-  // and override the new motion.
+  private scheduleIter(script: SceneScript, framesLeft: number): void {
+    this.waiting.push({
+      framesLeft,
+      entity: script.entity,
+      script,
+      scheduledGeneration: script.generation,
+    });
+  }
+
+  // Drop ALL pending wait entries for this entity. Used by the bomb to tear
+  // off a bullet's running script before grafting on the "fly to bin" script
+  // — otherwise the original homing/sweeping script would keep mutating
+  // velocity. Also used by `release` to cull an entity's parked work.
   stopScript(e: Entity): void {
+    let write = 0;
     for (let i = 0; i < this.waiting.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
-      if (this.waiting[i]!.entity === e) {
-        const last = this.waiting.length - 1;
-        // biome-ignore lint/style/noNonNullAssertion: lastW is waiting.length - 1
-        if (i !== last) this.waiting[i] = this.waiting[last]!;
-        this.waiting.pop();
-        return;
-      }
+      const w = this.waiting[i]!;
+      if (w.entity !== e) this.waiting[write++] = w;
     }
+    this.waiting.length = write;
   }
 
   // Start a script on an already-spawned entity. Pair with stopScript first if
   // the entity might already have one running.
   runScript(e: Entity, script: EntityScript): void {
-    this.schedule(e, script(e), 1);
+    this.scheduleIter(this.makeScript(script(e), e), 1);
   }
 
-  private advance(e: Entity, iter: ScriptIter): void {
-    const r = iter.next();
-    if (r.done) return;
-    if (typeof r.value === 'number') {
-      this.schedule(e, iter, Math.max(0, r.value | 0) + 1);
-    } else if ('dialogue' in r.value) {
-      this.beginDialogue(r.value.dialogue, e, iter);
-    } else if (r.value.until.alive) {
-      const gen = e.gen;
-      r.value.until.onDeath(() => {
-        if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
-      });
-    } else {
-      this.schedule(e, iter, 1);
+  // Cancel a script and propagate down its race chain. Bumps `generation`
+  // so any in-flight wakeups (frame waits, race timers, death callbacks)
+  // see staleness on fire and silently drop. Recurses into `racedChild` so
+  // a nested race tree is taken down in one pass.
+  private drop(script: SceneScript): void {
+    script.generation++;
+    const child = script.racedChild;
+    if (child) {
+      script.racedChild = null;
+      this.drop(child);
     }
   }
 
-  private beginDialogue(opts: DialogueOpts, e: Entity, iter: ScriptIter): void {
+  // The single advance path. Bumps generation, calls into the iter, and
+  // routes the result. If the script holds a `racedChild` (i.e. it's the
+  // outer of a race) we drop the child first — that's how every wake of
+  // the outer except "inner just finished" cancels the inner. The
+  // inner-finished path clears `racedChild` *before* calling back into
+  // `callIter(parent)`, so this drop step finds nothing and is a noop.
+  private callIter(script: SceneScript): void {
+    if (script.racedChild !== null) {
+      const child = script.racedChild;
+      script.racedChild = null;
+      this.drop(child);
+    }
+    script.generation++;
+    const r = script.iter.next();
+    if (r.done) {
+      const parent = script.racedParent;
+      if (parent !== null) {
+        script.racedParent = null;
+        if (parent.racedChild === script) parent.racedChild = null;
+        if (parent.entity.alive && parent.generation === script.racedParentGeneration) {
+          this.callIter(parent);
+        }
+      }
+      return;
+    }
+    this.processYield(script, r.value);
+  }
+
+  private processYield(script: SceneScript, v: ScriptYield): void {
+    if (typeof v === 'number') {
+      this.scheduleIter(script, Math.max(0, v | 0) + 1);
+    } else if ('dialogue' in v) {
+      this.beginDialogue(v.dialogue, script);
+    } else if ('until' in v) {
+      if (v.until.alive) {
+        const scheduledGen = script.generation;
+        v.until.onDeath(() => {
+          if (script.entity.alive && script.generation === scheduledGen) {
+            this.scheduleIter(script, 1);
+          }
+        });
+      } else {
+        this.scheduleIter(script, 1);
+      }
+    } else if ('untilMusicEnds' in v) {
+      const scheduledGen = script.generation;
+      onceMusicComplete(() => {
+        if (script.entity.alive && script.generation === scheduledGen) {
+          this.scheduleIter(script, 1);
+        }
+      });
+    } else if ('race' in v) {
+      this.beginRace(v.race, v.trigger, script);
+    }
+  }
+
+  private beginRace(innerIter: ScriptIter, trigger: ScriptYield, parent: SceneScript): void {
+    const inner: SceneScript = {
+      iter: innerIter,
+      entity: parent.entity,
+      generation: 0,
+      racedParent: parent,
+      racedParentGeneration: parent.generation,
+      racedChild: null,
+    };
+    parent.racedChild = inner;
+    // Run inner immediately rather than parking it for a frame — saves
+    // the round-trip and keeps timing snappy. If inner happens to finish
+    // on its first step the inner-done path will have cleared
+    // `parent.racedChild` and advanced parent past the race yield; we
+    // then skip installing the trigger so we don't open a phantom wait
+    // (e.g. a dialog box that nobody's parked on) for a parent that has
+    // already moved on.
+    this.callIter(inner);
+    if (parent.racedChild === inner) {
+      this.processYield(parent, trigger);
+    }
+  }
+
+  private beginDialogue(opts: DialogueOpts, script: SceneScript): void {
     // Hard pause: scripts freeze (paused = true short-circuits pool.update)
     // and Phaser physics is paused globally so all bodies — including the
     // player — sit still. GameScene also gates player input on pool.paused
@@ -180,11 +305,13 @@ export class EntityPool {
     this.paused = true;
     this.scene.physics.pause();
 
-    const gen = e.gen;
+    const scheduledGen = script.generation;
     this.dialogue.start(opts, () => {
       this.paused = false;
       this.scene.physics.resume();
-      if (e.alive && e.gen === gen) this.schedule(e, iter, 1);
+      if (script.entity.alive && script.generation === scheduledGen) {
+        this.scheduleIter(script, 1);
+      }
     });
   }
 
@@ -202,17 +329,13 @@ export class EntityPool {
     for (const c of e.kind.damageClass) this.damages[c].remove(e);
     for (const c of e.activeDamagedBy) this.damagedBy[c].remove(e);
 
-    // Drop a pending wait entry for this entity, so a stale iter can't fire on a reborn entity.
-    for (let i = 0; i < this.waiting.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
-      if (this.waiting[i]!.entity === e) {
-        const lastW = this.waiting.length - 1;
-        // biome-ignore lint/style/noNonNullAssertion: lastW is waiting.length - 1
-        if (i !== lastW) this.waiting[i] = this.waiting[lastW]!;
-        this.waiting.pop();
-        break;
-      }
-    }
+    // Drop ALL pending wait entries for this entity. Race-tree scripts
+    // parked outside `waiting` (outer of a race) form an island via
+    // racedParent/racedChild and become unreferenced once their inner's
+    // wait is purged here — GC takes them. Death-callback closures on
+    // other entities check `script.entity.alive` and short-circuit, so
+    // even closures we can't reach from `waiting` no-op.
+    this.stopScript(e);
 
     e.alive = false;
     e.onDeathQueue = null;
@@ -243,8 +366,11 @@ export class EntityPool {
       w.framesLeft--;
       if (w.framesLeft > 0) {
         this.waiting[write++] = w;
-      } else if (w.entity.alive) {
-        this.advance(w.entity, w.iter);
+      } else if (w.entity.alive && w.script.generation === w.scheduledGeneration) {
+        // Fire iff the script hasn't been advanced or dropped since we
+        // captured the snapshot at scheduling. Stale wakeups silently
+        // expire — that's the universal cancellation channel.
+        this.callIter(w.script);
       }
     }
     for (let read = originalLen; read < this.waiting.length; read++) {
