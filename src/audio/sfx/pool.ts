@@ -20,10 +20,7 @@ export function setVoiceCap(key: string, cap: number): void {
 
 const DEFAULT_CAP = 8;
 
-export function playPooled(
-  key: string,
-  options: Phaser.Types.Sound.SoundConfig = {},
-): Phaser.Sound.BaseSound | null {
+export function playPooled(key: string, options: Phaser.Types.Sound.SoundConfig = {}): Phaser.Sound.BaseSound | null {
   if (!_sm) return null;
   const cap = voiceCaps[key] ?? DEFAULT_CAP;
   const cur = voiceCounts[key] ?? 0;

@@ -57,10 +57,7 @@ let trackStartCtxTime: number | null = null;
 
 const DEFAULT_VOL = 0.5;
 
-export function playMusicLoop(
-  key: string,
-  opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {},
-): void {
+export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {}): void {
   if (!_sm) return;
   if (current?.key === key) return;
   stopMusicLoop();
@@ -182,11 +179,7 @@ function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): v
   current = state;
 }
 
-export function playMusicWithIntro(
-  introKey: string,
-  loopKey: string,
-  opts: { volume?: number } = {},
-): void {
+export function playMusicWithIntro(introKey: string, loopKey: string, opts: { volume?: number } = {}): void {
   if (!_sm) return;
   if (current?.key === loopKey) return;
   stopMusicLoop();

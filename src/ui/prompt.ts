@@ -17,13 +17,7 @@
 // call site rather than overloading the template syntax.
 
 import type Phaser from 'phaser';
-import {
-  getInputIcon,
-  iconTextureKey,
-  type InputAction,
-  type InputIcon,
-  nearestIconRenderSize,
-} from './inputIcons';
+import { getInputIcon, type InputAction, type InputIcon, iconTextureKey, nearestIconRenderSize } from './inputIcons';
 
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
@@ -37,9 +31,7 @@ const MIN_ICON_PX = 22;
 // "iconographic" and should pop next to text, not sit at x-height.
 const DEFAULT_ICON_RATIO = 1.6;
 
-type Segment =
-  | { kind: 'text'; text: string }
-  | { kind: 'icons'; icons: InputIcon[] };
+type Segment = { kind: 'text'; text: string } | { kind: 'icons'; icons: InputIcon[] };
 
 function parseLine(line: string): Segment[] {
   const out: Segment[] = [];

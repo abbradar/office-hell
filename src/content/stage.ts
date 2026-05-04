@@ -65,7 +65,6 @@ export function clearScreen(self: Entity): void {
   }
 }
 
-
 // Internal wave pacing is in audio seconds *relative to the wave's own start*.
 // `waitAudioSeconds` captures the music time on entry and yields until that
 // target elapses; in practice mode (no music) it falls back to a frame yield

@@ -84,10 +84,7 @@ export function audioTimeFromEntry(entry: StageEntry): number | null {
   return null;
 }
 
-export function* runStageQueue(
-  self: Entity,
-  queue: StageQueue,
-): Generator<ScriptYield, void, void> {
+export function* runStageQueue(self: Entity, queue: StageQueue): Generator<ScriptYield, void, void> {
   _state = {
     queue,
     index: 0,

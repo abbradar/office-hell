@@ -13,12 +13,7 @@
 // final_boss takes over for boss 2. Both snap on `trackEnded` so the
 // loop-to-loop hand-off lands on a musical seam.
 
-import {
-  MONSTER_BATTLE_KEY,
-  MONSTER_CHASE_KEY,
-  MONSTER_FINAL_BOSS_KEY,
-  MONSTER_INTRO_KEY,
-} from '../audio/keys';
+import { MONSTER_BATTLE_KEY, MONSTER_CHASE_KEY, MONSTER_FINAL_BOSS_KEY, MONSTER_INTRO_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
@@ -27,8 +22,8 @@ import {
   enemiesClear,
   musicReady,
   runStageQueue,
-  screenClear,
   type StageQueue,
+  screenClear,
   trackEnded,
 } from '../script/stageQueue';
 import { EntityKind } from '../script/types';
@@ -48,16 +43,12 @@ const INTRO_DIALOG: DialogueOpts = {
 
 const PRE_BOSS1_DIALOG: DialogueOpts = {
   left: PORTRAIT,
-  lines: [
-    { speaker: 'left', text: 'Battle theme finished — chase loop kicks in for boss 1.' },
-  ],
+  lines: [{ speaker: 'left', text: 'Battle theme finished — chase loop kicks in for boss 1.' }],
 };
 
 const PRE_BOSS2_DIALOG: DialogueOpts = {
   left: PORTRAIT,
-  lines: [
-    { speaker: 'left', text: 'Boss 1 down — final_boss loop for the closer.' },
-  ],
+  lines: [{ speaker: 'left', text: 'Boss 1 down — final_boss loop for the closer.' }],
 };
 
 function spawnWave1(self: Entity): void {
