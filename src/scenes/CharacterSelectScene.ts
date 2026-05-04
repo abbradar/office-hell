@@ -106,9 +106,11 @@ export class CharacterSelectScene extends Phaser.Scene {
       });
       kb.on('keydown-Z', () => this.confirm());
       kb.on('keydown-ENTER', () => this.confirm());
-      kb.on('keydown-BACKSPACE', () => {
+      const goBack = (): void => {
         this.scene.start('Menu');
-      });
+      };
+      kb.on('keydown-BACKSPACE', goBack);
+      kb.on('keydown-ESC', goBack);
     }
 
     this.refresh();

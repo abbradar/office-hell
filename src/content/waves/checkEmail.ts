@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, ring } from '../../script/patterns';
-import { checkStageCount } from '../../script/state';
+import { checkStageOnce } from '../../script/state';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -39,7 +39,7 @@ function* checkEmailScript(self: Entity) {
   self.setVelocity(0, ENTRY_SPEED);
   yield Math.round(((ENTRY_Y + 30) / ENTRY_SPEED) * 60);
   self.setVelocity(0, 0);
-  if (checkStageCount(self, 'checkEmailSayCount', 3)) {
+  if (checkStageOnce(self, 'checkEmailShown')) {
     self.say('Could you check\nthis email?', HOLD_FRAMES);
   }
   yield HOLD_FRAMES;

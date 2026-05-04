@@ -32,11 +32,7 @@ const BETWEEN_BARRAGES = 55;
 
 const SAY_FRAMES = 90;
 
-const QUESTIONS = [
-  'Phew, got a nice sleep in the meeting room!',
-  'Any updates from the standup?',
-  'Just a quick recap?',
-] as const;
+const QUESTIONS = ['Any updates from the standup?', 'Just a quick recap?'] as const;
 
 function* barrage(self: Entity): Generator<ScriptYield, void, void> {
   // Lock heading at the start of the barrage. Each bullet then travels along
@@ -69,7 +65,8 @@ function* oversleeperScript(self: Entity) {
 
   for (let i = 0; i < BARRAGES; i++) {
     if (!self.alive) return;
-    self.say(QUESTIONS[i] ?? 'And then?', SAY_FRAMES);
+    const line = QUESTIONS[i];
+    if (line) self.say(line, SAY_FRAMES);
     yield 35;
     yield* barrage(self);
     yield BETWEEN_BARRAGES;

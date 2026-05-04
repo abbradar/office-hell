@@ -23,7 +23,10 @@ const ENTRY_Y = 110;
 const BARRAGES = 3;
 const SAY_FRAMES = 90;
 const PRE_FIRE_GAP = 30;
-const POST_FIRE_GAP = 55;
+// Each role talks once per SAY_CYCLE; three roles staggered by SAY_FRAMES means
+// the nine bubbles play back-to-back with no overlap and no gap.
+const SAY_CYCLE = 3 * SAY_FRAMES;
+const POST_FIRE_GAP = SAY_CYCLE - PRE_FIRE_GAP;
 
 const PHOTO_COUNT = 11;
 const PHOTO_SPEED = 140;
@@ -67,13 +70,14 @@ export const vacationItaly = new EntityKind({
   damagedByClass: ['enemy'],
 });
 
-// Demo wave: three colleagues spread across the top — left, right, then centre
-// — each running her own dialogue track so by the time #3 starts firing the
-// first two are mid-monologue and their half-circles overlap.
+// Demo wave: three colleagues spread across the top — left, right, then centre.
+// Spawn gaps equal SAY_FRAMES so the role offset propagates into the say
+// schedule: after the identical entry move each role starts saying SAY_FRAMES
+// after the previous one, and their per-role SAY_CYCLE keeps them in lockstep.
 export function* vacationPhotosWave(self: Entity): Generator<ScriptYield, void, void> {
   self.spawn(vacationItaly, GAME_W * 0.25, -30, 0, 0, { script: makeVacationScript(0) });
-  yield 50;
+  yield SAY_FRAMES;
   self.spawn(vacationItaly, GAME_W * 0.75, -30, 0, 0, { script: makeVacationScript(1) });
-  yield 80;
+  yield SAY_FRAMES;
   self.spawn(vacationItaly, GAME_W * 0.5, -30, 0, 0, { script: makeVacationScript(2) });
 }

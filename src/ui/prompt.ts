@@ -67,6 +67,44 @@ function fontSizePx(style: Style): number {
   return 16;
 }
 
+// Pixel fonts (Press Start 2P, Silkscreen) leave generous descender padding
+// even though uppercase prompts ("START", "PRACTICE") use no descenders, so
+// Text.height extends well below the visible glyph. With setOrigin(0, 0.5)
+// the bbox *center* lands at yPos but the visible glyph center sits below
+// it — and a square icon centered at yPos ends up looking too high next to
+// the text. To compensate, measure the visible cap-mid for the style and
+// shift icons down by the delta. Cached per (family, weight, size).
+const capMidOffsetCache = new Map<string, number>();
+
+function capMidOffset(style: Style): number {
+  const family = style.fontFamily ?? 'sans-serif';
+  const px = fontSizePx(style);
+  const weight = style.fontStyle ?? '';
+  const sig = `${weight}|${family}|${px}`;
+  const cached = capMidOffsetCache.get(sig);
+  if (cached !== undefined) return cached;
+  if (typeof document === 'undefined') return 0;
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return 0;
+  ctx.font = `${weight} ${px}px ${family}`.trim();
+  ctx.textBaseline = 'alphabetic';
+  // 'M' has no descender and a clean cap-top — its actualBoundingBox gives
+  // a tight visual bound on uppercase glyph height.
+  const cap = ctx.measureText('M');
+  // Phaser's Text uses '|MÉqgy' to size its bbox (covers ascenders + descenders).
+  // Match that here so we're comparing against the same height the prompt sees.
+  const full = ctx.measureText('|MÉqgy');
+  const ascent = full.actualBoundingBoxAscent ?? 0;
+  const descent = full.actualBoundingBoxDescent ?? 0;
+  const capAscent = cap.actualBoundingBoxAscent ?? ascent;
+  // bbox center (baseline-relative, +down): (descent - ascent) / 2
+  // cap-mid (baseline-relative, +down):     -capAscent / 2
+  // offset (cap-mid relative to bbox center, +down):
+  const offset = (ascent - descent - capAscent) / 2;
+  capMidOffsetCache.set(sig, offset);
+  return offset;
+}
+
 export type PromptOpts = {
   // Each line is laid out left-to-right with this gap (px) between adjacent
   // children — text and icons alike.
@@ -106,6 +144,8 @@ export function makePrompt(
   const container = scene.add.container(Math.round(x), Math.round(y));
   const lines = template.split('\n');
   let totalWidth = 0;
+  // See capMidOffset — pixel fonts need icons nudged onto the visible cap-mid.
+  const iconYOffset = Math.round(capMidOffset(style));
 
   for (let li = 0; li < lines.length; li++) {
     // biome-ignore lint/style/noNonNullAssertion: bounded by lines.length
@@ -167,7 +207,7 @@ export function makePrompt(
           // fractional, so accumulating cx leaves icons on subpixel
           // positions otherwise. With pixel-perfect SVG textures this would
           // re-introduce the asymmetric blur we switched off PNG to fix.
-          img.setPosition(Math.round(cx), yPos);
+          img.setPosition(Math.round(cx), yPos + iconYOffset);
           cx += img.displayWidth;
           if (ii < seg.icons.length - 1) cx += gap;
         }

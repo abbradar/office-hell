@@ -215,7 +215,11 @@ export class TestMenuScene extends Phaser.Scene {
       });
       kb.on('keydown-Z', () => this.start());
       kb.on('keydown-ENTER', () => this.start());
-      kb.on('keydown-BACKSPACE', () => this.scene.start('Menu'));
+      const goBack = (): void => {
+        this.scene.start('Menu');
+      };
+      kb.on('keydown-BACKSPACE', goBack);
+      kb.on('keydown-ESC', goBack);
     }
 
     this.refresh();
