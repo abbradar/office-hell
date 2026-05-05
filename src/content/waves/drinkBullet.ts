@@ -9,12 +9,12 @@ import { EntityKind } from '../../script/types';
 // frame. Peak lateral velocity (px/sec) = AMP * FREQ * SCRIPT_FPS = 225, well
 // under the forward speed so the wave's "forward" direction reads cleanly.
 const SINE_AMP_PX = 25;
-const SINE_FREQ_PER_FRAME = 0.15;
+const SINE_FREQ_PER_FRAME = 0.3;
 
-// Phaser arcade physics integrates px/sec; scripts tick once per frame at the
-// configured 60fps loop, so we scale the per-frame derivative back up to a
+// Phaser arcade physics integrates px/sec; this script ticks every other frame
+// (yield 1 → 30Hz) so we scale the per-script-frame derivative back up to a
 // per-second velocity.
-const SCRIPT_FPS = 60;
+const SCRIPT_FPS = 30;
 
 function* drinkBulletScript(self: Entity) {
   const v0 = self.body.velocity;
@@ -32,7 +32,7 @@ function* drinkBulletScript(self: Entity) {
     age++;
     const latVel = SINE_AMP_PX * SINE_FREQ_PER_FRAME * SCRIPT_FPS * Math.cos(age * SINE_FREQ_PER_FRAME);
     self.body.setVelocity(fx + lx * latVel, fy + ly * latVel);
-    yield 0;
+    yield 1;
   }
 }
 

@@ -51,6 +51,18 @@ export function* startMusicWithIntro(
 
 // --- generic generator helpers --------------------------------------------
 
+// Adaptive polling step toward an absolute audio-time `target`. Returns
+// the number of frames to yield before re-checking: coarsely sleeps the
+// bulk of the remaining duration, then refines to 1-frame polling on
+// the final approach. The 2-frame safety margin keeps a slow frame from
+// overshooting; rAF is locked at 60Hz so frames-per-second never
+// exceeds the 60 we scale by, only undershoots.
+function framesUntilAudioTime(curTime: number, target: number): number {
+  const remaining = target - curTime;
+  if (remaining <= 0.05) return 1;
+  return Math.max(1, Math.round(remaining * 60) - 2);
+}
+
 // Wait `seconds` of audio time from now. Captures the current music
 // time once and yields until that target elapses. Falls back to a
 // frame-based yield (60fps) when no track is playing — important for
@@ -67,7 +79,7 @@ export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void
     const cur = getMusicTime();
     // If music stops/changes mid-wait, bail rather than block forever.
     if (cur === null || cur.time >= target) return;
-    yield 1;
+    yield framesUntilAudioTime(cur.time, target);
   }
 }
 
@@ -81,8 +93,12 @@ export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
   while (true) {
     const m = getMusicTime();
-    if (m !== null && m.time >= t) return;
-    yield 1;
+    if (m === null) {
+      yield 1;
+      continue;
+    }
+    if (m.time >= t) return;
+    yield framesUntilAudioTime(m.time, t);
   }
 }
 
@@ -126,7 +142,7 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
   while (true) {
     const cur = getMusicTime();
     if (cur === null || cur.time >= nextBoundary) return;
-    yield 1;
+    yield framesUntilAudioTime(cur.time, nextBoundary);
   }
 }
 

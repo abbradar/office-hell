@@ -1,5 +1,5 @@
 // Diagnostics stage for verifying dialog/physics-pause sync against the
-// music clock. Defined as a declarative queue (see script/state.ts) so
+// music clock. Defined as a declarative queue (see script/stage.ts) so
 // the schedule reads top-to-bottom and each entry's gates are visible inline.
 //
 // Schedule (all times in seconds, relative to the *current* music track —

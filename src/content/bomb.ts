@@ -124,7 +124,7 @@ function sweepBullet(stage: StageManager, bullet: Entity, target: { x: number; y
         return;
       }
       self.body.setVelocity((dx / d) * speed, (dy / d) * speed);
-      yield 0;
+      yield 1;
     }
   });
 }
