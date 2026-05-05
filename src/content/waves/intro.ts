@@ -107,7 +107,7 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
   // bin has dismissed and the field is genuinely settled before the next
   // dialog.
   activateBomb(p, self.stage, { barkIndex: 0 });
-  yield* waitSeconds(BOMB_DURATION_MS / 1000);
+  yield* waitSeconds(BOMB_DURATION_MS / 1000 + 1);
 
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },

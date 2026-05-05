@@ -4,13 +4,18 @@ import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
 
 // Three-phase bomb: brief freeze (the player visibly snaps), an
-// expanding shockwave that consumes anything it touches, and a short
-// linger as the comic-book starburst fades. Total length is exported so
-// the intro tutorial can wait for the effect to fully resolve before
-// playing the next dialog.
-const BOMB_FREEZE_MS = 150;
+// expanding shockwave that consumes anything it touches, and a flicker-
+// out as the comic-book starburst dies. Total length is exported so the
+// intro tutorial can wait for the effect to fully resolve before playing
+// the next dialog.
+const BOMB_FREEZE_MS = 200;
+// Wave reaches full reach by the 1.5s mark; the burst then flickers and
+// fades through the rest of the invincibility window. Fade starts well
+// before the expansion finishes so the burst is already dimming as the
+// wave hits its outer edge — feels like the energy bleeds out instead
+// of snapping off at the boundary.
 const BOMB_EXPLODE_MS = 700;
-const BOMB_LINGER_MS = 200;
+const BOMB_LINGER_MS = 1100;
 export const BOMB_DURATION_MS = BOMB_FREEZE_MS + BOMB_EXPLODE_MS + BOMB_LINGER_MS;
 
 // Panic radius around the player — half the play field width, so a bomb
@@ -76,7 +81,7 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   }
 
   // Punch the camera so the freeze feels like an impact, not a stutter.
-  scene.cameras.main.shake(BOMB_FREEZE_MS + 180, 0.005);
+  scene.cameras.main.shake(BOMB_FREEZE_MS + 250, 0.005);
 
   // Depth 49 sits just below the touch-button band's mask (depth 50),
   // so on mobile the explosion is clipped to the playfield instead of
@@ -142,18 +147,17 @@ function drawBomb(
     return;
   }
 
-  // After the wind-up, t maps onto two phases — the wave expanding to
-  // full reach (`waveT` 0→1), then a linger as the burst fades.
-  let waveT: number;
-  let alpha: number;
-  if (t <= explodeEndFrac) {
-    waveT = (t - freezeFrac) / (explodeEndFrac - freezeFrac);
-    alpha = 1;
-  } else {
-    waveT = 1;
-    const linger = (t - explodeEndFrac) / (1 - explodeEndFrac);
-    alpha = 1 - linger;
-  }
+  // After the wind-up, t maps onto a wave-expansion ramp (`waveT` 0→1
+  // ending at the full-reach mark) and an alpha ramp that decouples
+  // from it: the fade starts as soon as the explosion phase begins and
+  // runs all the way to the end of the linger, so the burst is already
+  // dimming as the wave is still pushing outward. The flicker is a
+  // square wave on top of the linear fade so the burst visibly stutters
+  // before vanishing instead of just dimming.
+  const explodePhase = (t - freezeFrac) / (1 - freezeFrac);
+  const waveT = Math.min(1, (t - freezeFrac) / (explodeEndFrac - freezeFrac));
+  const flicker = Math.floor(explodePhase * 14) % 2 === 0 ? 1 : 0.45;
+  const alpha = (1 - explodePhase) * flicker;
 
   // Kill bullets the leading edge of the wave has reached. Once dead,
   // StageManager.update releases them from the pool on the next tick.
