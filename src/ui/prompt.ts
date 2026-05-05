@@ -24,12 +24,13 @@ type Style = Phaser.Types.GameObjects.Text.TextStyle;
 const TOKEN_RE = /<([a-zA-Z]+)>/g;
 
 // Lower bound on icon height regardless of text size. The smallest
-// preloaded SVG raster size is 22px (see ICON_RENDER_SIZES); requesting
+// preloaded SVG raster size is 16px (see ICON_RENDER_SIZES); requesting
 // less just snaps to that anyway, so this floor keeps prompt math honest.
-const MIN_ICON_PX = 22;
-// Multiplier on text height for icons. Larger than 1.0 because icons are
-// "iconographic" and should pop next to text, not sit at x-height.
-const DEFAULT_ICON_RATIO = 1.6;
+const MIN_ICON_PX = 16;
+// Multiplier on text height for icons. Slightly larger than 1.0 so icons
+// pop next to text without towering over it — tuned to match the old
+// visible footprint when SVGs still had ~25% transparent padding.
+const DEFAULT_ICON_RATIO = 1.2;
 
 type Segment = { kind: 'text'; text: string } | { kind: 'icons'; icons: InputIcon[] };
 
@@ -154,11 +155,34 @@ export function makePrompt(
     // Build children first (we need their measured widths to compute layout).
     type Child = Phaser.GameObjects.Image | Phaser.GameObjects.Text;
     const children: Child[] = [];
+    // Per-text vertical nudge. Phaser's font-level ascent/descent come from
+    // the testString '|MÃ‰qgy' (includes descenders + accents) so they don't
+    // tell us where the *specific* text's ink actually sits inside the bbox.
+    // Measure the rendered string's actual bounding box and align its ink
+    // midline to icon centers instead.
+    const textYOffsets: number[] = [];
     let lineW = 0;
 
     for (const seg of segments) {
       if (seg.kind === 'text') {
         const t = scene.add.text(0, 0, seg.text, style).setOrigin(0, 0.5);
+        const fontMetrics = t.style.getTextMetrics();
+        const fontAscent = typeof fontMetrics.ascent === 'number' ? fontMetrics.ascent : fontPx;
+        // Phaser draws the baseline at canvas-y `fontAscent`. Measure where
+        // ink actually starts/ends for THIS string against THIS font, then
+        // compute its midline relative to bbox center (canvas-y h/2).
+        const ctx = t.context;
+        const im = ctx.measureText(seg.text);
+        const inkAscent = im.actualBoundingBoxAscent;
+        const inkDescent = im.actualBoundingBoxDescent;
+        // Ink top in canvas-y: fontAscent - inkAscent. Ink bottom: fontAscent + inkDescent.
+        // Ink midline in canvas-y: fontAscent + (inkDescent - inkAscent) / 2.
+        // Bbox center in canvas-y: t.height / 2. Offset to apply at sprite-y:
+        // (bbox center) - (ink midline) — sprite shifts down so ink midline
+        // lands at the y the bbox center used to occupy.
+        const inkMid = fontAscent + (inkDescent - inkAscent) / 2;
+        const bboxMid = t.height / 2;
+        textYOffsets.push(Math.round(bboxMid - inkMid));
         children.push(t);
         lineW += t.width;
       } else {
@@ -193,11 +217,14 @@ export function makePrompt(
 
     const yPos = li * lineH;
     let i = 0;
+    let textIdx = 0;
     for (const seg of segments) {
       if (seg.kind === 'text') {
         // biome-ignore lint/style/noNonNullAssertion: index bounded by children.length
         const t = children[i++]! as Phaser.GameObjects.Text;
-        t.setPosition(cx, yPos);
+        // biome-ignore lint/style/noNonNullAssertion: parallel to children
+        const dy = textYOffsets[textIdx++]!;
+        t.setPosition(cx, yPos + dy);
         cx += t.width;
       } else {
         for (let ii = 0; ii < seg.icons.length; ii++) {

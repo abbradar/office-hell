@@ -116,11 +116,11 @@ export function getInputIcon(action: InputAction): InputIconRef | undefined {
 // --- texture-key resolution ------------------------------------------------
 
 // Sizes we preload each icon at. Two tiers cover the two `iconHeight` values
-// that prompt.ts requests today (22 = FONT_DEBUG/SM floor, 26 = FONT_MENU
-// 16px × 1.6). Add more entries here if a new font tier needs a different
-// crisp-rendered size — preloading at the exact display size avoids the
-// downscaling artifacts that plagued the PNG rasters.
-export const ICON_RENDER_SIZES = [22, 26] as const;
+// that prompt.ts requests today (16 = FONT_DEBUG/SM floor, 20 = FONT_MENU
+// 16px × 1.2). The SVGs were trimmed to their content bbox (no transparent
+// padding), so the rendered texture size IS the visible icon size — these
+// sizes match the old visible footprint when icons had ~25% padding.
+export const ICON_RENDER_SIZES = [16, 20] as const;
 export type IconRenderSize = (typeof ICON_RENDER_SIZES)[number];
 
 // Texture key for a specific (icon, size) combo. Mirror of the construction
