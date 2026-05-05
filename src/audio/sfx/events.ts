@@ -10,9 +10,11 @@ import { playPooled } from './pool';
 export function shoot(): void {
   // Slight detune per call so rapid-fire trains don't sound like a single
   // metronome — ±60 cents (a touch under a semitone) is enough to break the
-  // pattern without losing the laser's identity.
+  // pattern without losing the laser's identity. Halved volume from the
+  // original 0.4 — dense boss volleys + the sandbox both stack a lot of
+  // shoots back-to-back, and 0.4 was overpowering the music.
   playPooled(SHOOT_SFX_KEY, {
-    volume: 0.4,
+    volume: 0.2,
     detune: (Math.random() - 0.5) * 120,
   });
 }

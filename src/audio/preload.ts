@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import menuLoopUrl from '../assets/audio/loops/high_tech_low_life_-_gl0ryt0th3m4ch1n3_seamless_loop.ogg';
+import menuLoopUrl from '../assets/audio/loops/checking_manifest.ogg';
 import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
 import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
 import monsterIntroUrl from '../assets/audio/loops/monster_rpg/12okt.ogg';

@@ -36,7 +36,10 @@ import { addMuteButton } from '../ui/muteButton';
 
 // --- helpers exposed to user scripts --------------------------------------
 
-const HELPERS = {
+// Static helpers — bound at module scope and stable across scene instances.
+// `bulletStyle` is added per-scene (it needs the texture cache + scene
+// context for makeBullet) so it lives in the scene's `compileHelpers()`.
+const STATIC_HELPERS = {
   ring,
   aimed,
   spread,
@@ -51,20 +54,40 @@ const HELPERS = {
   waitEntityDead,
   markWave,
 } as const;
-const HELPER_KEYS = Object.keys(HELPERS) as (keyof typeof HELPERS)[];
+
+export type BulletShape = 'circle' | 'square' | 'diamond';
+export type BulletStyleOpts = {
+  // 24-bit RGB hex (e.g. 0xff5577 for pink).
+  color?: number;
+  // Hitbox radius in pixels — also drives the rendered glyph size.
+  radius?: number;
+  shape?: BulletShape;
+};
 
 const DEFAULT_CODE = `// Helpers in scope:
-//   ring(self, count, bullet, speed, baseAngleRad?)
-//   aimed(self, count, bullet, speed, spreadRad?)
-//   spread(self, count, bullet, speed, baseAngleRad, spreadRad)
-//   arc(self, count, bullet, speed, fromRad, toRad)
+//   ring(self, count, kind, speed, baseAngleRad?)
+//   aimed(self, count, kind, speed, spreadRad?)
+//   spread(self, count, kind, speed, baseAngleRad, spreadRad)
+//   arc(self, count, kind, speed, fromRad, toRad)
 //   moveTo, walkOffScreen
 //   yield* waitSeconds(s)        // audio-aware delay
 //   yield N                      // wait N script frames
+//
+// Bullets:
+//   bullet                       // default white circle
+//   bulletStyle({ color, radius, shape })  // make a custom kind
+//     color:  0xRRGGBB hex        (default 0xffffff)
+//     radius: hitbox + glyph px   (default 3)
+//     shape:  'circle'|'square'|'diamond'  (default 'circle')
+
+const red = bulletStyle({ color: 0xff5577, radius: 4 });
+const blue = bulletStyle({ color: 0x66bbff, radius: 4, shape: 'diamond' });
 
 while (self.alive) {
-  ring(self, 16, bullet, 130);
-  yield* waitSeconds(0.5);
+  ring(self, 12, red, 130);
+  yield* waitSeconds(0.25);
+  ring(self, 12, blue, 130, Math.PI / 12);
+  yield* waitSeconds(0.25);
 }
 `;
 
@@ -730,16 +753,70 @@ export class PatternTestScene extends Phaser.Scene {
 
   private compile(src: string): CompileResult {
     try {
+      // Scene-bound helpers — bulletStyle needs the scene's texture cache
+      // and `make.graphics`, so it can't live at module scope alongside
+      // the others. Add it here and let the rest of the helper map be
+      // static.
+      const helpers = {
+        ...STATIC_HELPERS,
+        bulletStyle: (opts: BulletStyleOpts = {}) => this.makeBullet(opts),
+      };
+      const keys = Object.keys(helpers);
       const factory = new Function(
-        ...HELPER_KEYS,
+        ...keys,
         `return function* (self) {\n${src}\n};`,
-      ) as (...args: typeof HELPERS[keyof typeof HELPERS][]) => EntityScript;
-      const args = HELPER_KEYS.map((k) => HELPERS[k]);
+      ) as (...args: unknown[]) => EntityScript;
+      const args = keys.map((k) => (helpers as Record<string, unknown>)[k]);
       const fn = factory(...args);
       return { fn };
     } catch (e) {
       return { error: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  // Build (or fetch from cache) a sandbox EntityKind whose sprite is a
+  // small filled glyph. Texture key encodes the parameters so repeated
+  // calls with the same opts share a single cached texture — Phaser's
+  // texture manager keeps the bytes around for the lifetime of the
+  // game, so don't churn them.
+  private makeBullet(opts: BulletStyleOpts): EntityKind {
+    const radius = Math.max(1, Math.round(opts.radius ?? 3));
+    const color = (opts.color ?? 0xffffff) & 0xffffff;
+    const shape: BulletShape = opts.shape ?? 'circle';
+    const key = `sandbox_bullet_${shape}_${color.toString(16).padStart(6, '0')}_r${radius}`;
+
+    if (!this.textures.exists(key)) {
+      const size = radius * 2;
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      g.fillStyle(color, 1);
+      if (shape === 'circle') {
+        g.fillCircle(radius, radius, radius);
+      } else if (shape === 'square') {
+        g.fillRect(0, 0, size, size);
+      } else {
+        // diamond — square rotated 45°, drawn as four triangles around the
+        // centre to land on integer pixels at typical bullet sizes.
+        g.fillPoints(
+          [
+            { x: radius, y: 0 },
+            { x: size, y: radius },
+            { x: radius, y: size },
+            { x: 0, y: radius },
+          ],
+          true,
+        );
+      }
+      g.generateTexture(key, size, size);
+      g.destroy();
+    }
+
+    return new EntityKind({
+      sprite: key,
+      hitboxRadius: radius,
+      hp: null,
+      damageClass: ['player'],
+      damagedByClass: [],
+    });
   }
 
   private setStatus(message: string, color: string): void {
