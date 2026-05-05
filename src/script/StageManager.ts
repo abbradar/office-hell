@@ -14,11 +14,16 @@ type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 type ScriptIter = Generator<ScriptYield, void, void>;
 
 // Short label describing the leaf wait `v` represents — used by the
-// debug HUD when a script with `debugLocks` yields. Returns null for the
-// race form because beginRace re-enters processYield with the trigger,
-// which writes the leaf description itself.
+// debug HUD when a script with `debugYieldReasons` yields. A caller-
+// supplied `yieldReason` (e.g. via `withYieldReason`) wins over the
+// default description so high-level helpers can name themselves. Returns
+// null for the race form because beginRace re-enters processYield with
+// the trigger, which writes the leaf description itself.
 function describeYield(v: ScriptYield): string | null {
   if (typeof v === 'number') return `wait ${v}f`;
+  if ('race' in v) return null;
+  if (v.yieldReason !== undefined) return v.yieldReason;
+  if ('frames' in v) return `wait ${v.frames}f`;
   if ('dialogue' in v) return 'dialogue';
   if ('until' in v) return `until ${v.until.kind.sprite ?? 'entity'} dies`;
   if ('untilMusicEnds' in v) return 'music ends';
@@ -54,10 +59,10 @@ export type SceneScript = {
   racedParentGeneration?: number;
   racedChild?: SceneScript;
   // When true, each leaf yield this script makes writes a description to
-  // `manager.lockDebug` so the HUD can show what the script is parked on.
-  // Set on the stage script via SpawnOpts; propagated to raced children
-  // in `beginRace` so the inner's progress shows up the same way.
-  debugLocks?: boolean;
+  // `manager.lastYieldReason` so the HUD can show what the script is
+  // parked on. Set on the stage script via SpawnOpts; propagated to raced
+  // children in `beginRace` so the inner's progress shows up the same way.
+  debugYieldReasons?: boolean;
 };
 
 // A parked iter scheduled to be advanced when its frame countdown hits
@@ -105,10 +110,12 @@ export class StageManager {
   // Current HUD beat label, set by `markBeat(self, name)` calls in the
   // stage body. Null until the body's first markBeat.
   beat: string | null = null;
-  // Most recent leaf-yield description from a script with `debugLocks`
-  // set. Updated in `processYield`; rendered after `beat` in the debug
-  // HUD line. Null until the first such yield.
-  lockDebug: string | null = null;
+  // Most recent leaf-yield description from a script with
+  // `debugYieldReasons` set. Updated in `processYield`; rendered after
+  // `beat` in the debug HUD line. Null until the first such yield.
+  // Yields whose `describeYield` returns null (e.g. the race form) leave
+  // this field unchanged — the previous reason stays visible.
+  lastYieldReason: string | null = null;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -198,7 +205,7 @@ export class StageManager {
     const script = opts.script ?? kind.defaultScript ?? null;
     if (script) {
       e.script = this.makeScript(script(e), e);
-      if (opts.debugLocks) e.script.debugLocks = true;
+      if (opts.debugYieldReasons) e.script.debugYieldReasons = true;
       this.scheduleIter(e.script, 1);
     }
 
@@ -275,12 +282,17 @@ export class StageManager {
   }
 
   private processYield(script: SceneScript, v: ScriptYield): void {
-    if (script.debugLocks) {
+    if (script.debugYieldReasons) {
       const desc = describeYield(v);
-      if (desc !== null) this.lockDebug = desc;
+      // Null = "no leaf description for this yield" (e.g. the race form,
+      // whose trigger writes the description itself when beginRace
+      // re-enters processYield). Leave the previous reason visible.
+      if (desc !== null) this.lastYieldReason = desc;
     }
     if (typeof v === 'number') {
       this.scheduleIter(script, Math.max(0, v | 0) + 1);
+    } else if ('frames' in v) {
+      this.scheduleIter(script, Math.max(0, v.frames | 0) + 1);
     } else if ('dialogue' in v) {
       this.beginDialogue(v.dialogue, script);
     } else if ('until' in v) {
@@ -312,7 +324,7 @@ export class StageManager {
       // generation is a number, not null.
       // biome-ignore lint/style/noNonNullAssertion: invariant — see comment above
       racedParentGeneration: parent.generation!,
-      debugLocks: parent.debugLocks,
+      debugYieldReasons: parent.debugYieldReasons,
     };
     parent.racedChild = inner;
     // Run inner immediately rather than parking it for a frame — saves

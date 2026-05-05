@@ -216,6 +216,14 @@ track: stage1Retro01Loop  t: 12.34s  beat: wave 2
 
 - `track` / `t`: current music track key + seconds since it started.
 - `beat`: the most recent `markBeat(self, name)` call's argument.
+- `yield`: short label for the leaf wait the stage script is currently
+  parked on. Sourced from a yield's optional `yieldReason` field
+  (preferred, set by `withYieldReason` and the wrapped wait helpers) or
+  a default description otherwise (`wait Nf`, `until <sprite> dies`,
+  `dialogue`, `music ends`). Only populated for scripts spawned with
+  `debugYieldReasons: true` — currently just the stage script. Yields
+  with no leaf description (the race form) leave the previous reason
+  visible.
 
 Coloured grey on the real stage, green on the test stage as a visual
 "you're in test mode" cue.

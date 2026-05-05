@@ -21,7 +21,6 @@ import {
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
-import { addMuteButton } from '../ui/muteButton';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
 const SPECKS_SCROLL_PX_PER_MS = 0.55;
@@ -92,9 +91,8 @@ export class GameScene extends Phaser.Scene {
       .text(8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ff5577' })
       .setOrigin(0, 0.5)
       .setDepth(100);
-    // Bombs sit just right of HP (was top-right) so the new top-right
-    // mute button doesn't overlap them. Allowing ~64px of HP slot covers
-    // the widest hp string ("♥♥") at FONT_MENU 16px.
+    // Bombs sit just right of HP. Allowing ~64px of HP slot covers the
+    // widest hp string ("♥♥") at FONT_MENU 16px.
     this.bombsText = this.add
       .text(72, HEADER_H / 2, '', { ...FONT_MENU, color: '#ffd866' })
       .setOrigin(0, 0.5)
@@ -103,8 +101,6 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_W / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(100);
-
-    addMuteButton(this);
 
     const character = getSelectedCharacter(this);
     if (!character)
@@ -134,7 +130,7 @@ export class GameScene extends Phaser.Scene {
             : this.practiceWave
               ? makeWaveStage(this.practiceWave)
               : stage;
-    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugLocks: true });
+    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: true });
 
     for (const c of DAMAGE_CLASSES) {
       this.physics.add.overlap(this.stage.damages[c], this.stage.damagedBy[c], (a, b) => {
@@ -267,8 +263,8 @@ export class GameScene extends Phaser.Scene {
     const beat = this.stage.beat;
     const secondLineParts: string[] = [];
     if (beat) secondLineParts.push(`beat: ${beat}`);
-    const lock = this.stage.lockDebug;
-    if (lock) secondLineParts.push(`lock: ${lock}`);
+    const reason = this.stage.lastYieldReason;
+    if (reason) secondLineParts.push(`yield: ${reason}`);
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }

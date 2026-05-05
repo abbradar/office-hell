@@ -1,12 +1,15 @@
 import type { Entity } from '../entities/Entity';
 import type { DialogueOpts } from '../ui/dialogue';
 
-// Yield kinds that don't open a sub-race. Used as the return type of a
-// racing generator — a race's loss/wakeup trigger is computed by the
-// inner and must itself be a leaf wait (no nested race) so the runner
-// has a finite, recursion-free trigger to install on the parent.
-export type NonRaceYield =
-  | number
+// Object-form non-race yield kinds. Each carries an optional
+// `yieldReason` (added uniformly via the intersection in `NonRaceYield`)
+// that surfaces in the debug HUD when a script with `debugYieldReasons`
+// is parked on this yield. Use `withYieldReason` to stamp every yield
+// emitted by a generator.
+export type NonRaceObjectYield =
+  // Wait `frames` script frames. Equivalent to a bare number yield, but
+  // can carry a yieldReason — bare numbers have nowhere to hang one.
+  | { frames: number }
   | { until: Entity }
   | { dialogue: DialogueOpts }
   // Wait for the currently-playing track's natural completion (one-shot
@@ -15,6 +18,12 @@ export type NonRaceYield =
   // and should not yield this — use `waitTrackEnded` which routes loops
   // through a polling boundary computation instead.
   | { untilMusicEnds: true };
+
+// Yield kinds that don't open a sub-race. Used as the return type of a
+// racing generator — a race's loss/wakeup trigger is computed by the
+// inner and must itself be a leaf wait (no nested race) so the runner
+// has a finite, recursion-free trigger to install on the parent.
+export type NonRaceYield = number | (NonRaceObjectYield & { yieldReason?: string });
 
 export type ScriptYield =
   | NonRaceYield
@@ -95,7 +104,7 @@ export type SpawnOpts = {
   // survive long enough to deliver its solo intro).
   hp?: number;
   // When true, each leaf yield of this script (and any raced child) writes
-  // a description to `manager.lockDebug` so the HUD can show what the
-  // script is currently parked on. Used by the stage script.
-  debugLocks?: boolean;
+  // a description to `manager.lastYieldReason` so the HUD can show what
+  // the script is currently parked on. Used by the stage script.
+  debugYieldReasons?: boolean;
 };

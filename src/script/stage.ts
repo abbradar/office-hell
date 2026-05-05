@@ -14,7 +14,7 @@ import {
   playMusicWithIntro,
 } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
-import type { ScriptYield } from './types';
+import type { NonRaceYield, ScriptYield } from './types';
 
 // Set the HUD's current-beat label. Pure side-effect, not a generator —
 // callers don't `yield*` it. Writes `stage.beat`; the StageManager
@@ -22,6 +22,35 @@ import type { ScriptYield } from './types';
 // manager.
 export function markBeat(self: Entity, name: string): void {
   self.stage.beat = name;
+}
+
+// --- yield-reason wrapper -------------------------------------------------
+
+// Stamp a `yieldReason` label onto every leaf yield that flows through
+// `inner`, so a script with `debugYieldReasons` shows `reason` in the
+// debug HUD while parked. Existing `yieldReason` fields are preserved
+// (innermost wins) — wrapping an already-labelled helper is a no-op for
+// its own yields, which lets high-level helpers compose freely.
+//
+// Bare `number` yields can't carry a label, so they're rewritten as
+// `{ frames: n, yieldReason: reason }` — same scheduling, just labelled.
+//
+// Race yields don't have their own label (the trigger and inner each
+// describe themselves), so the wrapper stamps the trigger and leaves
+// the inner generator alone — wrap the inner explicitly if you want
+// its yields labelled too.
+export function* withYieldReason(
+  reason: string,
+  inner: Generator<ScriptYield, void, void>,
+): Generator<ScriptYield, void, void> {
+  for (const v of inner) yield stampReason(v, reason);
+}
+
+function stampReason(v: ScriptYield, reason: string): ScriptYield {
+  if (typeof v === 'number') return { frames: v, yieldReason: reason };
+  if ('race' in v) return { ...v, trigger: stampReason(v.trigger, reason) as NonRaceYield };
+  if (v.yieldReason !== undefined) return v;
+  return { ...v, yieldReason: reason };
 }
 
 // --- music starters -------------------------------------------------------
@@ -37,7 +66,7 @@ export function* startMusicLoop(
   opts?: { volume?: number; crossfadeMs?: number; loop?: boolean },
 ): Generator<ScriptYield, void, void> {
   playMusicLoop(key, opts);
-  while (getMusicTime() === null) yield 1;
+  yield* withYieldReason(`${key} started`, awaitMusicTicking());
 }
 
 export function* startMusicWithIntro(
@@ -46,6 +75,10 @@ export function* startMusicWithIntro(
   opts?: { volume?: number },
 ): Generator<ScriptYield, void, void> {
   playMusicWithIntro(introKey, loopKey, opts);
+  yield* withYieldReason(`${introKey} started`, awaitMusicTicking());
+}
+
+function* awaitMusicTicking(): Generator<ScriptYield, void, void> {
   while (getMusicTime() === null) yield 1;
 }
 
@@ -68,6 +101,10 @@ function framesUntilAudioTime(curTime: number, target: number): number {
 // frame-based yield (60fps) when no track is playing — important for
 // practice mode and for the pre-music pause beats.
 export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void> {
+  yield* withYieldReason(`${seconds}s elapsed`, waitSecondsBody(seconds));
+}
+
+function* waitSecondsBody(seconds: number): Generator<ScriptYield, void, void> {
   if (seconds <= 0) return;
   const m = getMusicTime();
   if (m === null) {
@@ -91,6 +128,10 @@ export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void
 // how a wait following a music switch naturally blocks until the new
 // track has started ticking.
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
+  yield* withYieldReason(`audio time ${t}s reached`, waitAudioTimeAtLeastBody(t));
+}
+
+function* waitAudioTimeAtLeastBody(t: number): Generator<ScriptYield, void, void> {
   while (true) {
     const m = getMusicTime();
     if (m === null) {
@@ -107,6 +148,10 @@ export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, v
 // boundary computation instead. Resolves immediately if no track is
 // playing or the track has already finished.
 export function* waitMusicComplete(): Generator<ScriptYield, void, void> {
+  yield* withYieldReason('song ended', waitMusicCompleteBody());
+}
+
+function* waitMusicCompleteBody(): Generator<ScriptYield, void, void> {
   if (isMusicFinished() !== false) return;
   yield { untilMusicEnds: true };
 }
@@ -119,12 +164,18 @@ export function* waitMusicComplete(): Generator<ScriptYield, void, void> {
 // not some earlier reference point). Resolves immediately when no
 // track is playing — safe before any music has started.
 export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
+  yield* withYieldReason('loop ended', waitTrackEndedBody());
+}
+
+function* waitTrackEndedBody(): Generator<ScriptYield, void, void> {
   const m = getMusicTime();
   if (m === null) return;
   if (isMusicFinished() === true) return;
   const info = getCurrentTrackInfo();
   if (info === null) return;
   if (info.oneShot) {
+    // Innermost-wins: waitMusicComplete's own "song ended" label sticks
+    // through, so the HUD shows the more specific reason.
     yield* waitMusicComplete();
     return;
   }
@@ -153,6 +204,10 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
 // entities. Uses `{ until: e }` for each live enemy in turn, so the
 // resume is event-driven (entity death callback) rather than polled.
 export function* waitEnemiesClear(self: Entity): Generator<ScriptYield, void, void> {
+  yield* withYieldReason('enemies cleared', waitEnemiesClearBody(self));
+}
+
+function* waitEnemiesClearBody(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
     const e = firstLive(self.stage.damagedBy.enemy);
     if (!e) return;
@@ -163,6 +218,10 @@ export function* waitEnemiesClear(self: Entity): Generator<ScriptYield, void, vo
 // Yield until every non-player entity (enemies and their bullets) has
 // died or left the field — i.e. `damages.player` is empty.
 export function* waitScreenClear(self: Entity): Generator<ScriptYield, void, void> {
+  yield* withYieldReason('screen cleared', waitScreenClearBody(self));
+}
+
+function* waitScreenClearBody(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
     const e = firstLive(self.stage.damages.player);
     if (!e) return;
