@@ -75,16 +75,21 @@ export function* firstEmailColleagues(self: Entity): Generator<ScriptYield, void
 
   yield ACT_GAP;
 
-  // Act 3 (x3) — three from the left, three from the right.
+  // Act 3 (x3) — three pinch pairs: each pair has a left and a right
+  // spawn arriving within a few frames of each other, so the player has
+  // to commit to a vertical lane between two converging volleys. Pairs
+  // are spaced further apart than the in-pair beat.
+  const PAIR_BEAT = 12;
+  const BETWEEN_PAIRS = 90;
   self.spawn(firstEmailColleague, SPAWN_LEFT_X, 200, 0, 0);
-  yield SPACING;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
-  yield SPACING;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
-  yield SIDE_GAP;
+  yield PAIR_BEAT;
   self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 200, 0, 0, { script: rightScript });
-  yield SPACING;
+  yield BETWEEN_PAIRS;
+  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
+  yield PAIR_BEAT;
   self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 250, 0, 0, { script: rightScript });
-  yield SPACING;
+  yield BETWEEN_PAIRS;
+  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
+  yield PAIR_BEAT;
   self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 300, 0, 0, { script: rightScript });
 }
