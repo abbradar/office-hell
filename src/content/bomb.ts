@@ -3,25 +3,21 @@ import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
 
+// Three-phase bomb: brief freeze (the player visibly snaps), an
+// expanding shockwave that consumes anything it touches, and a short
+// linger as the comic-book starburst fades. Total length is exported so
+// the intro tutorial can wait for the effect to fully resolve before
+// playing the next dialog.
+const BOMB_FREEZE_MS = 150;
+const BOMB_EXPLODE_MS = 700;
+const BOMB_LINGER_MS = 200;
+export const BOMB_DURATION_MS = BOMB_FREEZE_MS + BOMB_EXPLODE_MS + BOMB_LINGER_MS;
+
 // Panic radius around the player — half the play field width, so a bomb
 // fired with the player hugging one edge still reaches projectiles at the
 // centre line. The intro tutorial relies on this: the email approaches
 // centred while the player has dodged to a side.
 const BOMB_RADIUS = GAME_W / 2;
-
-// Travel time from a bullet's freeze position to the bin. The script paces the
-// suction to land in roughly this window so the player gets a clear breather
-// instead of a snap-clear.
-const SUCK_TRAVEL_MS = 3000;
-// Total bomb duration — long enough to outlast the suction so the last bullet
-// visibly lands in the bin. Exported so callers (e.g. the intro tutorial)
-// can wait for a bomb to be truly finished before moving on.
-export const BOMB_DURATION_MS = SUCK_TRAVEL_MS + 600;
-const BIN_DISMISS_DELAY_MS = BOMB_DURATION_MS;
-// Bin sits hugging the right wall, vertically centred on the player so the
-// "documents" sweep horizontally off into the can rather than diving past the
-// player sprite.
-const BIN_EDGE_MARGIN = 24;
 
 // Passive-aggressive office-speak the player snaps out as they "get angry"
 // and nuke the field. One picked at random per bomb — keeps repeated bombing
@@ -40,15 +36,15 @@ const BARK_FRAMES = 90;
 
 export function activateBomb(player: Player, stage: StageManager, opts?: { barkIndex?: number }): void {
   const scene = stage.scene;
-  const binX = GAME_W - BIN_EDGE_MARGIN;
-  const binY = player.y;
+  const cx = player.x;
+  const cy = player.y;
 
-  // Make the player untouchable for the duration: the suction is slow and
-  // bullets that didn't land in radius (or that get spawned mid-bomb) would
-  // otherwise sail straight into them. Push/pop pairs so back-to-back bombs
-  // extend the window rather than ending it early.
+  // Make the player untouchable for the duration: a stray bullet that
+  // spawned mid-bomb (or one whose freeze we missed by a frame) would
+  // otherwise sail straight into them. Push/pop pairs so back-to-back
+  // bombs extend the window rather than ending it early.
   player.pushInvincible();
-  scene.time.delayedCall(BIN_DISMISS_DELAY_MS, () => player.popInvincible());
+  scene.time.delayedCall(BOMB_DURATION_MS, () => player.popInvincible());
 
   // The intro forces barkIndex=0 so the tutorial bomb pairs with a
   // predictable line; everywhere else picks at random.
@@ -57,81 +53,152 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const bark = BOMB_BARKS[idx]!;
   player.say(bark, BARK_FRAMES);
 
-  const bin = scene.add.image(binX, binY, 'trashBin').setDepth(50).setScale(0);
-  scene.tweens.add({
-    targets: bin,
-    scale: 1,
-    duration: 150,
-    ease: 'Back.easeOut',
-  });
-
-  // Snapshot the bin position — the closure outlives the bin sprite (we
-  // destroy it on dismiss) and Phaser's destroyed-object property reads are
-  // not something we want to depend on.
-  const target = { x: binX, y: binY };
-
-  // Snapshot before iterating: sweepBullet removes entries from the group
-  // mid-loop (so the bullet can't damage the player en route), and Phaser's
-  // getChildren() returns a live reference — mutating it while iterating
-  // would skip every other match.
+  // Snapshot before iterating: freezeBullet removes entries from the group
+  // mid-loop (so the bullet can't damage the player while frozen), and
+  // Phaser's getChildren() returns a live reference — mutating it while
+  // iterating would skip every other match.
   const candidates = stage.damages.player.getChildren().slice();
+  const bullets: { e: Entity; d: number }[] = [];
   const r2 = BOMB_RADIUS * BOMB_RADIUS;
   for (const child of candidates) {
     const e = child as Entity;
     if (!e.alive) continue;
-    // Skip enemies — only the projectiles ("documents/calls/etc") get sucked.
-    // Bullet kinds use hp=null; living enemies always have hp set, so this
-    // cleanly partitions them without an explicit kind list.
+    // Skip enemies — only the projectiles ("documents/calls/etc") are
+    // affected. Bullet kinds use hp=null; living enemies always have hp
+    // set, so this cleanly partitions them without an explicit kind list.
     if (e.hp !== null) continue;
-    const dx = e.x - player.x;
-    const dy = e.y - player.y;
-    if (dx * dx + dy * dy > r2) continue;
-    sweepBullet(stage, e, target);
+    const dx = e.x - cx;
+    const dy = e.y - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > r2) continue;
+    freezeBullet(stage, e);
+    bullets.push({ e, d: Math.sqrt(d2) });
   }
 
-  scene.time.delayedCall(BIN_DISMISS_DELAY_MS, () => {
-    scene.tweens.add({
-      targets: bin,
-      scale: 0,
-      alpha: 0,
-      duration: 200,
-      onComplete: () => bin.destroy(),
-    });
+  // Punch the camera so the freeze feels like an impact, not a stutter.
+  scene.cameras.main.shake(BOMB_FREEZE_MS + 180, 0.005);
+
+  // Depth 49 sits just below the touch-button band's mask (depth 50),
+  // so on mobile the explosion is clipped to the playfield instead of
+  // bleeding behind the buttons.
+  const gfx = scene.add.graphics().setDepth(49);
+
+  const freezeFrac = BOMB_FREEZE_MS / BOMB_DURATION_MS;
+  const explodeEndFrac = (BOMB_FREEZE_MS + BOMB_EXPLODE_MS) / BOMB_DURATION_MS;
+
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: BOMB_DURATION_MS,
+    ease: 'Linear',
+    onUpdate: () => drawBomb(gfx, cx, cy, state.t, bullets, freezeFrac, explodeEndFrac),
+    onComplete: () => {
+      gfx.destroy();
+      // Failsafe: any bullet that the wave's discrete sampling skipped
+      // (e.g. one parked just past the final sampled radius) still gets
+      // cleared so the screen ends in the same state regardless.
+      for (const { e } of bullets) if (e.alive) e.die();
+    },
   });
 }
 
-function sweepBullet(stage: StageManager, bullet: Entity, target: { x: number; y: number }): void {
-  // runScript below tears off whatever the bullet was running (homing,
-  // etc.) so the old script can't override the velocity we're about to
-  // set.
-  bullet.setVelocity(0, 0);
-  // Disarm: pull the bullet out of the player's damage group so it can't kill
-  // the player while it's flying into the bin. Idempotent — release() will
-  // try to remove again, that's a harmless no-op.
+function freezeBullet(stage: StageManager, bullet: Entity): void {
+  // Replace the bullet's script so any in-flight homing pattern can't
+  // override the velocity we set; pull it out of damages.player so a
+  // frozen sprite parked on the player doesn't tick damage during the
+  // bomb (player is invincible for the window, but the cleaner partition
+  // keeps the bomb robust to shorter invincibility tweaks later).
+  bullet.body.setVelocity(0, 0);
   stage.damages.player.remove(bullet);
-
-  // Pace by travel time, not fixed speed: distant bullets need to arrive in
-  // about the same window as nearby ones so the field clears as one breath.
-  const dx0 = target.x - bullet.x;
-  const dy0 = target.y - bullet.y;
-  const d0 = Math.hypot(dx0, dy0);
-  const speed = d0 > 1 ? d0 / (SUCK_TRAVEL_MS / 1000) : 0;
-
   stage.runScript(bullet, function* (self) {
-    // A handful of frames of dead-stop reads as a "freeze" before the suction
-    // starts — makes the bomb effect legible instead of looking like the
-    // bullets just teleported.
-    yield 8;
     while (self.alive) {
-      const dx = target.x - self.x;
-      const dy = target.y - self.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 8) {
-        self.die();
-        return;
-      }
-      self.body.setVelocity((dx / d) * speed, (dy / d) * speed);
+      self.body.setVelocity(0, 0);
       yield 1;
     }
   });
+}
+
+function drawBomb(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  t: number,
+  bullets: { e: Entity; d: number }[],
+  freezeFrac: number,
+  explodeEndFrac: number,
+): void {
+  g.clear();
+
+  if (t <= freezeFrac) {
+    // Wind-up: a small red core swells at the player's position. Sells
+    // the freeze as deliberate ("she's about to *snap*") rather than a
+    // physics hiccup.
+    const f = t / freezeFrac;
+    g.fillStyle(0xff3322, 0.25 + 0.55 * f);
+    g.fillCircle(cx, cy, 10 + 28 * f);
+    g.fillStyle(0xffe066, 0.7 * f);
+    g.fillCircle(cx, cy, 6 + 14 * f);
+    return;
+  }
+
+  // After the wind-up, t maps onto two phases — the wave expanding to
+  // full reach (`waveT` 0→1), then a linger as the burst fades.
+  let waveT: number;
+  let alpha: number;
+  if (t <= explodeEndFrac) {
+    waveT = (t - freezeFrac) / (explodeEndFrac - freezeFrac);
+    alpha = 1;
+  } else {
+    waveT = 1;
+    const linger = (t - explodeEndFrac) / (1 - explodeEndFrac);
+    alpha = 1 - linger;
+  }
+
+  // Kill bullets the leading edge of the wave has reached. Once dead,
+  // StageManager.update releases them from the pool on the next tick.
+  const r = waveT * BOMB_RADIUS;
+  for (const item of bullets) {
+    if (item.e.alive && r >= item.d) item.e.die();
+  }
+
+  // Outer shockwave ring — red rim with an orange inner echo. Fades as
+  // it expands so it doesn't feel like a hard line plowing across the
+  // field.
+  const ringFade = alpha * (1 - waveT * 0.55);
+  g.lineStyle(8, 0xff3322, ringFade);
+  g.strokeCircle(cx, cy, r);
+  g.lineStyle(4, 0xff9933, ringFade);
+  g.strokeCircle(cx, cy, r * 0.92);
+
+  // Hot core — a white-hot dot inside a yellow halo, both shrinking as
+  // the wave expands.
+  const coreScale = 1 - waveT * 0.7;
+  g.fillStyle(0xfff066, alpha * coreScale);
+  g.fillCircle(cx, cy, 50 * coreScale);
+  g.fillStyle(0xffffff, alpha * coreScale * 0.85);
+  g.fillCircle(cx, cy, 22 * coreScale);
+
+  // Comic-book anger starburst: a 16-vertex star (8 long spikes
+  // alternating with 8 short ones) rotating slightly as it scales up.
+  // Asymmetric spike lengths read as "BAM!"-jagged rather than a clean
+  // sun.
+  const longR = (38 + waveT * 60) * (1 - waveT * 0.25);
+  const shortR = (16 + waveT * 28) * (1 - waveT * 0.25);
+  const rotation = waveT * 0.45;
+  const points = 16;
+  g.beginPath();
+  for (let i = 0; i < points; i++) {
+    const a = (i / points) * Math.PI * 2 - Math.PI / 2 + rotation;
+    const rr = i % 2 === 0 ? longR : shortR;
+    const px = cx + Math.cos(a) * rr;
+    const py = cy + Math.sin(a) * rr;
+    if (i === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.closePath();
+  g.fillStyle(0xffe066, alpha);
+  g.fillPath();
+  g.lineStyle(2, 0xff3322, alpha);
+  g.strokePath();
 }

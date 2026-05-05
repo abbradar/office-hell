@@ -1,12 +1,12 @@
 import type { Entity } from '../entities/Entity';
 import type { DialogueOpts } from '../ui/dialogue';
 
-// Object-form non-race yield kinds. Each carries an optional
-// `yieldReason` (added uniformly via the intersection in `NonRaceYield`)
+// Every object-form yield a script can emit. Each carries an optional
+// `yieldReason` (added uniformly via the intersection in `ScriptYield`)
 // that surfaces in the debug HUD when a script with `debugYieldReasons`
 // is parked on this yield. Use `withYieldReason` to stamp every yield
 // emitted by a generator.
-export type NonRaceObjectYield =
+export type ObjectScriptYield =
   // Wait `frames` script frames. Equivalent to a bare number yield, but
   // can carry a yieldReason — bare numbers have nowhere to hang one.
   | { frames: number }
@@ -17,23 +17,22 @@ export type NonRaceObjectYield =
   // the active track has already finished. Loop tracks never complete
   // and should not yield this — use `waitTrackEnded` which routes loops
   // through a polling boundary computation instead.
-  | { untilMusicEnds: true };
+  | { untilMusicEnds: true }
+  // Race several sub-generators in parallel; the first one to finish
+  // wins, the rest are cancelled via the engine's drop mechanism, and
+  // the parent resumes. An empty array resolves on the next frame.
+  // Pure cancellation — no result channel; callers infer the outcome
+  // from world state. Children can yield any `ScriptYield` (nested
+  // race / all included).
+  | { race: Array<Generator<ScriptYield, void, void>> }
+  // Run several sub-generators in parallel; resume the parent only
+  // after every one of them has finished. Each child can yield any
+  // `ScriptYield` (including nested race / all), and an empty array
+  // resolves on the next frame. Pure join — no result channel;
+  // children share the parent's entity and communicate via world state.
+  | { all: Array<Generator<ScriptYield, void, void>> };
 
-// Yield kinds that don't open a sub-race. Used as the return type of a
-// racing generator — a race's loss/wakeup trigger is computed by the
-// inner and must itself be a leaf wait (no nested race) so the runner
-// has a finite, recursion-free trigger to install on the parent.
-export type NonRaceYield = number | (NonRaceObjectYield & { yieldReason?: string });
-
-export type ScriptYield =
-  | NonRaceYield
-  // Race a sub-generator against a parent-side wait. `race` is the inner
-  // generator (does its own work, yielding any ScriptYield); `trigger`
-  // is a leaf wait installed on the parent in parallel. Whichever
-  // resolves first wakes the parent; the loser is cancelled via the
-  // engine's generation-bump mechanism. Pure cancellation — no result
-  // channel; callers infer outcome from world state.
-  | { race: Generator<ScriptYield, void, void>; trigger: NonRaceYield };
+export type ScriptYield = number | (ObjectScriptYield & { yieldReason?: string });
 
 export type EntityScript = (self: Entity) => Generator<ScriptYield, void, void>;
 

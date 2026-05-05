@@ -16,12 +16,13 @@ type ScriptIter = Generator<ScriptYield, void, void>;
 // Short label describing the leaf wait `v` represents — used by the
 // debug HUD when a script with `debugYieldReasons` yields. A caller-
 // supplied `yieldReason` (e.g. via `withYieldReason`) wins over the
-// default description so high-level helpers can name themselves. Returns
-// null for the race form because beginRace re-enters processYield with
-// the trigger, which writes the leaf description itself.
+// default description so high-level helpers can name themselves.
+// Returns null for race / all because each child stamps its own
+// description as it ticks; leave the previous reason visible until then.
 function describeYield(v: ScriptYield): string | null {
   if (typeof v === 'number') return `wait ${v}f`;
   if ('race' in v) return null;
+  if ('all' in v) return null;
   if (v.yieldReason !== undefined) return v.yieldReason;
   if ('frames' in v) return `wait ${v.frames}f`;
   if ('dialogue' in v) return 'dialogue';
@@ -42,26 +43,57 @@ function describeYield(v: ScriptYield): string | null {
 //     as the loser of a race). Null never matches a snapshotted number,
 //     so any in-flight wakeup silently expires. That's the universal
 //     cancellation channel.
-//   - `racedParent` / `racedParentGeneration` are present iff this
-//     script is the inner of a race. On natural completion the
-//     done-handler calls back into `callIter(parent)`; the snapshot
-//     guards against the parent having moved on already.
-//   - `racedChild` is present iff this script is the outer of a race.
-//     On any advance of the outer that is *not* the inner-finishes
-//     path, `callIter` drops the child first — that's how a trigger
-//     (or any other path that wakes the outer) cancels the inner
-//     exactly once.
+//   - `raceParent` / `raceParentGeneration` are present iff this
+//     script is one racer in a `{ race }` set. On natural completion
+//     the done-handler cancels the surviving siblings and calls back
+//     into `callIter(parent)`; the snapshot guards against the parent
+//     having moved on already.
+//   - `raceChildren` is present iff this script is parked on a
+//     `{ race }` yield. Holds every spawned racer; `drop` walks it to
+//     tear down the whole set when the parent is cancelled. The
+//     winning child clears it (and cancels its siblings) before
+//     waking the parent, so subsequent advances of the parent see no
+//     leftover racers to drop.
+//   - `waitedBy` / `waitedByGeneration` and `waitingLeft` /
+//     `waitingChildren` mirror the same pattern for the `{ all }`
+//     join — see field comments below.
 export type SceneScript = {
   iter: ScriptIter;
   entity: Entity;
   generation: number | null;
-  racedParent?: SceneScript;
-  racedParentGeneration?: number;
-  racedChild?: SceneScript;
+  // Set on each child of a `{ race }` set. On natural completion
+  // (callIter r.done) the child cancels its surviving siblings and
+  // wakes the parent. Generation snapshot guards against a parent that
+  // has moved on (dropped, or already woken via a different path).
+  raceParent?: SceneScript;
+  raceParentGeneration?: number;
+  // Set on the parent that's parked on a `{ race }`. Holds every
+  // racer; cleared by the winner before it wakes the parent, or by
+  // `drop` when the parent is cancelled.
+  raceChildren?: SceneScript[];
+  // Present iff this script is a child of an `{ all }` join. When the
+  // child finishes naturally (callIter r.done), we look up `waitedBy`,
+  // decrement its `waitingLeft`, and wake the parent when the counter
+  // hits zero. `waitedByGeneration` snapshots the parent at spawn time
+  // — symmetric with `raceParentGeneration`, it guards the wake-up
+  // against a parent that has moved on (dropped, or already woken).
+  waitedBy?: SceneScript;
+  waitedByGeneration?: number;
+  // Present iff this script is parked on an `{ all }` yield. Counts
+  // children still running; the parent wakes when this reaches zero.
+  // Cleared at wake.
+  waitingLeft?: number;
+  // Children spawned by this script's `{ all }` yield. Tracked so
+  // `drop` can recurse into them when this parent is cancelled —
+  // otherwise children keep running with stale `waitedBy` pointers
+  // that wake nothing. Cleared at wake (children are all done by then)
+  // or by drop. Mirrors `raceChildren` for the race form.
+  waitingChildren?: SceneScript[];
   // When true, each leaf yield this script makes writes a description to
   // `manager.lastYieldReason` so the HUD can show what the script is
-  // parked on. Set on the stage script via SpawnOpts; propagated to raced
-  // children in `beginRace` so the inner's progress shows up the same way.
+  // parked on. Set on the stage script via SpawnOpts; propagated to
+  // race / all children at spawn time so their progress shows up the
+  // same way.
   debugYieldReasons?: boolean;
 };
 
@@ -237,46 +269,86 @@ export class StageManager {
     this.scheduleIter(e.script, 1);
   }
 
-  // Permanently disable a script and propagate down its race chain.
-  // Sets `generation` to null so any in-flight wakeups (frame waits,
-  // race triggers, death/dialogue/music callbacks) see a non-matching
-  // generation on fire and silently drop. Recurses into `racedChild`
-  // so a nested race tree is taken down in one pass.
+  // Permanently disable a script and propagate down its race / all
+  // chains. Sets `generation` to null so any in-flight wakeups (frame
+  // waits, race winners, death/dialogue/music callbacks, all
+  // completions) see a non-matching generation on fire and silently
+  // drop. Recurses into `raceChildren` and `waitingChildren` so a
+  // nested race / all tree is taken down in one pass.
   private drop(script: SceneScript): void {
     script.generation = null;
-    const child = script.racedChild;
-    if (child !== undefined) {
-      script.racedChild = undefined;
-      this.drop(child);
+    const racers = script.raceChildren;
+    if (racers !== undefined) {
+      script.raceChildren = undefined;
+      for (const c of racers) this.drop(c);
+    }
+    const allChildren = script.waitingChildren;
+    if (allChildren !== undefined) {
+      script.waitingChildren = undefined;
+      for (const c of allChildren) this.drop(c);
     }
   }
 
-  // The single advance path. Bumps generation, calls into the iter, and
-  // routes the result. If the script holds a `racedChild` (i.e. it's
-  // the outer of a race) we drop the child first — that's how every
-  // wake of the outer except "inner just finished" cancels the inner.
-  // The inner-finished path clears `racedChild` *before* calling back
-  // into `callIter(parent)`, so this drop step finds nothing and is a
-  // noop.
+  // The single advance path. Bumps generation, calls into the iter,
+  // and routes the result. Cancellation of surviving race siblings is
+  // handled in the r.done branch below — when the winner reports back
+  // to its parent it tears down the rest of the set there. That keeps
+  // this preamble straight (no race-children check needed) and
+  // localises the "first finisher wins" rule to one place.
   private callIter(script: SceneScript): void {
-    const child = script.racedChild;
-    if (child !== undefined) {
-      script.racedChild = undefined;
-      this.drop(child);
-    }
     // Callers guarantee the script is still live (generation !== null):
-    // wait queue and race wake-ups gate on a generation match, and
-    // beginRace runs the freshly-made inner. So generation is always a
-    // number here.
+    // wait queue and race / all wake-ups gate on a generation match,
+    // and beginRace / beginAll run freshly-made children. So generation
+    // is always a number here.
     (script.generation as number)++;
     const r = script.iter.next();
     if (r.done) {
-      const parent = script.racedParent;
+      const parent = script.raceParent;
       if (parent !== undefined) {
-        script.racedParent = undefined;
-        if (parent.racedChild === script) parent.racedChild = undefined;
-        if (parent.generation === script.racedParentGeneration) {
+        script.raceParent = undefined;
+        if (parent.generation === script.raceParentGeneration) {
+          // Generation match means the parent is still parked on the
+          // same `race` yield that spawned this script — so its
+          // `raceChildren` must still be set. We're the winner: cancel
+          // every other racer (this script is skipped because its iter
+          // is already done — drop would be a no-op but the explicit
+          // skip avoids null-stamping a generation we still rely on
+          // above) and clear the array before waking the parent.
+          if (parent.raceChildren === undefined) {
+            throw new Error('race winner reported but parent has no raceChildren');
+          }
+          const siblings = parent.raceChildren;
+          parent.raceChildren = undefined;
+          for (const s of siblings) {
+            if (s !== script) this.drop(s);
+          }
           this.callIter(parent);
+        }
+      }
+      const waiter = script.waitedBy;
+      if (waiter !== undefined) {
+        script.waitedBy = undefined;
+        // Generation match means the parent is still parked on the same
+        // `all` yield that spawned this child, so `waitingLeft` must
+        // still be set — it's only cleared when the counter hits zero,
+        // which itself bumps the parent's generation. Mismatch means
+        // the parent has moved on (dropped, or already woken via a
+        // different path) and the wake silently expires — symmetric
+        // with the wait-queue / race generation guard.
+        if (waiter.generation === script.waitedByGeneration) {
+          if (waiter.waitingLeft === undefined) {
+            throw new Error('all-child completed but parent has no waitingLeft counter');
+          }
+          waiter.waitingLeft--;
+          if (waiter.waitingLeft === 0) {
+            waiter.waitingLeft = undefined;
+            // Children are all done at this point (each one decrements
+            // the counter exactly once on completion), so the array
+            // holds finished scripts only — safe to drop without
+            // cancelling anything.
+            waiter.waitingChildren = undefined;
+            this.callIter(waiter);
+          }
         }
       }
       return;
@@ -313,33 +385,86 @@ export class StageManager {
         if (script.generation === scheduledGen) this.scheduleIter(script, 1);
       });
     } else if ('race' in v) {
-      this.beginRace(v.race, v.trigger, script);
+      this.beginRace(v.race, script);
+    } else if ('all' in v) {
+      this.beginAll(v.all, script);
     }
   }
 
-  private beginRace(innerIter: ScriptIter, trigger: ScriptYield, parent: SceneScript): void {
-    const inner: SceneScript = {
-      iter: innerIter,
-      entity: parent.entity,
-      generation: 0,
-      racedParent: parent,
-      // Parent just yielded the race (callIter advanced it), so its
-      // generation is a number, not null.
-      // biome-ignore lint/style/noNonNullAssertion: invariant — see comment above
-      racedParentGeneration: parent.generation!,
-      debugYieldReasons: parent.debugYieldReasons,
-    };
-    parent.racedChild = inner;
-    // Run inner immediately rather than parking it for a frame — saves
-    // the round-trip and keeps timing snappy. If inner happens to
-    // finish on its first step the inner-done path will have cleared
-    // `parent.racedChild` and advanced parent past the race yield; we
-    // then skip installing the trigger so we don't open a phantom wait
-    // (e.g. a dialog box that nobody's parked on) for a parent that has
-    // already moved on.
-    this.callIter(inner);
-    if (parent.racedChild === inner) {
-      this.processYield(parent, trigger);
+  private beginAll(iters: Array<ScriptIter>, parent: SceneScript): void {
+    if (iters.length === 0) {
+      // Empty join → resume on the next frame, mirroring the 1-frame
+      // round-trip a normal child completion would take.
+      this.scheduleIter(parent, 1);
+      return;
+    }
+    // Parent just yielded the all (callIter advanced it), so its
+    // generation is a number, not null.
+    // biome-ignore lint/style/noNonNullAssertion: invariant — see comment above
+    const parentGen = parent.generation!;
+    parent.waitingLeft = iters.length;
+    const children: SceneScript[] = [];
+    parent.waitingChildren = children;
+    for (const iter of iters) {
+      children.push({
+        iter,
+        entity: parent.entity,
+        generation: 0,
+        waitedBy: parent,
+        waitedByGeneration: parentGen,
+        debugYieldReasons: parent.debugYieldReasons,
+      });
+    }
+    // Run children eagerly, mirroring beginRace's eager-inner step. A
+    // child that synchronously completes will decrement waitingLeft via
+    // the r.done path; if every child completes synchronously the last
+    // one wakes the parent recursively, which clears waitingChildren
+    // and bumps the parent's generation. Snapshot the array so a
+    // synchronous wake-up that mutates `waitingChildren` doesn't trip
+    // the iteration; check the identity each step so we bail out the
+    // moment the parent moves on.
+    for (const child of children.slice()) {
+      if (parent.waitingChildren !== children) return;
+      this.callIter(child);
+    }
+  }
+
+  private beginRace(iters: Array<ScriptIter>, parent: SceneScript): void {
+    if (iters.length === 0) {
+      // Empty race → resume on the next frame, mirroring the empty-all
+      // behaviour and the 1-frame round-trip a normal child completion
+      // would take.
+      this.scheduleIter(parent, 1);
+      return;
+    }
+    // Parent just yielded the race (callIter advanced it), so its
+    // generation is a number, not null.
+    // biome-ignore lint/style/noNonNullAssertion: invariant — see comment above
+    const parentGen = parent.generation!;
+    const racers: SceneScript[] = [];
+    parent.raceChildren = racers;
+    // Build-and-run each racer one at a time. A racer that synchronously
+    // completes will cancel its siblings and wake the parent via the
+    // r.done path, which clears `raceChildren` and bumps the parent's
+    // generation. Doing the work inline (rather than allocating every
+    // SceneScript up front) means an eager winner never costs us the
+    // unbuilt remainders — both the SceneScript wrappers and the iter
+    // generators sit in `iters` and are simply dropped on return.
+    for (const iter of iters) {
+      const racer: SceneScript = {
+        iter,
+        entity: parent.entity,
+        generation: 0,
+        raceParent: parent,
+        raceParentGeneration: parentGen,
+        debugYieldReasons: parent.debugYieldReasons,
+      };
+      racers.push(racer);
+      this.callIter(racer);
+      // The winner-completion path clears `raceChildren`; once that has
+      // happened the race is over and the remaining iters in the input
+      // list won't be spawned.
+      if (parent.raceChildren !== racers) return;
     }
   }
 

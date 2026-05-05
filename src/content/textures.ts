@@ -113,27 +113,6 @@ export function generateDrinkBulletTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-// Trash bin placeholder for the bomb effect — flat front-on can with a lid
-// overhang and a few vertical ribs. Drawn high enough that the player can
-// tell at a glance where their bullets are being yanked toward.
-export function generateTrashBinTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 36;
-  const h = 42;
-  g.fillStyle(0x222222, 1);
-  g.fillRect(4, 8, w - 8, h - 8);
-  g.fillStyle(0x666666, 1);
-  g.fillRect(2, 8, w - 4, h - 8);
-  g.fillStyle(0x888888, 1);
-  g.fillRect(0, 0, w, 8);
-  g.fillStyle(0x4a4a4a, 1);
-  g.fillRect(9, 14, 2, h - 20);
-  g.fillRect(17, 14, 2, h - 20);
-  g.fillRect(25, 14, 2, h - 20);
-  g.generateTexture('trashBin', w, h);
-  g.destroy();
-}
-
 export function generateCorridorTexture(scene: Phaser.Scene): void {
   const g = scene.add.graphics();
   const w = GAME_W;
@@ -179,7 +158,6 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateEmailBulletTexture(scene);
   generateQuestionBulletTexture(scene);
   generateDrinkBulletTexture(scene);
-  generateTrashBinTexture(scene);
   generateCorridorTexture(scene);
   generateCorridorSpecksTexture(scene);
 }

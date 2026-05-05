@@ -14,7 +14,7 @@ import {
   playMusicWithIntro,
 } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
-import type { NonRaceYield, ScriptYield } from './types';
+import type { ScriptYield } from './types';
 
 // Set the HUD's current-wave label. Pure side-effect, not a generator —
 // callers don't `yield*` it. Writes `stage.wave`; the StageManager
@@ -35,10 +35,10 @@ export function markWave(self: Entity, name: string): void {
 // Bare `number` yields can't carry a label, so they're rewritten as
 // `{ frames: n, yieldReason: reason }` — same scheduling, just labelled.
 //
-// Race yields don't have their own label (the trigger and inner each
-// describe themselves), so the wrapper stamps the trigger and leaves
-// the inner generator alone — wrap the inner explicitly if you want
-// its yields labelled too.
+// `race` and `all` yields are passed through untouched — each child
+// generator already labels its own leaves, so there's no useful place
+// for an outer reason to attach. Wrap a child explicitly if you want
+// its yields labelled.
 export function* withYieldReason(
   reason: string,
   inner: Generator<ScriptYield, void, void>,
@@ -48,7 +48,8 @@ export function* withYieldReason(
 
 function stampReason(v: ScriptYield, reason: string): ScriptYield {
   if (typeof v === 'number') return { frames: v, yieldReason: reason };
-  if ('race' in v) return { ...v, trigger: stampReason(v.trigger, reason) as NonRaceYield };
+  if ('race' in v) return v;
+  if ('all' in v) return v;
   if (v.yieldReason !== undefined) return v;
   return { ...v, yieldReason: reason };
 }
@@ -118,6 +119,27 @@ function* waitSecondsBody(seconds: number): Generator<ScriptYield, void, void> {
     if (cur === null || cur.time >= target) return;
     yield framesUntilAudioTime(cur.time, target);
   }
+}
+
+// --- race / timeout -------------------------------------------------------
+
+// Race the given generators in parallel; the first one to finish wins
+// and the rest are cancelled. Pure cancellation — callers infer the
+// outcome from world state. An empty array resolves on the next frame
+// (matching the runner's empty-race behaviour).
+export function* race(...iters: Array<Generator<ScriptYield, void, void>>): Generator<ScriptYield, void, void> {
+  yield { race: iters };
+}
+
+// Run `inner` with a hard time budget. After `seconds` of audio time
+// (frame-fallback when no music is playing), whichever finishes first
+// wins; the other is cancelled. The waitSeconds racer holds the timeout
+// — if it wins, `inner` is dropped mid-flight.
+export function* withTimeout(
+  seconds: number,
+  inner: Generator<ScriptYield, void, void>,
+): Generator<ScriptYield, void, void> {
+  yield* race(inner, waitSeconds(seconds));
 }
 
 // --- audio-clock waits ----------------------------------------------------
