@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, arc, ring } from '../../script/patterns';
-import { waitEnemiesClear } from '../../script/stage';
+import { markWave, waitEnemiesClear } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { clearScreen } from '../stage';
@@ -90,6 +90,7 @@ export const gymBro = new EntityKind({
 // field, beat, then drop the boss in spawned-unhittable so his own script
 // can run entry + dialogue before becoming damageable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'gym bro');
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;

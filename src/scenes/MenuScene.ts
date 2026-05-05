@@ -52,8 +52,8 @@ export class MenuScene extends Phaser.Scene {
     }).setInteractive({ useHandCursor: true });
 
     const controlsTemplate = isTouchDevice
-      ? 'on-screen buttons: move\nfire is automatic on touch devices\n(no excuses on touch — yet)'
-      : '<moveHorizontal>: move\n<fire>: fire\n<bomb>: excuse (clears bullets, 3 per run)';
+      ? 'on-screen buttons: move, get angry\nexcuses fire automatically'
+      : '<moveHorizontal>: move\n<fire>: fire excuses\n<bomb>: get angry (clears bullets, 3 per run)';
     makePrompt(
       this,
       GAME_W / 2,

@@ -1,6 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
+import { markWave } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -137,6 +138,7 @@ export const hr = new EntityKind({
 });
 
 export function* hrTrioWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'hr trio');
   // Lead HR enters alone with a CV stack and the room's attention. Buffed HP
   // so the player can't kill them before the followers arrive to make this an
   // actual trio.

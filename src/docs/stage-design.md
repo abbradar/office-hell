@@ -19,17 +19,15 @@ directly as `defaultScript`. There's no wrapper:
 
 ```ts
 function* myStageBody(self: Entity) {
-  markBeat(self, 'intro');
+  markWave(self, 'intro');
   yield* introMonologue(self);
 
-  markBeat(self, 'music: track 1');
+  markWave(self, 'music: track 1');
   yield* startMusicLoop(TRACK_1_KEY);
 
-  markBeat(self, 'wave 1');
-  yield* waveOne(self);
+  yield* waveOne(self); // wave generators call `markWave` themselves
   yield* waitSeconds(2.5);
 
-  markBeat(self, 'wave 2');
   yield* waveTwo(self);
   // …
 }
@@ -51,7 +49,7 @@ Two pool fields:
 ```ts
 class StageManager {
   globals: Record<string, unknown> = {};
-  beat: string | null = null;
+  wave: string | null = null;
   // …
 }
 ```
@@ -64,8 +62,9 @@ constructs a new pool, which is the reset.
   `checkStageCount(self, key, max)` — guards for "this only runs once
   per scene even if multiple entities of the same kind spawn". Used by
   `oversleeper`, `janitor`, `checkEmail` waves.
-- `beat` is the human-readable string shown in the GameScene debug HUD.
-  Set with `markBeat(self, 'wave 2')` at any point in the body.
+- `wave` is the human-readable string shown in the GameScene debug HUD.
+  Set with `markWave(self, 'wave name')` from inside the wave generator,
+  or from the stage body for non-wave segments (intro, music switches).
 
 ## Helpers (`src/script/stage.ts`)
 
@@ -208,14 +207,14 @@ Launched from the practice menu's "▶ STAGE TEST (sync)" entry.
 ## Debug HUD
 
 `GameScene` always renders a second HUD line under the main one, fed
-from `getMusicTime()` + `stage.beat`:
+from `getMusicTime()` + `stage.wave`:
 
 ```
-track: stage1Retro01Loop  t: 12.34s  beat: wave 2
+track: stage1Retro01Loop  t: 12.34s  wave: wave 2
 ```
 
 - `track` / `t`: current music track key + seconds since it started.
-- `beat`: the most recent `markBeat(self, name)` call's argument.
+- `wave`: the most recent `markWave(self, name)` call's argument.
 - `yield`: short label for the leaf wait the stage script is currently
   parked on. Sourced from a yield's optional `yieldReason` field
   (preferred, set by `withYieldReason` and the wrapped wait helpers) or
@@ -257,6 +256,6 @@ in `StageManager.processYield` that registers the appropriate callback
   removed the menu-loop self-crossfade earlier because Vorbis is
   gapless). `waitTrackEnded` makes the seam musically clean but
   doesn't blend.
-- **Practice mode debug line is sparse.** Single-wave runs from
-  `makeWaveStage` don't call `markBeat`, so `stage.beat` stays null
-  and the HUD just shows the track line. Fine.
+- **Practice mode debug line.** Single-wave runs from `makeWaveStage`
+  pick up the wave's own `markWave` call, so the HUD shows the wave
+  label even outside the full stage.

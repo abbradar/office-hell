@@ -64,6 +64,17 @@ export function spread(
   }
 }
 
+// Push the entity in a direction (raw velocity components) and yield
+// until it dies — typically by crossing the cull margin and being
+// released by the manager. For "exit stage" moves where the exact
+// travel distance doesn't matter, only that the entity has cleared the
+// field. Caller must pick a direction that will actually carry the
+// entity off-screen, or this never resolves.
+export function* walkOffScreen(self: Entity, vx: number, vy: number): Generator<ScriptYield, void, void> {
+  self.body.setVelocity(vx, vy);
+  yield { until: self };
+}
+
 // Drive the entity from its current position to (tx, ty) at `speed`, then
 // stop. Computes heading + travel time for you and yields until it lands.
 // Snaps to the exact target on arrival to absorb sub-pixel rounding so the

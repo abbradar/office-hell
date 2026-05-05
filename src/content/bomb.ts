@@ -3,38 +3,42 @@ import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
 
-// How wide the panic radius is around the player. Generous on purpose — the
-// bomb is a panic button, so anything that could plausibly clip the player in
-// the next few seconds should get yanked.
-const BOMB_RADIUS = 360;
+// Panic radius around the player — half the play field width, so a bomb
+// fired with the player hugging one edge still reaches projectiles at the
+// centre line. The intro tutorial relies on this: the email approaches
+// centred while the player has dodged to a side.
+const BOMB_RADIUS = GAME_W / 2;
 
 // Travel time from a bullet's freeze position to the bin. The script paces the
 // suction to land in roughly this window so the player gets a clear breather
 // instead of a snap-clear.
 const SUCK_TRAVEL_MS = 3000;
-// How long the bin stays on screen — long enough to outlast the suction so
-// the last bullet visibly lands in it.
-const BIN_DISMISS_DELAY_MS = SUCK_TRAVEL_MS + 600;
+// Total bomb duration — long enough to outlast the suction so the last bullet
+// visibly lands in the bin. Exported so callers (e.g. the intro tutorial)
+// can wait for a bomb to be truly finished before moving on.
+export const BOMB_DURATION_MS = SUCK_TRAVEL_MS + 600;
+const BIN_DISMISS_DELAY_MS = BOMB_DURATION_MS;
 // Bin sits hugging the right wall, vertically centred on the player so the
 // "documents" sweep horizontally off into the can rather than diving past the
 // player sprite.
 const BIN_EDGE_MARGIN = 24;
 
-// The excuse the player blurts out as they nuke the field. One picked at
-// random per bomb — keeps repeated bombing from feeling robotic.
-const EXCUSES = [
-  'Sorry, urgent meeting!',
-  "Can't now, I'm vibing.",
-  'Hard stop at the top of the hour.',
-  'Touching grass, brb.',
-  "I'll circle back.",
-  'My calendar says no.',
-  'Deep work block, sorry!',
-  "DND, I'm in flow.",
+// Passive-aggressive office-speak the player snaps out as they "get angry"
+// and nuke the field. One picked at random per bomb — keeps repeated bombing
+// from feeling robotic.
+const BOMB_BARKS = [
+  'Enough of this, please.',
+  "I'm trying to work here.",
+  'Could we be professional about this?',
+  'This is really inappropriate.',
+  'Per my last email — busy.',
+  'Some of us have deadlines.',
+  "Let's discuss this offline.",
+  "I'll have to escalate this.",
 ];
-const EXCUSE_FRAMES = 90;
+const BARK_FRAMES = 90;
 
-export function activateBomb(player: Player, stage: StageManager): void {
+export function activateBomb(player: Player, stage: StageManager, opts?: { barkIndex?: number }): void {
   const scene = stage.scene;
   const binX = GAME_W - BIN_EDGE_MARGIN;
   const binY = player.y;
@@ -46,9 +50,12 @@ export function activateBomb(player: Player, stage: StageManager): void {
   player.pushInvincible();
   scene.time.delayedCall(BIN_DISMISS_DELAY_MS, () => player.popInvincible());
 
-  // biome-ignore lint/style/noNonNullAssertion: EXCUSES is a non-empty literal
-  const excuse = EXCUSES[Math.floor(Math.random() * EXCUSES.length)]!;
-  player.say(excuse, EXCUSE_FRAMES);
+  // The intro forces barkIndex=0 so the tutorial bomb pairs with a
+  // predictable line; everywhere else picks at random.
+  const idx = opts?.barkIndex ?? Math.floor(Math.random() * BOMB_BARKS.length);
+  // biome-ignore lint/style/noNonNullAssertion: BOMB_BARKS is a non-empty literal
+  const bark = BOMB_BARKS[idx]!;
+  player.say(bark, BARK_FRAMES);
 
   const bin = scene.add.image(binX, binY, 'trashBin').setDepth(50).setScale(0);
   scene.tweens.add({

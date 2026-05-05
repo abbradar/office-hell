@@ -1,8 +1,8 @@
 // Stage scripts are plain generator functions composed with `yield*`.
 // There is no queue, no entries, no filters, no runner wrapper —
 // sequential execution comes from the generator runtime, gating from
-// `wait*` helpers, and HUD labelling from `markBeat`. Stage-local
-// state lives on `stage.globals` / `stage.beat`, both reset each time a
+// `wait*` helpers, and HUD labelling from `markWave`. Stage-local
+// state lives on `stage.globals` / `stage.wave`, both reset each time a
 // new `StageManager` is constructed (i.e. each GameScene launch).
 
 import type Phaser from 'phaser';
@@ -16,12 +16,12 @@ import {
 import type { Entity } from '../entities/Entity';
 import type { NonRaceYield, ScriptYield } from './types';
 
-// Set the HUD's current-beat label. Pure side-effect, not a generator —
-// callers don't `yield*` it. Writes `stage.beat`; the StageManager
+// Set the HUD's current-wave label. Pure side-effect, not a generator —
+// callers don't `yield*` it. Writes `stage.wave`; the StageManager
 // initialises it to null and resets when the scene constructs a new
 // manager.
-export function markBeat(self: Entity, name: string): void {
-  self.stage.beat = name;
+export function markWave(self: Entity, name: string): void {
+  self.stage.wave = name;
 }
 
 // --- yield-reason wrapper -------------------------------------------------

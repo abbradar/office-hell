@@ -1,6 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
+import { markWave } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { missedCallBullet } from './missedCallBullet';
 
@@ -49,6 +50,7 @@ export const colleague = new EntityKind({
 // Demo wave: alternating sides at varying heights so the player has to track
 // them across the screen.
 export function* colleaguesWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'colleagues');
   self.spawn(colleague, -30, 220, 0, 0);
   yield 80;
   self.spawn(colleague, GAME_W + 30, 280, 0, 0);

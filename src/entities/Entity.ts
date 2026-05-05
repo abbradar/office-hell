@@ -62,6 +62,13 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     return Math.atan2(p.y - this.y, p.x - this.x);
   }
 
+  // Unit vector from self to the player, optionally scaled by `length`
+  // (so callers can use it directly as a velocity).
+  vectorToPlayer(length = 1): [number, number] {
+    const a = this.angleToPlayer();
+    return [Math.cos(a) * length, Math.sin(a) * length];
+  }
+
   spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts?: SpawnOpts): Entity {
     return this.stage.spawn(kind, x, y, vx, vy, opts);
   }

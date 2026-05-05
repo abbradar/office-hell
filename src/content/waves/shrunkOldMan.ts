@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { waitEnemiesClear } from '../../script/stage';
+import { markWave, waitEnemiesClear } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 // Circular import: stage.ts also imports shrunkOldManWave from this file. ES
@@ -120,6 +120,7 @@ export const shrunkOldMan = new EntityKind({
 });
 
 export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'mr. hodges');
   // Same opening beat as the final-boss wave: don't bring him on while
   // leftover enemies are still drifting around, sweep stragglers, brief
   // pause for funereal tone, then he shuffles in. Spawned unhittable so

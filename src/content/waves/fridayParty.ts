@@ -2,6 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
+import { markWave } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { drinkBullet } from './drinkBullet';
@@ -57,9 +58,7 @@ function* drinkStream(self: Entity): Generator<ScriptYield, void, void> {
   // Lock heading at the start of the stream — each bullet's sine motion is
   // overlaid on this same forward direction, so the wave shape forms in
   // space as bullets at successive ages occupy successive sine phases.
-  const aim = self.angleToPlayer();
-  const vx = Math.cos(aim) * DRINK_STREAM_SPEED;
-  const vy = Math.sin(aim) * DRINK_STREAM_SPEED;
+  const [vx, vy] = self.vectorToPlayer(DRINK_STREAM_SPEED);
   for (let i = 0; i < DRINK_STREAM_BULLETS; i++) {
     if (!self.alive) return;
     if (i % DRINK_STREAM_SFX_EVERY === 0) shoot();
@@ -139,6 +138,7 @@ const MEMBERS: readonly MemberSpec[] = [
 
 // biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
 export function* fridayPartyWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'friday party');
   self.spawn(normieManager, MANAGER_X, -30, 0, 0);
   for (const m of MEMBERS) {
     self.spawn(partyMember, m.x, -30, 0, 0, {

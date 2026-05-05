@@ -9,7 +9,7 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
-  markBeat,
+  markWave,
   startMusicLoop,
   startMusicWithIntro,
   waitEnemiesClear,
@@ -22,10 +22,12 @@ import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
 import { colleaguesWave } from './waves/colleague';
+import { firstEmailColleagues } from './waves/firstEmailColleagues';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
 import { internsWave } from './waves/intern';
+import { introMonologue } from './waves/intro';
 import { itAdminsWave } from './waves/itAdmin';
 import { janitorsWave } from './waves/janitor';
 import { oversleeperWave } from './waves/oversleeper';
@@ -49,6 +51,7 @@ export function clearScreen(self: Entity): void {
 }
 
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'final boss');
   // Don't open the encounter while wave-4 leftovers are still on screen.
   // Wait for enemies to clear, sweep in-flight bullets, brief beat, then bring on
   // the boss. He spawns unhittable (damagedByClass override) — his own script
@@ -71,6 +74,7 @@ export type WaveDef = {
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
   { id: 'r-interns', name: 'Interns', script: internsWave },
+  { id: 'r-first-email-colleagues', name: 'First Email Colleagues', script: firstEmailColleagues },
   { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
   { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
   { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
@@ -104,35 +108,6 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(p, p.x, PLAYER_OUTRO_EXIT_Y, PLAYER_OUTRO_SPEED);
 }
 
-function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
-  // Lock the player out for the whole intro — the lead-in beat plus dialogue.
-  // controlUpdate runs after stage.update, so this disable lands before any
-  // input or auto-fire executes this frame. Re-enabled on the way out so the
-  // first wave plays normally.
-  const p = self.stage.player;
-  p.controlsEnabled = false;
-  const ch = p.character;
-  yield self.dialogue({
-    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    lines: [
-      {
-        speaker: 'left',
-        text: '8:47 PM. The hum of the lights is starting to feel personal.',
-      },
-      {
-        speaker: 'left',
-        text: "Okay. Tonight I'm leaving before midnight. I mean it this time.",
-      },
-      {
-        speaker: 'left',
-        text: 'Just clear the floor, dodge a few "quick syncs", and out the door.',
-      },
-      { speaker: 'left', text: '…how hard can it be.' },
-    ],
-  });
-  p.controlsEnabled = true;
-}
-
 // Top-level stage script. Sequential composition via `yield*`. Inter-wave
 // gaps use `waitSeconds(s)` (audio-time-based) so the schedule is
 // synced to music. Music switches are explicit `yield* startMusicLoop(...)`
@@ -141,7 +116,7 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
 // music beats where audio time isn't meaningful.
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
-  markBeat(self, 'intro');
+  markWave(self, 'intro');
   self.stage.player.controlsEnabled = false;
   yield 30;
   yield* introMonologue(self);
@@ -149,49 +124,45 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 
   // Retro opening fanfare → retro 01 loop. `startMusicWithIntro` yields
   // until the track is actually ticking, so the wave below sees music up.
-  markBeat(self, 'music: retro 01');
+  markWave(self, 'music: retro 01');
   yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
 
-  markBeat(self, 'wave 1');
+  yield* firstEmailColleagues(self);
+  yield* waitSeconds(2.5);
   yield* internsWave(self);
   yield* waitSeconds(2.5);
-  markBeat(self, 'wave 2');
   yield* checkEmailWave(self);
   yield* waitSeconds(3.0);
-  markBeat(self, 'wave 3');
   yield* colleaguesWave(self);
 
   // Halfway pivot — snap the music switch to the next loop boundary so
   // the cut lands on a musical seam rather than mid-bar.
-  markBeat(self, 'music: retro 02');
+  markWave(self, 'music: retro 02');
   yield* waitTrackEnded();
   yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
 
-  markBeat(self, 'wave 4');
   yield* vacationPhotosWave(self);
 
   // Mid-stage boss — internal script waits for field to clear, then plays
   // its own dialogue + attack loop. The metal music switch below gates on
   // his death via waitEnemiesClear.
-  markBeat(self, 'mr. hodges');
   yield* shrunkOldManWave(self);
 
-  markBeat(self, 'music: metal');
+  markWave(self, 'music: metal');
   yield* waitEnemiesClear(self);
   yield* waitTrackEnded();
   yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
 
-  markBeat(self, 'final boss');
   yield* bossWave(self);
 
   // Outro: brief pause, sweep stragglers, brief pause, player exits.
-  markBeat(self, 'outro');
+  markWave(self, 'outro');
   yield 30;
   clearScreen(self);
   yield 30;
   yield* playerOutro(self);
 
-  markBeat(self, 'end');
+  markWave(self, 'end');
   self.scene.scene.start('End', { won: true });
 }
 

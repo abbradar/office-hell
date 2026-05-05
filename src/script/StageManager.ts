@@ -107,12 +107,12 @@ export class StageManager {
   // Lives for the manager's lifetime; switching scenes drops this manager
   // and the next GameScene constructs a fresh one with empty globals.
   readonly globals: Record<string, unknown> = {};
-  // Current HUD beat label, set by `markBeat(self, name)` calls in the
-  // stage body. Null until the body's first markBeat.
-  beat: string | null = null;
+  // Current HUD wave label, set by `markWave(self, name)` calls in the
+  // stage body. Null until the body's first markWave.
+  wave: string | null = null;
   // Most recent leaf-yield description from a script with
   // `debugYieldReasons` set. Updated in `processYield`; rendered after
-  // `beat` in the debug HUD line. Null until the first such yield.
+  // `wave` in the debug HUD line. Null until the first such yield.
   // Yields whose `describeYield` returns null (e.g. the race form) leave
   // this field unchanged — the previous reason stays visible.
   lastYieldReason: string | null = null;
@@ -202,7 +202,10 @@ export class StageManager {
     e.facing = directionFromVelocity(vx, vy);
     e.updateAnim();
 
-    const script = opts.script ?? kind.defaultScript ?? null;
+    // `??` would treat an explicit `null` as "missing" and fall back to
+    // the kind's default; check for undefined so callers can opt out of
+    // the default with `script: null`.
+    const script = opts.script !== undefined ? opts.script : (kind.defaultScript ?? null);
     if (script) {
       e.script = this.makeScript(script(e), e);
       if (opts.debugYieldReasons) e.script.debugYieldReasons = true;

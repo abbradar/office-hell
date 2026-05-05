@@ -27,6 +27,11 @@ export class Player extends Entity {
   // frame (after stage.update), so a script that sets this earlier in the same
   // frame is honoured before any input or firing happens.
   controlsEnabled = true;
+  // Fine-grained gate for the auto-fire stream: true means firing the bullet
+  // stream is allowed (when controls are also on); false suppresses it
+  // independently of movement. Used by the intro to let the player dodge
+  // without being able to shoot back before the bomb tutorial unlocks them.
+  firingEnabled = true;
 
   // Narrow the inherited Entity.kind: we always construct with a PlayerKind, and
   // scripts can then reach kind-specific config (like character) without a cast.
@@ -94,6 +99,12 @@ export class Player extends Entity {
     return this.kind.character;
   }
 
+  // Convenience: refresh the HP / bombs HUD bound to this player. Saves
+  // call sites the `kind.render(this)` indirection.
+  render(): void {
+    this.kind.render(this);
+  }
+
   pushInvincible(): void {
     if (this.invincibleDepth === 0) {
       this.savedDamagedBy = this.activeDamagedBy.slice();
@@ -155,7 +166,7 @@ export class Player extends Entity {
 
     this.x = Phaser.Math.Clamp(this.x, half, GAME_W - half);
 
-    const firing = isTouchDevice || this.fireKey.isDown;
+    const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
     if (firing) {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {

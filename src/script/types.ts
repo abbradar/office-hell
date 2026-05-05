@@ -95,7 +95,11 @@ export const INERT_KIND = new EntityKind({
 });
 
 export type SpawnOpts = {
-  script?: EntityScript;
+  // Override the kind's `defaultScript`. Pass a generator to run that
+  // instead, or `null` to spawn the entity with no script at all (useful
+  // when the outer script wants to drive the entity itself). Omit to
+  // accept the kind's default.
+  script?: EntityScript | null;
   // Override the kind's damagedByClass for this individual spawn — e.g. to make
   // a boss unhittable during its intro and then re-enable damage after dialogue.
   damagedByClass?: DamageClass[];

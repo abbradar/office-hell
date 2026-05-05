@@ -2,6 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
+import { markWave } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -122,6 +123,7 @@ export const itAdmin = new EntityKind({
 //   t=285  admin1 v3 → '"Password1!" does not count.'        (skipped if dead)
 // Each bubble lives 100f (SAY_FRAMES), so line 2 ends exactly as line 3 begins.
 export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'it admin');
   const admin1Speech: SpeechSchedule = ['Change your email password. Now.', null, null, '"Password1!" does not count.'];
   const admin2Speech: SpeechSchedule = [null, 'Your last reset was 91 days ago.', null, null];
 

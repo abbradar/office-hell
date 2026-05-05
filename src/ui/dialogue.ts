@@ -40,12 +40,29 @@ const NAME_COLOR = '#1a1a2a';
 const NAME_PAD_X = 8;
 const NAME_PAD_Y = 3;
 const TEXT_COLOR = '#f4f4f8';
-const TEXT_LINE_SPACING = 4;
+const EMPHASIS_COLOR = '#ffd96a';
+// Body text uses FONT_DIALOGUE_LG (16px) with 4px leading — 20px per
+// rendered line. Used for manual wrap when laying out the per-word Text
+// atoms (Phaser's wordWrap doesn't apply across separate Text objects).
+const BODY_LINE_H = 20;
 const HINT_COLOR = '#ffd96a';
 const INACTIVE_TINT = 0x4a4a6a;
 const ACTIVE_TINT = 0xffffff;
 const TYPE_INTERVAL_MS = 18;
 const DIM_ALPHA = 0.4;
+
+// Per-word render unit. Words sit at fixed positions established at line
+// layout time; the typewriter reveals them by slicing each word's
+// `text` into the active `textObj` based on the current `typed` cursor.
+type WordAtom = {
+  text: string;
+  // Character index of this word's first letter within the line's displayed
+  // text (i.e. line text with `/` markers stripped). Used to map the typed
+  // cursor onto per-word slice lengths.
+  charStart: number;
+  charEnd: number;
+  textObj: Phaser.GameObjects.Text;
+};
 
 type Live = {
   opts: DialogueOpts;
@@ -54,7 +71,10 @@ type Live = {
   rightSprite: Phaser.GameObjects.Sprite | null;
   nameBg: Phaser.GameObjects.Graphics;
   nameText: Phaser.GameObjects.Text;
-  bodyText: Phaser.GameObjects.Text;
+  // Per-word Text objects for the current line. Recreated by applyLine on
+  // each line change; destroyed in finish (or via container.destroy()).
+  bodyAtoms: WordAtom[];
+  bodyDisplayedLength: number;
   hint: Phaser.GameObjects.Container;
   index: number;
   typed: number;
@@ -64,6 +84,30 @@ type Live = {
   onAdvance: () => void;
   onKey: (event: KeyboardEvent) => void;
 };
+
+// Run = a contiguous span of plain or emphasised text within a line.
+// Emphasised runs are marked with a single-word `*word*` token in the
+// source string; nested or whitespace-containing emphasis isn't supported
+// (the convention is single words for highlight pop).
+type Run = { text: string; emphasised: boolean };
+
+// Match `*word*` where `word` has no `*` or whitespace inside — single
+// words only, matching the convention in dialogue lines.
+const EMPHASIS_RE = /\*([^*\s]+?)\*/g;
+
+function parseRuns(text: string): Run[] {
+  const runs: Run[] = [];
+  let last = 0;
+  for (const m of text.matchAll(EMPHASIS_RE)) {
+    const idx = m.index;
+    if (idx > last) runs.push({ text: text.slice(last, idx), emphasised: false });
+    // biome-ignore lint/style/noNonNullAssertion: capture group is required by the regex
+    runs.push({ text: m[1]!, emphasised: true });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) runs.push({ text: text.slice(last), emphasised: false });
+  return runs;
+}
 
 export class DialogueManager {
   private readonly scene: Phaser.Scene;
@@ -113,13 +157,10 @@ export class DialogueManager {
       .setOrigin(0, 0);
     container.add(nameText);
 
-    const bodyText = this.scene.add.text(TEXT_BOX_MARGIN + TEXT_BOX_PAD, TEXT_BOX_Y + TEXT_BOX_PAD + 24, '', {
-      ...FONT_DIALOGUE_LG,
-      color: TEXT_COLOR,
-      wordWrap: { width: GAME_W - TEXT_BOX_MARGIN * 2 - TEXT_BOX_PAD * 2 },
-    });
-    bodyText.setLineSpacing(TEXT_LINE_SPACING);
-    container.add(bodyText);
+    // Body text is laid out per-line in applyLine — words live as their
+    // own Text objects so we can colour single-word `/highlights/`
+    // independently. The container holds them just like the rest of the
+    // dialogue chrome, so destroy() cleans them up automatically.
 
     // Anchored to the box's bottom-right corner. makePrompt centres its
     // content vertically around the y argument, so subtract half a line to
@@ -151,7 +192,8 @@ export class DialogueManager {
       rightSprite,
       nameBg,
       nameText,
-      bodyText,
+      bodyAtoms: [],
+      bodyDisplayedLength: 0,
       hint,
       index: 0,
       typed: 0,
@@ -210,11 +252,109 @@ export class DialogueManager {
       c.rightSprite.setTint(line.speaker === 'right' ? ACTIVE_TINT : INACTIVE_TINT);
     }
 
-    c.bodyText.setText('');
+    // Tear down the previous line's word atoms before laying out the new
+    // one — destroy() pulls them out of the container automatically.
+    for (const a of c.bodyAtoms) a.textObj.destroy();
+    c.bodyAtoms = [];
+
+    const runs = parseRuns(line.text);
+    const layout = this.layoutRuns(runs);
+    for (const a of layout.atoms) c.container.add(a.textObj);
+    c.bodyAtoms = layout.atoms;
+    c.bodyDisplayedLength = layout.displayedLength;
+
     c.typed = 0;
     c.lastTypeMs = this.scene.time.now;
-    c.fullyTyped = line.text.length === 0;
+    c.fullyTyped = c.bodyDisplayedLength === 0;
+    this.renderTyped(c);
     c.hint.setVisible(c.fullyTyped);
+  }
+
+  private layoutRuns(runs: Run[]): { atoms: WordAtom[]; displayedLength: number } {
+    const originX = TEXT_BOX_MARGIN + TEXT_BOX_PAD;
+    const originY = TEXT_BOX_Y + TEXT_BOX_PAD + 24;
+    const maxWidth = GAME_W - TEXT_BOX_MARGIN * 2 - TEXT_BOX_PAD * 2;
+    const plainStyle = { ...FONT_DIALOGUE_LG, color: TEXT_COLOR };
+    const emphStyle = { ...FONT_DIALOGUE_LG, color: EMPHASIS_COLOR, fontStyle: 'bold' };
+
+    // Measure the font's space width once via a throwaway Text (canvas
+    // measureText preserves whitespace, so Phaser's Text.width does too).
+    const probe = this.scene.add.text(0, 0, ' ', plainStyle);
+    const spaceW = probe.width;
+    probe.destroy();
+
+    const atoms: WordAtom[] = [];
+    let cumChar = 0;
+    let x = 0;
+    let y = 0;
+
+    for (const run of runs) {
+      const style = run.emphasised ? emphStyle : plainStyle;
+      let i = 0;
+      while (i < run.text.length) {
+        const ch = run.text[i];
+        if (ch === '\n') {
+          x = 0;
+          y += BODY_LINE_H;
+          i++;
+          cumChar++;
+          continue;
+        }
+        if (ch === ' ' || ch === '\t') {
+          let j = i;
+          while (j < run.text.length && (run.text[j] === ' ' || run.text[j] === '\t')) j++;
+          x += spaceW * (j - i);
+          cumChar += j - i;
+          i = j;
+          continue;
+        }
+        let j = i;
+        while (j < run.text.length && run.text[j] !== ' ' && run.text[j] !== '\t' && run.text[j] !== '\n') j++;
+        const wordText = run.text.slice(i, j);
+        const t = this.scene.add.text(0, 0, wordText, style).setOrigin(0, 0);
+        // Wrap before placing if the word doesn't fit on the current
+        // line. Skipped at x=0 so a single oversized word still renders
+        // (overflowing) instead of looping.
+        if (x > 0 && x + t.width > maxWidth) {
+          x = 0;
+          y += BODY_LINE_H;
+        }
+        t.setPosition(originX + x, originY + y);
+        const charStart = cumChar;
+        const charEnd = cumChar + wordText.length;
+        // Hide the word until the typewriter reveals it.
+        t.setText('');
+        atoms.push({ text: wordText, charStart, charEnd, textObj: t });
+        x += this.measureWidth(wordText, style);
+        cumChar += wordText.length;
+        i = j;
+      }
+    }
+
+    return { atoms, displayedLength: cumChar };
+  }
+
+  // Phaser's Text.width updates with setText, so once we cleared the text
+  // for typewriter staging we lost the measurement. Re-measure via a temp
+  // Text — same path Phaser uses internally, just without the side effect
+  // of mutating our laid-out atom.
+  private measureWidth(text: string, style: Phaser.Types.GameObjects.Text.TextStyle): number {
+    const tmp = this.scene.add.text(0, 0, text, style);
+    const w = tmp.width;
+    tmp.destroy();
+    return w;
+  }
+
+  private renderTyped(c: Live): void {
+    for (const a of c.bodyAtoms) {
+      if (c.typed >= a.charEnd) {
+        a.textObj.setText(a.text);
+      } else if (c.typed <= a.charStart) {
+        a.textObj.setText('');
+      } else {
+        a.textObj.setText(a.text.slice(0, c.typed - a.charStart));
+      }
+    }
   }
 
   private advance(): void {
@@ -223,8 +363,8 @@ export class DialogueManager {
     const line = c.opts.lines[c.index];
     if (!line) return;
     if (!c.fullyTyped) {
-      c.typed = line.text.length;
-      c.bodyText.setText(line.text);
+      c.typed = c.bodyDisplayedLength;
+      this.renderTyped(c);
       c.fullyTyped = true;
       c.hint.setVisible(true);
       return;
@@ -241,14 +381,12 @@ export class DialogueManager {
     const c = this.current;
     if (!c) return;
     if (c.fullyTyped) return;
-    const line = c.opts.lines[c.index];
-    if (!line) return;
-    while (c.typed < line.text.length && time - c.lastTypeMs >= TYPE_INTERVAL_MS) {
+    while (c.typed < c.bodyDisplayedLength && time - c.lastTypeMs >= TYPE_INTERVAL_MS) {
       c.typed++;
       c.lastTypeMs += TYPE_INTERVAL_MS;
     }
-    c.bodyText.setText(line.text.slice(0, c.typed));
-    if (c.typed >= line.text.length) {
+    this.renderTyped(c);
+    if (c.typed >= c.bodyDisplayedLength) {
       c.fullyTyped = true;
       c.hint.setVisible(true);
     }

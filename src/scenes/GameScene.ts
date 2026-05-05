@@ -106,11 +106,16 @@ export class GameScene extends Phaser.Scene {
     if (!character)
       throw new Error('GameScene started without a selected character — go through CharacterSelect first');
 
+    // Real stage: bombs start at 0; the intro's wellness-coach drop-in
+    // unlocks them. Practice / test / music modes get the full pile so
+    // they're usable straight from the menu.
+    const isRealStage = !this.practiceWave && !this.testMode && this.musicMode === null;
     this.playerKind = new PlayerKind({
       hpText: this.hpText,
       bombsText: this.bombsText,
       practice: this.practiceWave !== null,
       character,
+      bombs: isRealStage ? 0 : undefined,
     });
     this.player = new Player(this, this.stage, this.playerKind);
     this.stage.player = this.player;
@@ -260,9 +265,9 @@ export class GameScene extends Phaser.Scene {
     const m = getMusicTime();
     const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
 
-    const beat = this.stage.beat;
+    const wave = this.stage.wave;
     const secondLineParts: string[] = [];
-    if (beat) secondLineParts.push(`beat: ${beat}`);
+    if (wave) secondLineParts.push(`wave: ${wave}`);
     const reason = this.stage.lastYieldReason;
     if (reason) secondLineParts.push(`yield: ${reason}`);
 

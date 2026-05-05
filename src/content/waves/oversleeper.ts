@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { checkStageOnce } from '../../script/stage';
+import { checkStageOnce, markWave } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { questionBullet } from './questionBullet';
 
@@ -37,9 +37,7 @@ const QUESTIONS = ['Any updates from the standup?', 'Just a quick recap?'] as co
 function* barrage(self: Entity): Generator<ScriptYield, void, void> {
   // Lock heading at the start of the barrage. Each bullet then travels along
   // that fixed line; the player dodges by stepping out of the column.
-  const aim = self.angleToPlayer();
-  const vx = Math.cos(aim) * STREAM_SPEED;
-  const vy = Math.sin(aim) * STREAM_SPEED;
+  const [vx, vy] = self.vectorToPlayer(STREAM_SPEED);
   for (let i = 0; i < STREAM_BULLETS; i++) {
     if (!self.alive) return;
     if (i % STREAM_SFX_EVERY === 0) shoot();
@@ -88,5 +86,6 @@ export const oversleeper = new EntityKind({
 // barrage-stream cleanly without other enemies interfering.
 // biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
 export function* oversleeperWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'oversleeper');
   self.spawn(oversleeper, GAME_W * 0.5, -30, 0, 0);
 }

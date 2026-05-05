@@ -1,6 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { arc, moveTo } from '../../script/patterns';
+import { markWave } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -75,6 +76,7 @@ export const vacationItaly = new EntityKind({
 // schedule: after the identical entry move each role starts saying SAY_FRAMES
 // after the previous one, and their per-role SAY_CYCLE keeps them in lockstep.
 export function* vacationPhotosWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'vacation photos');
   self.spawn(vacationItaly, GAME_W * 0.25, -30, 0, 0, { script: makeVacationScript(0) });
   yield SAY_FRAMES;
   self.spawn(vacationItaly, GAME_W * 0.75, -30, 0, 0, { script: makeVacationScript(1) });

@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed } from '../../script/patterns';
-import { checkStageOnce } from '../../script/stage';
+import { checkStageOnce, markWave } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -52,6 +52,7 @@ export function* internLine(
 // Demo wave: two lines, one drifting to each side, staggered so the player
 // has to pick a lane to clear first.
 export function* internsWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'interns');
   yield* internLine(self, GAME_W * 0.25, 1);
   yield 60;
   yield* internLine(self, GAME_W * 0.75, -1);

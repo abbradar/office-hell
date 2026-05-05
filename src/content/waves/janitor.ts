@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
-import { checkStageOnce } from '../../script/stage';
+import { checkStageOnce, markWave } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -71,6 +71,7 @@ export const janitor = new EntityKind({
 // focuses fire can drop the first before it sweeps and only eat the
 // second's mop strokes.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'janitor');
   self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
   yield 180;
   self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);

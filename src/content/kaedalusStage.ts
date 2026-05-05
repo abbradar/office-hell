@@ -12,7 +12,7 @@ import { KAEDALUS_LONG_KEY, KAEDALUS_SHORT_KEY } from '../audio/keys';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
-  markBeat,
+  markWave,
   startMusicLoop,
   waitEnemiesClear,
   waitScreenClear,
@@ -68,44 +68,44 @@ function spawnWave4(self: Entity): void {
 
 function* kaedalusBody(self: Entity) {
   // Music kicks in immediately, intro dialog plays over it.
-  markBeat(self, 'long music');
+  markWave(self, 'long music');
   yield* startMusicLoop(KAEDALUS_LONG_KEY);
 
-  markBeat(self, 'intro dialog');
+  markWave(self, 'intro dialog');
   yield self.dialogue(INTRO_DIALOG);
 
   // A handful of waves while the long track plays — paced so all four
   // can fit comfortably inside one iteration of the long loop (~3:36).
   yield* waitSeconds(2.0);
-  markBeat(self, 'wave 1');
+  markWave(self, 'wave 1');
   spawnWave1(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 2');
+  markWave(self, 'wave 2');
   spawnWave2(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 3');
+  markWave(self, 'wave 3');
   spawnWave3(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 4');
+  markWave(self, 'wave 4');
   spawnWave4(self);
 
   // Pre-boss beat: wait for the field to clear, deliver the cue dialog,
   // then snap the music switch to the long loop's next boundary.
-  markBeat(self, 'pre-boss dialog');
+  markWave(self, 'pre-boss dialog');
   yield* waitEnemiesClear(self);
   yield self.dialogue(PRE_BOSS_DIALOG);
 
-  markBeat(self, 'short music');
+  markWave(self, 'short music');
   yield* waitTrackEnded();
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
 
-  markBeat(self, 'boss');
+  markWave(self, 'boss');
   const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss };
 
-  markBeat(self, 'end');
+  markWave(self, 'end');
   yield* waitScreenClear(self);
   self.scene.scene.start('End', { won: true });
 }

@@ -13,6 +13,10 @@ export type PlayerKindOpts = {
   bombsText: Phaser.GameObjects.Text;
   practice?: boolean;
   character: CharacterDef;
+  // Initial bomb count for this run. Defaults to PLAYER_BOMBS; the real
+  // stage passes 0 so the HUD slot is empty until the intro tutorial
+  // unlocks bombs (avoids a single-frame "✱✱✱" flash on stage start).
+  bombs?: number;
 };
 
 export class PlayerKind extends EntityKind {
@@ -21,7 +25,7 @@ export class PlayerKind extends EntityKind {
   private bombsText: Phaser.GameObjects.Text;
   private practice: boolean;
   hits = 0;
-  bombs = PLAYER_BOMBS;
+  bombs: number;
 
   constructor(opts: PlayerKindOpts) {
     super({
@@ -35,6 +39,7 @@ export class PlayerKind extends EntityKind {
     this.hpText = opts.hpText;
     this.bombsText = opts.bombsText;
     this.practice = opts.practice ?? false;
+    this.bombs = opts.bombs ?? PLAYER_BOMBS;
   }
 
   render(self: Entity): void {

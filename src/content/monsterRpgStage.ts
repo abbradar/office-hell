@@ -17,7 +17,7 @@ import { MONSTER_BATTLE_KEY, MONSTER_CHASE_KEY, MONSTER_FINAL_BOSS_KEY, MONSTER_
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
-  markBeat,
+  markWave,
   startMusicLoop,
   waitEnemiesClear,
   waitScreenClear,
@@ -78,40 +78,40 @@ function* monsterRpgBody(self: Entity) {
   // Intro fanfare (12okt, 9.6s) loops while the opening dialog is open
   // so the player isn't reading in silence if they're slow. Battle
   // theme takes over immediately once the dialog closes.
-  markBeat(self, 'intro music');
+  markWave(self, 'intro music');
   yield* startMusicLoop(MONSTER_INTRO_KEY);
-  markBeat(self, 'intro dialog');
+  markWave(self, 'intro dialog');
   yield self.dialogue(INTRO_DIALOG);
 
   // Battle theme (one-shot, 2:37). Waves run during it; spaced loosely
   // so the 4-wave block fits well inside the runtime.
-  markBeat(self, 'battle music');
+  markWave(self, 'battle music');
   yield* startMusicLoop(MONSTER_BATTLE_KEY, { loop: false });
 
-  markBeat(self, 'wave 1');
+  markWave(self, 'wave 1');
   spawnWave1(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 2');
+  markWave(self, 'wave 2');
   spawnWave2(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 3');
+  markWave(self, 'wave 3');
   spawnWave3(self);
   yield* waitSeconds(8.0);
-  markBeat(self, 'wave 4');
+  markWave(self, 'wave 4');
   spawnWave4(self);
 
   // Boss 1: chase loop kicks in when the battle theme runs out and the
   // field is clear. Battle theme being one-shot means `waitTrackEnded`
   // fires on actual completion; then wait for residual enemies.
-  markBeat(self, 'pre-boss 1 dialog');
+  markWave(self, 'pre-boss 1 dialog');
   yield* waitTrackEnded();
   yield* waitEnemiesClear(self);
   yield self.dialogue(PRE_BOSS1_DIALOG);
 
-  markBeat(self, 'chase music');
+  markWave(self, 'chase music');
   yield* startMusicLoop(MONSTER_CHASE_KEY);
 
-  markBeat(self, 'boss 1');
+  markWave(self, 'boss 1');
   // Reuse Mr. Hodges as a mid-tier boss (he's in waves/ already).
   const boss1 = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
     damagedByClass: [],
@@ -119,20 +119,20 @@ function* monsterRpgBody(self: Entity) {
   yield { until: boss1 };
 
   // Boss 2: final_boss loop.
-  markBeat(self, 'pre-boss 2 dialog');
+  markWave(self, 'pre-boss 2 dialog');
   yield* waitEnemiesClear(self);
   yield self.dialogue(PRE_BOSS2_DIALOG);
 
-  markBeat(self, 'final_boss music');
+  markWave(self, 'final_boss music');
   yield* startMusicLoop(MONSTER_FINAL_BOSS_KEY);
 
-  markBeat(self, 'boss 2');
+  markWave(self, 'boss 2');
   const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss2 };
 
-  markBeat(self, 'end');
+  markWave(self, 'end');
   yield* waitScreenClear(self);
   self.scene.scene.start('End', { won: true });
 }
