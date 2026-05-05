@@ -7,7 +7,7 @@ import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
-import { isLeftHeld, isRightHeld } from '../input/touch';
+import { consumeBombPress, isLeftHeld, isRightHeld } from '../input/touch';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
 import { Entity } from './Entity';
@@ -168,7 +168,7 @@ export class Player extends Entity {
       }
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
+    if (Phaser.Input.Keyboard.JustDown(this.bombKey) || consumeBombPress()) {
       if (this.kind.consumeBomb(this)) activateBomb(this, this.stage);
     }
   }

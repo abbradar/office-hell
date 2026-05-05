@@ -10,7 +10,15 @@ import { stageTest } from '../content/testStage';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
-import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
+import {
+  BOMB_BUTTON_LEFT_X,
+  BOMB_BUTTON_RADIUS,
+  BOMB_BUTTON_RIGHT_X,
+  BOMB_BUTTON_Y,
+  clearBombPress,
+  TOUCH_BUTTON_RADIUS,
+  TOUCH_BUTTON_Y,
+} from '../input/touch';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
@@ -150,6 +158,20 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setAlpha(0.65)
         .setDepth(101);
+
+      // Bomb buttons — yellow tint matches the bombs HUD glyph (#ffd866)
+      // so the button reads as "the ✱-button" without a separate label.
+      for (const x of [BOMB_BUTTON_LEFT_X, BOMB_BUTTON_RIGHT_X]) {
+        this.add
+          .circle(x, BOMB_BUTTON_Y, BOMB_BUTTON_RADIUS, 0xffffff, 0.12)
+          .setStrokeStyle(2, 0xffd866, 0.5)
+          .setDepth(100);
+        this.add
+          .text(x, BOMB_BUTTON_Y, '✱', { color: '#ffd866', fontSize: '30px' })
+          .setOrigin(0.5)
+          .setAlpha(0.85)
+          .setDepth(101);
+      }
     }
 
     this.hud = this.add
@@ -211,6 +233,11 @@ export class GameScene extends Phaser.Scene {
       this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
 
       this.player.controlUpdate();
+    } else {
+      // Drop any queued bomb tap while paused — every pointerdown
+      // advances dialogue, so a tap that happened to land in a bomb
+      // circle would otherwise fire a bomb the moment play resumes.
+      clearBombPress();
     }
     // Player isn't part of stage.active, so its anim doesn't get the per-tick
     // refresh that pooled entities get inside stage.update — drive it here. Run
