@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import coachUrl from '../assets/sprites/coach1.png';
 import bossUrl from '../assets/sprites/coworker_boss1.png';
 import checkEmailUrl from '../assets/sprites/coworker_female_check_email1.png';
 import vacationItalyUrl from '../assets/sprites/coworker_female_manager1.png';
@@ -24,6 +25,7 @@ export const CHARACTER_SHEETS: Record<string, string> = {
   mc_female: mcFemaleUrl,
   // Named coworkers and bosses.
   boss: bossUrl,
+  coach1: coachUrl,
   janitor: janitorUrl,
   checkEmail: checkEmailUrl,
   vacationItaly: vacationItalyUrl,

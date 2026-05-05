@@ -32,6 +32,7 @@ import { oversleeperWave } from './waves/oversleeper';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
 import { vacationPhotosWave } from './waves/vacationPhotos';
+import { wellnessCoachWave } from './waves/wellnessCoach';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -80,6 +81,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-vacation-photos', name: 'Vacation Photos', script: vacationPhotosWave },
   { id: 'r-gym-bro', name: 'Gym Bro', script: gymBroWave },
   { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
+  { id: 'r-wellness-coach', name: 'Wellness Coach', script: wellnessCoachWave },
   { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
