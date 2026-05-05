@@ -1,17 +1,21 @@
-import { GAME_H, GAME_W } from '../config';
+import { BUTTON_BAND_H, CANVAS_H, GAME_H, GAME_W } from '../config';
 
 export const TOUCH_BUTTON_RADIUS = 90;
-export const TOUCH_BUTTON_Y = GAME_H - 60;
+// On touch devices with a control band, the move button hugs the canvas
+// bottom (its lower half clips off-screen, same as before — the corner
+// position works well for a thumb at the edge). Without a band (desktop)
+// it falls back to the original in-playfield position.
+export const TOUCH_BUTTON_Y = BUTTON_BAND_H > 0 ? CANVAS_H - 60 : GAME_H - 60;
 
-// Bomb buttons sit above each movement pad. One per side so whichever
-// thumb is free can throw a bomb — the other thumb can keep holding the
-// move button. Centre offset (60, -160) keeps the bomb circle clear of
-// the move circle (gap ~31px between rims) and inside the canvas, so
-// the full ring is visible rather than corner-clipped like the move pads.
+// Single bomb button centred horizontally between the two corner-clipped
+// move pads. With a band, it sits at the canvas bottom (same y as the move
+// pads) — the centre column (x ≈ 90..310) is clear of either move circle
+// so the bomb ring is fully visible without overlapping the move pads.
+// Without a band (desktop), falls back to the original layout where it
+// was tucked above the move pad inside the playfield.
 export const BOMB_BUTTON_RADIUS = 50;
-export const BOMB_BUTTON_Y = GAME_H - 220;
-export const BOMB_BUTTON_LEFT_X = 60;
-export const BOMB_BUTTON_RIGHT_X = GAME_W - 60;
+export const BOMB_BUTTON_X = GAME_W / 2;
+export const BOMB_BUTTON_Y = BUTTON_BAND_H > 0 ? CANVAS_H - 60 : GAME_H - 220;
 
 type Pointer = { x: number; y: number };
 
@@ -30,7 +34,7 @@ function toGameCoords(clientX: number, clientY: number): Pointer {
   if (rect.width === 0 || rect.height === 0) return { x: clientX, y: clientY };
   return {
     x: (clientX - rect.left) * (GAME_W / rect.width),
-    y: (clientY - rect.top) * (GAME_H / rect.height),
+    y: (clientY - rect.top) * (CANVAS_H / rect.height),
   };
 }
 
@@ -50,14 +54,12 @@ function inRightButton(p: Pointer): boolean {
 }
 
 function inBombButton(p: Pointer): boolean {
+  const dx = p.x - BOMB_BUTTON_X;
   const dy = p.y - BOMB_BUTTON_Y;
-  const dxL = p.x - BOMB_BUTTON_LEFT_X;
-  if (dxL * dxL + dy * dy <= BOMB_R2) return true;
-  const dxR = p.x - BOMB_BUTTON_RIGHT_X;
-  return dxR * dxR + dy * dy <= BOMB_R2;
+  return dx * dx + dy * dy <= BOMB_R2;
 }
 
-// Edge-triggered bomb input. A fresh pointerdown landing inside either
+// Edge-triggered bomb input. A fresh pointerdown landing inside the
 // bomb circle queues one press, consumed by Player.controlUpdate to
 // match keyboard JustDown(X) semantics. Tracking the press at
 // pointerdown only (not pointermove) means a finger sliding off the

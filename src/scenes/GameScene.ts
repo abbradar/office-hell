@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
-import { GAME_H, GAME_W } from '../config';
+import { BUTTON_BAND_H, CANVAS_W, GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { stageKaedalus } from '../content/kaedalusStage';
 import { stageMonsterRpg } from '../content/monsterRpgStage';
@@ -11,9 +11,8 @@ import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import {
-  BOMB_BUTTON_LEFT_X,
   BOMB_BUTTON_RADIUS,
-  BOMB_BUTTON_RIGHT_X,
+  BOMB_BUTTON_X,
   BOMB_BUTTON_Y,
   clearBombPress,
   TOUCH_BUTTON_RADIUS,
@@ -73,6 +72,13 @@ export class GameScene extends Phaser.Scene {
 
     this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor').setDepth(-10);
     this.specks = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor_specks').setDepth(-9);
+
+    // Mask the touch-control band so bullets that drift below the playfield
+    // (within CULL_MARGIN before being culled) don't peek through behind the
+    // buttons. Depth 50 sits above entities (default 0) and below HUD (99+).
+    if (BUTTON_BAND_H > 0) {
+      this.add.rectangle(0, GAME_H, CANVAS_W, BUTTON_BAND_H, 0x10101a).setOrigin(0, 0).setDepth(50);
+    }
 
     this.stage = new StageManager(this);
 
@@ -159,19 +165,19 @@ export class GameScene extends Phaser.Scene {
         .setAlpha(0.65)
         .setDepth(101);
 
-      // Bomb buttons — yellow tint matches the bombs HUD glyph (#ffd866)
+      // Bomb button — yellow tint matches the bombs HUD glyph (#ffd866)
       // so the button reads as "the ✱-button" without a separate label.
-      for (const x of [BOMB_BUTTON_LEFT_X, BOMB_BUTTON_RIGHT_X]) {
-        this.add
-          .circle(x, BOMB_BUTTON_Y, BOMB_BUTTON_RADIUS, 0xffffff, 0.12)
-          .setStrokeStyle(2, 0xffd866, 0.5)
-          .setDepth(100);
-        this.add
-          .text(x, BOMB_BUTTON_Y, '✱', { color: '#ffd866', fontSize: '30px' })
-          .setOrigin(0.5)
-          .setAlpha(0.85)
-          .setDepth(101);
-      }
+      // Centred between the two corner-clipped move pads so neither thumb
+      // sits in front of it during normal play.
+      this.add
+        .circle(BOMB_BUTTON_X, BOMB_BUTTON_Y, BOMB_BUTTON_RADIUS, 0xffffff, 0.12)
+        .setStrokeStyle(2, 0xffd866, 0.5)
+        .setDepth(100);
+      this.add
+        .text(BOMB_BUTTON_X, BOMB_BUTTON_Y, '✱', { color: '#ffd866', fontSize: '30px' })
+        .setOrigin(0.5)
+        .setAlpha(0.85)
+        .setDepth(101);
     }
 
     this.hud = this.add

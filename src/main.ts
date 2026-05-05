@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { GAME_H, GAME_W } from './config';
+import { CANVAS_H, CANVAS_W } from './config';
 import { BootScene } from './scenes/BootScene';
 
 new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game',
-  width: GAME_W,
-  height: GAME_H,
+  width: CANVAS_W,
+  height: CANVAS_H,
   backgroundColor: '#10101a',
   pixelArt: true,
   scale: {
