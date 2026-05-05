@@ -31,7 +31,7 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ <confirm>  START';
+    const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
     const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
       ...FONT_MENU,
       color: '#ffffff',

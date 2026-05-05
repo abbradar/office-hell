@@ -1,8 +1,9 @@
 // Stage scripts are plain generator functions composed with `yield*`.
-// There is no queue, no entries, no filters — sequential execution comes
-// from the generator runtime, gating from `wait*` helpers, and HUD
-// labelling from `markBeat`. State is a small per-run scratchpad parked
-// on `pool.stage` for entity scripts spawned mid-stage to reach.
+// There is no queue, no entries, no filters, no runner wrapper —
+// sequential execution comes from the generator runtime, gating from
+// `wait*` helpers, and HUD labelling from `markBeat`. Stage-local
+// state lives on `stage.globals` / `stage.beat`, both reset each time a
+// new `StageManager` is constructed (i.e. each GameScene launch).
 
 import type Phaser from 'phaser';
 import {
@@ -15,41 +16,12 @@ import {
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from './types';
 
-// Per-run state attached to `pool.stage` while a stage runs. `globals`
-// is the scratchpad used by `checkStageOnce` / `checkStageCount`. `beat`
-// is the human-readable label the GameScene HUD shows; updated by
-// `markBeat(self, name)`.
-export type StageState = {
-  globals: Record<string, unknown>;
-  beat: string | null;
-};
-
-// Higher-order entry point. Park a fresh `StageState` on `pool.stage`,
-// run `body`, then clear `pool.stage` in `finally`. Use this in the
-// `defaultScript` of a stage `EntityKind`:
-//
-//   defaultScript: (self) => runStage(self, function* (self) {
-//     markBeat(self, 'intro');
-//     yield* introMonologue(self);
-//     ...
-//   })
-export function* runStage(
-  self: Entity,
-  body: (self: Entity) => Generator<ScriptYield, void, void>,
-): Generator<ScriptYield, void, void> {
-  self.pool.stage = { globals: {}, beat: null };
-  try {
-    yield* body(self);
-  } finally {
-    self.pool.stage = null;
-  }
-}
-
 // Set the HUD's current-beat label. Pure side-effect, not a generator —
-// callers don't `yield*` it.
+// callers don't `yield*` it. Writes `stage.beat`; the StageManager
+// initialises it to null and resets when the scene constructs a new
+// manager.
 export function markBeat(self: Entity, name: string): void {
-  const state = self.pool.stage;
-  if (state) state.beat = name;
+  self.stage.beat = name;
 }
 
 // --- music starters -------------------------------------------------------
@@ -166,7 +138,7 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
 // resume is event-driven (entity death callback) rather than polled.
 export function* waitEnemiesClear(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
-    const e = firstLive(self.pool.damagedBy.enemy);
+    const e = firstLive(self.stage.damagedBy.enemy);
     if (!e) return;
     yield { until: e };
   }
@@ -176,7 +148,7 @@ export function* waitEnemiesClear(self: Entity): Generator<ScriptYield, void, vo
 // died or left the field — i.e. `damages.player` is empty.
 export function* waitScreenClear(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
-    const e = firstLive(self.pool.damages.player);
+    const e = firstLive(self.stage.damages.player);
     if (!e) return;
     yield { until: e };
   }
@@ -187,26 +159,26 @@ export function* waitEntityDead(e: Entity): Generator<ScriptYield, void, void> {
   if (e.alive) yield { until: e };
 }
 
-// --- per-stage scratchpad accessors --------------------------------------
+// --- stage-globals scratchpad accessors ----------------------------------
 
-// Helpers for entity scripts spawned mid-stage that aren't directly
-// given state — they fish it off the pool. Returns true when no stage
-// is running (demo waves spawn a single wave with no surrounding
-// stage), so the demo path still gets the full single-shot behaviour.
+// Set-on-first-call guard scoped to the StageManager's lifetime. True the
+// first time it's called for `key`; false thereafter. The manager resets
+// on scene transition, so demo waves and stage runs each get a fresh
+// slate.
 export function checkStageOnce(self: Entity, key: string): boolean {
-  const state = self.pool.stage;
-  if (state === null) return true;
-  if (state.globals[key]) return false;
-  state.globals[key] = true;
+  const globals = self.stage.globals;
+  if (globals[key]) return false;
+  globals[key] = true;
   return true;
 }
 
+// Counter variant: true for the first `max` calls under `key`; false
+// thereafter.
 export function checkStageCount(self: Entity, key: string, max: number): boolean {
-  const state = self.pool.stage;
-  if (state === null) return true;
-  const n = (state.globals[key] as number | undefined) ?? 0;
+  const globals = self.stage.globals;
+  const n = (globals[key] as number | undefined) ?? 0;
   if (n >= max) return false;
-  state.globals[key] = n + 1;
+  globals[key] = n + 1;
   return true;
 }
 

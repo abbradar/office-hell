@@ -8,10 +8,10 @@ import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
 import type { Entity } from '../entities/Entity';
-import { EntityPool } from '../entities/EntityPool';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { TOUCH_BUTTON_RADIUS, TOUCH_BUTTON_Y } from '../input/touch';
+import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -37,7 +37,7 @@ export type GameSceneData = {
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
-  private pool!: EntityPool;
+  private stage!: StageManager;
   private hud!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
@@ -66,7 +66,7 @@ export class GameScene extends Phaser.Scene {
     this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor').setDepth(-10);
     this.specks = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'corridor_specks').setDepth(-9);
 
-    this.pool = new EntityPool(this);
+    this.stage = new StageManager(this);
 
     this.add.rectangle(0, 0, GAME_W, HEADER_H, 0x000000, 0.55).setOrigin(0, 0).setDepth(99);
     this.add
@@ -102,8 +102,8 @@ export class GameScene extends Phaser.Scene {
       practice: this.practiceWave !== null,
       character,
     });
-    this.player = new Player(this, this.pool, this.playerKind);
-    this.pool.player = this.player;
+    this.player = new Player(this, this.stage, this.playerKind);
+    this.stage.player = this.player;
 
     // Music + sync test stages: pin player invincible for the whole run so
     // dying doesn't interrupt the timing checks. Pushed once with no pop —
@@ -120,10 +120,10 @@ export class GameScene extends Phaser.Scene {
             : this.practiceWave
               ? makeWaveStage(this.practiceWave)
               : stage;
-    this.pool.spawn(stageKind, 0, 0, 0, 0);
+    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugLocks: true });
 
     for (const c of DAMAGE_CLASSES) {
-      this.physics.add.overlap(this.pool.damages[c], this.pool.damagedBy[c], (a, b) => {
+      this.physics.add.overlap(this.stage.damages[c], this.stage.damagedBy[c], (a, b) => {
         const attacker = a as Entity;
         const target = b as Entity;
         if (!attacker.alive || !target.alive) return;
@@ -184,14 +184,14 @@ export class GameScene extends Phaser.Scene {
     //
     // So a fatal player-vs-bullet overlap in this frame has already called
     // player.die() before this method runs; alive === false is visible from
-    // line one. We have to bail before pool.update so scripts never tick with
+    // line one. We have to bail before stage.update so scripts never tick with
     // a dead player.
     //
     // Why not check at the bottom of update (right before render)? scene.start
     // only queues the scene swap for next frame; it doesn't preempt the rest
-    // of this update. By then pool.update has already run with alive === false
+    // of this update. By then stage.update has already run with alive === false
     // — exactly the tick we want to skip. (If physics ran AFTER scene.update,
-    // the death wouldn't have happened yet during pool.update and the
+    // the death wouldn't have happened yet during stage.update and the
     // end-of-update check would be fine — but Phaser 3's order is the other
     // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
@@ -200,29 +200,29 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Tick handlers first, controls last (before Phaser's physics step). This
-    // lets a script flip pool.paused or player.controlsEnabled this frame and
+    // lets a script flip stage.paused or player.controlsEnabled this frame and
     // have those state changes land before controlUpdate decides whether to
     // read input or auto-fire — otherwise a held fire key spawns a bullet in
     // the same frame (or the frame before) a cutscene begins, and it pops into
     // view as physics integrates.
-    this.pool.update(time, delta);
-    if (!this.pool.paused) {
+    this.stage.update(time, delta);
+    if (!this.stage.paused) {
       this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
       this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
 
       this.player.controlUpdate();
     }
-    // Player isn't part of pool.active, so its anim doesn't get the per-tick
-    // refresh that pooled entities get inside pool.update — drive it here. Run
+    // Player isn't part of stage.active, so its anim doesn't get the per-tick
+    // refresh that pooled entities get inside stage.update — drive it here. Run
     // even while paused so the dialogue's first frame doesn't show a stale anim
     // from before the cutscene started.
     this.player.updateAnim();
 
-    const hostile = this.pool.damages.player.countActive(true);
+    const hostile = this.stage.damages.player.countActive(true);
     const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
     this.hud.setText(`hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
 
-    this.bossNameText.setText(this.pool.bossName ?? '');
+    this.bossNameText.setText(this.stage.bossName ?? '');
 
     if (this.debugHud) this.debugHud.setText(this.formatDebugLine());
   }
@@ -231,9 +231,11 @@ export class GameScene extends Phaser.Scene {
     const m = getMusicTime();
     const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
 
-    const state = this.pool.stage;
+    const beat = this.stage.beat;
     const secondLineParts: string[] = [];
-    if (state?.beat) secondLineParts.push(`beat: ${state.beat}`);
+    if (beat) secondLineParts.push(`beat: ${beat}`);
+    const lock = this.stage.lockDebug;
+    if (lock) secondLineParts.push(`lock: ${lock}`);
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }

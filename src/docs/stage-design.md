@@ -2,83 +2,111 @@
 
 A "stage" is the script that runs the player through one playthrough — intro
 dialogue, waves of enemies, music transitions, bosses, outro. Stages are
-ordered **queues of entries**; a runner walks the queue front-to-back and
-runs each entry's action one after the other. Each action does its own
-gating inside the body via `yield* wait*(…)` helpers — there is no separate
-declarative filter list.
+**plain generator functions**, composed from `wait*` helpers and `start*`
+music helpers via `yield*`. There's no queue, no entries, no filters; the
+runtime is what JavaScript's generator protocol gives us, plus the engine
+plumbing in `StageManager`.
 
-This file documents the data model, the runner, the wait library, and the
-stages currently shipped.
+This file documents the small state object, the helpers, and the stages
+currently shipped.
 
 ---
 
-## Data model
+## Shape of a stage
 
-Defined in [`src/script/state.ts`](../script/state.ts).
+A stage is just an `EntityScript` — `function* (self: Entity)` — passed
+directly as `defaultScript`. There's no wrapper:
 
 ```ts
-type StageEntry = {
-  name: string;            // HUD label
-  kind: 'spawn' | 'dialog' | 'music' | 'misc';
-  action: (self: Entity) => void | Generator<ScriptYield, void, void>;
-};
+function* myStageBody(self: Entity) {
+  markBeat(self, 'intro');
+  yield* introMonologue(self);
 
-type StageQueue = StageEntry[];
+  markBeat(self, 'music: track 1');
+  yield* startMusicLoop(TRACK_1_KEY);
+
+  markBeat(self, 'wave 1');
+  yield* waveOne(self);
+  yield* waitSeconds(2.5);
+
+  markBeat(self, 'wave 2');
+  yield* waveTwo(self);
+  // …
+}
+
+export const myStage = new EntityKind({
+  sprite: null, hitboxRadius: 0, hp: null,
+  damageClass: [], damagedByClass: [],
+  defaultScript: myStageBody,
+});
 ```
 
-`action` may be a sync function (one-shot — spawn enemies, switch music,
-end the scene) or a generator (multi-step — dialogue, boss-entry sequences,
-anything that needs internal yields including `yield* wait*(self)` waits).
+The body generator is advanced frame-by-frame by the pool — same
+machinery as any entity script.
 
-A stage is wrapped in an `EntityKind` whose `defaultScript` is
-`(self) => runStageQueue(self, MY_QUEUE)`. Spawning that kind kicks off the
-stage. Same machinery as any other entity script — the queue runner is
-itself a generator the pool advances frame by frame.
+## State
 
-## Runner
+Two pool fields:
 
-`runStageQueue(self, queue)` iterates entries in order. For each:
+```ts
+class StageManager {
+  globals: Record<string, unknown> = {};
+  beat: string | null = null;
+  // …
+}
+```
 
-1. Stamp `state.currentEntryActivatedAt = getMusicTime()?.time` (used by
-   `waitTrackEnded` to compute the loop-boundary it should snap to).
-2. Call `action(self)`. If it returns a generator, `yield*` it (entry
-   stays "current" through any internal yields, including waits and
-   nested generators).
-3. Stamp `state.lastFireAudioTime = getMusicTime()?.time` (used by
-   `waitAudioGap` on the next entry).
+Both are initialised in `StageManager`'s constructor and persist for the
+lifetime of the pool — one GameScene launch. Switching scenes
+constructs a new pool, which is the reset.
 
-While a dialog box is open, `pool.update` early-returns on `pool.paused`,
-so the runner generator is paused too. The audio context keeps ticking, so
-any audio-time wait automatically catches up the moment the dialog closes.
+- `globals` backs `checkStageOnce(self, key)` and
+  `checkStageCount(self, key, max)` — guards for "this only runs once
+  per scene even if multiple entities of the same kind spawn". Used by
+  `oversleeper`, `janitor`, `checkEmail` waves.
+- `beat` is the human-readable string shown in the GameScene debug HUD.
+  Set with `markBeat(self, 'wave 2')` at any point in the body.
 
-A `StageState` instance is created per run by `runStageQueue` and parked on
-`pool.stage` for the duration. The instance owns `nextEntryOfKind(kind)`,
-`once(key)`, `count(key, max)`, plus the bookkeeping fields the wait
-helpers read. The HUD reads `pool.stage` directly to show the next upcoming
-entry.
+## Helpers (`src/script/stage.ts`)
 
-## Wait library
+### Music starters
 
-All in [`src/script/state.ts`](../script/state.ts). Each wait is a generator
-the action `yield*`s.
+Combined "play and yield until ticking" helpers. Use these instead of the
+raw `playMusicLoop` / `playMusicWithIntro` so the next step can assume
+music is up.
 
-| Helper | Resolves when | Notes |
-|---|---|---|
-| `waitAudioTimeAtLeast(t)` | current track time ≥ `t` | Strict null check on music — never resolves while no track is playing. |
-| `waitAudioGap(self, s)` | `s` audio seconds since previous entry's action returned | Replaces frame-counted gaps. Blocks until music is up. |
-| `startMusicLoop(key, opts?)` / `startMusicWithIntro(intro, loop, opts?)` | the requested track is actually ticking | Combined play + wait. Use these in `music`-kind stage actions instead of the raw `playMusicLoop` / `playMusicWithIntro` so following entries can assume music is up. |
-| `waitTrackEnded(self)` | one-shot completes (event-driven) or loop reaches its next loop-boundary (polled) | Snaps music switches to the next musical seam. Resolves immediately when no track is playing — safe on the very first music entry. |
-| `waitMusicComplete()` | one-shot track's natural completion | Yields the `untilMusicEnds` event. Loops never fire this — `waitTrackEnded` routes them through the polling boundary path instead. |
-| `waitEnemiesClear(self)` | no live entities in `damagedBy.enemy` | Bullets in flight don't count. Yields `{ until: e }` for each live enemy in turn — event-driven, no polling. |
-| `waitScreenClear(self)` | no live entities in `damages.player` | Bullets included — true field-empty. Same `{ until: e }` loop. |
-| `waitEntityDead(e)` | a specific entity is dead | Single `{ until: e }` for "wait for this boss to fall". |
-| `yield { race, trigger }` | inner generator returns OR `trigger` (a `NonRaceYield`) fires | Race primitive. Inner does its own work; the loser is cancelled via the engine's generation bump. No higher-order wrapper — yield it directly. |
+| Helper | Effect |
+|---|---|
+| `startMusicLoop(key, opts?)` | Request a looped (or `{ loop: false }` one-shot) track; yield until `getMusicTime() !== null`. |
+| `startMusicWithIntro(intro, loop, opts?)` | Same but with the intro→loop hand-off. |
 
-`waitSeconds(seconds)` is a generic generator helper used inside wave
-actions for **internal** pacing. It captures the music time on entry and
-yields until that target elapses; falls back to a 60fps frame yield if no
-music is playing, so practice-mode runs (single wave, no music) preserve
-the original frame counts.
+### Generic time waits
+
+| Helper | Resolves when |
+|---|---|
+| `waitSeconds(s)` | `s` seconds of audio time have elapsed since the call. Falls back to a 60fps frame yield when no music is playing. |
+| `waitAudioTimeAtLeast(t)` | the active track's clock reaches `t` (seconds, from track start). Strict null check on music — never resolves while no track is playing. |
+
+### Music-state waits
+
+| Helper | Resolves when |
+|---|---|
+| `waitTrackEnded()` | one-shot completes (event-driven via `untilMusicEnds`) or loop reaches its next loop boundary (polled). Resolves immediately when no track is playing. |
+| `waitMusicComplete()` | one-shot track's natural completion. Loops never fire this — `waitTrackEnded` routes loops through the polling boundary path instead. |
+
+### World-state waits
+
+| Helper | Resolves when |
+|---|---|
+| `waitEnemiesClear(self)` | no live entities in `damagedBy.enemy`. Bullets in flight don't count. Yields `{ until: e }` for each live enemy in turn — event-driven. |
+| `waitScreenClear(self)` | no live entities in `damages.player`. Bullets included — true field-empty. |
+| `waitEntityDead(e)` | a specific entity is dead. Single `{ until: e }`. |
+
+### Race
+
+| Form | Effect |
+|---|---|
+| `yield { race, trigger }` | inner generator (`race`) returns OR the parent-side `trigger` (a `NonRaceYield`) fires. Loser is cancelled via the engine's generation bump. No result channel. |
 
 ## Music time semantics
 
@@ -86,36 +114,36 @@ Music lives in [`src/audio/music/loop.ts`](../audio/music/loop.ts). Two
 playback modes: `playMusicLoop(key)` and `playMusicWithIntro(intro, loop)`.
 
 - The clock is **per-track**. `getMusicTime()` returns
-  `{ key, time }` measured from the moment the track's `start()` callback
-  fired. A new `playMusicLoop` request resets the clock to `null`
-  immediately and re-arms when the new track is up.
-- That null window is what makes waits compose well: `waitAudioGap(s)`
-  and `waitAudioTimeAtLeast(t)` both block on `null`, so a wait following
-  a music-switch action naturally blocks until the new track has started.
+  `{ key, time }` measured from the moment the track's `start()`
+  callback fired. A new `playMusicLoop` request resets the clock to
+  `null` immediately and re-arms when the new track is up.
+- That null window is what makes waits compose well: `waitSeconds` and
+  `waitAudioTimeAtLeast` both block on `null`, so a wait following a
+  music switch naturally blocks until the new track has started.
 - For the loop-boundary computation in `waitTrackEnded`,
   `getCurrentTrackInfo()` exposes the active track's `introDuration`,
   `loopDuration`, and a `oneShot` flag. Boundary =
   `introDuration + N * loopDuration` for the smallest `N` where the
-  boundary is at-or-after `currentEntryActivatedAt`.
+  boundary is at-or-after the call's "now".
 - `onceMusicComplete(cb)` is the underlying engine event for one-shot
   completion. Listeners are per-track — a swap clears them so a callback
   registered against the previous track never fires for a later one.
 
 ## Pause semantics
 
-Set by `EntityPool.beginDialogue` ([`src/entities/EntityPool.ts`](../entities/EntityPool.ts)):
+Set by `StageManager.beginDialogue` ([`src/script/StageManager.ts`](../script/StageManager.ts)):
 
-- `pool.paused = true` (short-circuits `pool.update` so scripts and entity
+- `stage.paused = true` (short-circuits `stage.update` so scripts and entity
   AI freeze)
 - `scene.physics.pause()` (Phaser physics frozen — bodies stop integrating)
-- `GameScene.update` gates `player.controlUpdate()` on `!pool.paused` so
+- `GameScene.update` gates `player.controlUpdate()` on `!stage.paused` so
   player input is also frozen
 
 Hard pause — player cannot move during a dialog. Music keeps playing
 through the pause, which is the whole point: time-based waits that resume
 once a dialog closes catch up to where the audio clock has advanced.
 
-## Race
+## Race / timeout
 
 `yield { race: inner, trigger }` parks the calling script with two
 participants: the inner generator (doing its own work, yielding any
@@ -133,9 +161,10 @@ gives "race until the boss dies"; `{ untilMusicEnds: true }` gives
 Implementation: when the runner sees a race yield, it wraps the inner
 in a fresh `SceneScript` (with `racedParent` = outer,
 `racedParentGeneration` = outer's generation snapshot), parks
-`outer.racedChild = inner`, and schedules inner. It then runs the
-trigger through `processYield(outer, trigger)` — same path a regular
-yield would take — installing it as a parallel wait on the outer.
+`outer.racedChild = inner`, and runs the inner immediately. If the
+inner doesn't finish synchronously, the runner installs the trigger
+via `processYield(outer, trigger)` — same path a regular yield would
+take.
 
 Resolution paths:
 
@@ -159,30 +188,18 @@ before yielding.
 
 ### Real stage — [`src/content/stage.ts`](../content/stage.ts)
 
-```
-intro                              — dialog                      (pre-music)
-music: retro 01      startMusicWithIntro(...)                    (action yields until ticking)
-wave 1                                                           (music already up)
-wave 2               waitAudioGap(2.5)
-wave 3               waitAudioGap(3.0)
-music: retro 02      waitTrackEnded; startMusicLoop(...)         (snap to seam, then play+wait)
-wave 4                                                           (music already up)
-mr. hodges                                                       (script self-gates on field clear)
-music: metal         waitEnemiesClear; waitTrackEnded            (Hodges dead, retro_02 seam)
-final boss                                                       (bossWave script)
-outro                              — dialog (sweep + player exit)
-end                                — misc (scene.start('End'))
-```
-
-Wave bodies (`wave1..4` in the same file) use `waitSeconds(s)` for
-their internal between-spawn pacing.
+Plain generator body composing intro monologue → retro 01 + waves 1–3 →
+retro 02 + wave 4 → Mr. Hodges → metal music + final boss → outro →
+end. Inter-wave pacing via `waitSeconds(s)`; music switches snap to
+`waitTrackEnded()`; `waitEnemiesClear`/`waitScreenClear` gate the
+bossfight transitions.
 
 ### Diagnostics test stage — [`src/content/testStage.ts`](../content/testStage.ts)
 
-A short queue with `waitAudioTimeAtLeast` waits at known offsets so the
-sync-test debug HUD can be observed against an obvious schedule. Includes
-the metal music switch + final boss to exercise the per-track clock reset
-and `waitTrackEnded` snapping. Player is pinned invincible
+A short body with `waitAudioTimeAtLeast` waits at known offsets so the
+sync-test debug HUD can be observed against an obvious schedule.
+Includes the metal music switch + final boss to exercise the per-track
+clock reset and `waitTrackEnded` snapping. Player is pinned invincible
 ([`GameScene.create`](../scenes/GameScene.ts)) so a stray bullet doesn't
 end the test mid-observation.
 
@@ -190,60 +207,48 @@ Launched from the practice menu's "▶ STAGE TEST (sync)" entry.
 
 ## Debug HUD
 
-`GameScene` always renders a second HUD line under the main one, fed from
-`getMusicTime()` + `pool.stage`:
+`GameScene` always renders a second HUD line under the main one, fed
+from `getMusicTime()` + `stage.beat`:
 
 ```
-track: stage1Retro01Loop  t: 12.34s  next: wave 2
+track: stage1Retro01Loop  t: 12.34s  beat: wave 2
 ```
 
 - `track` / `t`: current music track key + seconds since it started.
-- `next`: name of the next upcoming spawn or dialog entry.
+- `beat`: the most recent `markBeat(self, name)` call's argument.
 
 Coloured grey on the real stage, green on the test stage as a visual
 "you're in test mode" cue.
 
 ## Adding a new stage
 
-1. Define a `StageQueue` literal — entries with `name`, `kind`, `action`.
-   Reuse `wait*` helpers from [`state.ts`](../script/state.ts) inside
-   action bodies; reuse spawn helpers from
-   [`content/kinds.ts`](../content/kinds.ts) and `content/waves/` for
-   entity definitions.
-2. Wrap it in an `EntityKind` whose `defaultScript` calls
-   `runStageQueue(self, MY_QUEUE)`.
+1. Write a generator body `function* myStageBody(self: Entity) { … }`
+   using the helpers above and any wave generators from
+   `content/waves/`.
+2. Pass it as the `defaultScript` of a stage `EntityKind`:
+   `defaultScript: myStageBody`.
 3. Spawn it from somewhere — typically a scene that constructs an
-   `EntityPool`, then `pool.spawn(myStageKind, 0, 0, 0, 0)`.
+   `StageManager`, then `pool.spawn(myStageKind, 0, 0, 0, 0)`.
 
 ## Adding a new wait helper
 
-Append a `wait*` generator to [`state.ts`](../script/state.ts). For
+Append a `wait*` generator to [`stage.ts`](../script/stage.ts). For
 deterministic time waits, poll `getMusicTime()` (or frame-yield) per
 frame. For event-driven resolution, add a yield variant to
-`ScriptYield` in [`script/types.ts`](../script/types.ts) and a handler in
-`EntityPool.advance` that registers the appropriate callback (see
-`untilMusicEnds` for an example).
+`ScriptYield` in [`script/types.ts`](../script/types.ts) and a handler
+in `StageManager.processYield` that registers the appropriate callback
+(see `untilMusicEnds` for an example).
 
 ## Known limitations / future work
 
-- **Linearity only.** Queues run front-to-back; no branching, no parallel
-  tracks, no jumps. Fine today; would need a redesign if narrative
-  branching shows up.
-- **Sequential, not parallel-AND.** Compound waits run in order
-  (`yield* waitEnemiesClear; yield* waitTrackEnded`). The old filter
-  array was a parallel AND; sequential is a small semantic shift but
-  none of the current stages have conditions that flip back, so it's
-  safe. A `waitAll(...gens)` higher-order would restore parallel AND if
-  needed.
 - **Loop boundaries, not bar boundaries.** `waitTrackEnded` snaps to
-  the next *loop iteration* end, which can be tens of seconds away on a
-  50s loop. For finer-grained beat-aligned switches we'd need bar/beat
-  metadata on the loop. Out of scope for now.
+  the next *loop iteration* end, which can be tens of seconds away on
+  a 50s loop. For finer-grained beat-aligned switches we'd need
+  bar/beat metadata on the loop. Out of scope for now.
 - **No crossfading on music switch.** Switches are hard cuts (we
   removed the menu-loop self-crossfade earlier because Vorbis is
-  gapless). `waitTrackEnded` makes the seam musically clean but doesn't
-  blend.
+  gapless). `waitTrackEnded` makes the seam musically clean but
+  doesn't blend.
 - **Practice mode debug line is sparse.** Single-wave runs from
-  `makeWaveStage` don't go through the queue runner, so the HUD shows
-  `track: (none)  t: -`. Could be hidden when both `pool.stage` and
-  `getMusicTime()` are null.
+  `makeWaveStage` don't call `markBeat`, so `stage.beat` stays null
+  and the HUD just shows the track line. Fine.

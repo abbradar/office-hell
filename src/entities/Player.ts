@@ -8,9 +8,9 @@ import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
 import { isLeftHeld, isRightHeld } from '../input/touch';
+import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
 import { Entity } from './Entity';
-import type { EntityPool } from './EntityPool';
 
 const FIRE_INTERVAL_MS = 140;
 const PLAYER_BULLET_SPEED = 700;
@@ -24,7 +24,7 @@ export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
   // and the post-boss outro) so the live input/auto-fire loop stops running
   // while the script puppets the player. controlUpdate is invoked late in the
-  // frame (after pool.update), so a script that sets this earlier in the same
+  // frame (after stage.update), so a script that sets this earlier in the same
   // frame is honoured before any input or firing happens.
   controlsEnabled = true;
 
@@ -46,12 +46,12 @@ export class Player extends Entity {
 
   private hitboxGfx: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene, pool: EntityPool, kind: PlayerKind) {
+  constructor(scene: Phaser.Scene, stage: StageManager, kind: PlayerKind) {
     super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
-    this.pool = pool;
+    this.stage = stage;
     this.kind = kind;
     this.hp = kind.hp;
     this.alive = true;
@@ -63,8 +63,8 @@ export class Player extends Entity {
     body.setAllowGravity(false);
     body.setCollideWorldBounds(true);
 
-    for (const c of kind.damageClass) pool.damages[c].add(this);
-    for (const c of kind.damagedByClass) pool.damagedBy[c].add(this);
+    for (const c of kind.damageClass) stage.damages[c].add(this);
+    for (const c of kind.damagedByClass) stage.damagedBy[c].add(this);
 
     // Initial pose so the very first rendered frame has a valid character anim;
     // subsequent frames are driven by updateAnim().
@@ -119,7 +119,7 @@ export class Player extends Entity {
   override updateAnim(): void {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
-    const enemyOnScreen = this.pool.damagedBy.enemy.countActive(true) > 0;
+    const enemyOnScreen = this.stage.damagedBy.enemy.countActive(true) > 0;
     const vx = this.body.velocity.x;
     let action: Action;
     let dir: Direction;
@@ -161,15 +161,15 @@ export class Player extends Entity {
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
         const fy = this.y - FIRE_OFFSET_Y;
-        this.pool.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
-        this.pool.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
-        this.pool.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.stage.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
+        this.stage.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.stage.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
         shoot();
       }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.bombKey)) {
-      if (this.kind.consumeBomb(this)) activateBomb(this, this.pool);
+      if (this.kind.consumeBomb(this)) activateBomb(this, this.stage);
     }
   }
 }

@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { waitEnemiesClear } from '../../script/state';
+import { waitEnemiesClear } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 // Circular import: stage.ts also imports shrunkOldManWave from this file. ES
@@ -52,7 +52,7 @@ function* shrunkOldManScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
   yield 30;
 
-  const ch = self.pool.player.character;
+  const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'geezer', frame: 1, name: 'Mr. Hodges' },
@@ -75,9 +75,9 @@ function* shrunkOldManScript(self: Entity) {
   // Claim the HUD header now that the fight is actually starting; release it
   // on death (covers both natural defeat and forced cleanup via release(),
   // which calls die() too).
-  self.pool.bossName = 'Mr. Hodges';
+  self.stage.bossName = 'Mr. Hodges';
   self.onDeath(() => {
-    self.pool.bossName = null;
+    self.stage.bossName = null;
   });
 
   self.setDamagedByClasses(['enemy']);

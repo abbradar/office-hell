@@ -1,7 +1,7 @@
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
-import type { EntityPool } from '../entities/EntityPool';
 import type { Player } from '../entities/Player';
+import type { StageManager } from '../script/StageManager';
 
 // How wide the panic radius is around the player. Generous on purpose — the
 // bomb is a panic button, so anything that could plausibly clip the player in
@@ -34,8 +34,8 @@ const EXCUSES = [
 ];
 const EXCUSE_FRAMES = 90;
 
-export function activateBomb(player: Player, pool: EntityPool): void {
-  const scene = pool.scene;
+export function activateBomb(player: Player, stage: StageManager): void {
+  const scene = stage.scene;
   const binX = GAME_W - BIN_EDGE_MARGIN;
   const binY = player.y;
 
@@ -67,7 +67,7 @@ export function activateBomb(player: Player, pool: EntityPool): void {
   // mid-loop (so the bullet can't damage the player en route), and Phaser's
   // getChildren() returns a live reference — mutating it while iterating
   // would skip every other match.
-  const candidates = pool.damages.player.getChildren().slice();
+  const candidates = stage.damages.player.getChildren().slice();
   const r2 = BOMB_RADIUS * BOMB_RADIUS;
   for (const child of candidates) {
     const e = child as Entity;
@@ -79,7 +79,7 @@ export function activateBomb(player: Player, pool: EntityPool): void {
     const dx = e.x - player.x;
     const dy = e.y - player.y;
     if (dx * dx + dy * dy > r2) continue;
-    sweepBullet(pool, e, target);
+    sweepBullet(stage, e, target);
   }
 
   scene.time.delayedCall(BIN_DISMISS_DELAY_MS, () => {
@@ -93,15 +93,15 @@ export function activateBomb(player: Player, pool: EntityPool): void {
   });
 }
 
-function sweepBullet(pool: EntityPool, bullet: Entity, target: { x: number; y: number }): void {
-  // Tear off whatever script the bullet was running (homing, etc.) so it
-  // can't override the velocity we're about to set.
-  pool.stopScript(bullet);
+function sweepBullet(stage: StageManager, bullet: Entity, target: { x: number; y: number }): void {
+  // runScript below tears off whatever the bullet was running (homing,
+  // etc.) so the old script can't override the velocity we're about to
+  // set.
   bullet.setVelocity(0, 0);
   // Disarm: pull the bullet out of the player's damage group so it can't kill
   // the player while it's flying into the bin. Idempotent — release() will
   // try to remove again, that's a harmless no-op.
-  pool.damages.player.remove(bullet);
+  stage.damages.player.remove(bullet);
 
   // Pace by travel time, not fixed speed: distant bullets need to arrive in
   // about the same window as nearby ones so the field clears as one breath.
@@ -110,7 +110,7 @@ function sweepBullet(pool: EntityPool, bullet: Entity, target: { x: number; y: n
   const d0 = Math.hypot(dx0, dy0);
   const speed = d0 > 1 ? d0 / (SUCK_TRAVEL_MS / 1000) : 0;
 
-  pool.runScript(bullet, function* (self) {
+  stage.runScript(bullet, function* (self) {
     // A handful of frames of dead-stop reads as a "freeze" before the suction
     // starts — makes the bomb effect legible instead of looking like the
     // bullets just teleported.

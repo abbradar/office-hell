@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { checkStageOnce } from '../../script/state';
+import { checkStageOnce } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { questionBullet } from './questionBullet';
 
@@ -52,7 +52,7 @@ function* oversleeperScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
   if (checkStageOnce(self, 'oversleeperIntroShown')) {
-    const ch = self.pool.player.character;
+    const ch = self.stage.player.character;
     yield self.dialogue({
       left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
       right: { sprite: 'overslept', frame: 1, name: 'Coworker' },

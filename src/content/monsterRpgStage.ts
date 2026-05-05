@@ -18,13 +18,12 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
   markBeat,
-  runStage,
   startMusicLoop,
   waitEnemiesClear,
   waitScreenClear,
   waitSeconds,
   waitTrackEnded,
-} from '../script/state';
+} from '../script/stage';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import { bossOne } from './kinds';
@@ -144,5 +143,5 @@ export const stageMonsterRpg = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStage(self, monsterRpgBody),
+  defaultScript: monsterRpgBody,
 });

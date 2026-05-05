@@ -40,13 +40,14 @@ src/
 ├── content/          Game content. Stages, characters, enemy "kinds",
 │                     bombs, releases (per-encounter wave definitions).
 ├── docs/             Internal docs. See "Where to read more" below.
-├── entities/         Entity, Player, EntityPool. Pool owns all entities,
-│                     groups, dialogue, bubbles, paused flag.
+├── entities/         Entity, Player. The runtime they live inside is
+│                     StageManager, which lives in src/script/.
 ├── input/            Touch + device detection helpers.
 ├── main.ts           Phaser.Game construction.
 ├── scenes/           Boot, Menu, CharacterSelect, Game, End, TestMenu.
-├── script/           Stage queue runner + filter library; entity-script
-│                     types and movement/firing patterns.
+├── script/           StageManager (script runtime + entity pool),
+│                     stage helpers (markBeat, wait*, startMusic*),
+│                     entity-script types, movement/firing patterns.
 └── ui/               Dialogue + bubble managers, font tier definitions.
 ```
 
@@ -54,19 +55,23 @@ src/
 
 | Topic | Doc |
 |---|---|
-| **Stage architecture** — declarative queue, filters, music-time gates, runner, debug HUD, how the real stage and test stage are wired | [src/docs/stage-design.md](src/docs/stage-design.md) |
+| **Stage architecture** — generator-based stage scripts, wait helpers, race primitive, music-time gates, debug HUD | [src/docs/stage-design.md](src/docs/stage-design.md) |
 | Audio system reference (external, aspirational) | [src/docs/dead-grid-audio-implementation-guide.md](src/docs/dead-grid-audio-implementation-guide.md) |
 
 ## Conventions worth knowing
 
-### Stages are declarative queues
+### Stages are generator functions
 
-Stages are arrays of `{ name, kind, filters, action }` entries; a runner
-walks the queue and gates each entry on its filters. **Read
+Stages are plain `function* (self) { … }` generators composed with
+`yield*` from `wait*` helpers and `start*` music helpers. Pass the
+generator directly as `defaultScript`. Stage-script scratchpad lives
+on `stage.globals` (via `checkStageOnce`/`checkStageCount`) and the
+HUD label on `stage.beat` (via `markBeat(self, name)`); both are
+initialised by `StageManager`'s constructor and reset on scene
+transition. **Read
 [src/docs/stage-design.md](src/docs/stage-design.md) before editing
-content/stage.ts or adding new stages.** Both the real stage and the
-sync-test stage use the same runner, so changes to
-[src/script/state.ts](src/script/state.ts) affect both.
+content/stage.ts or adding new stages.** Helpers live in
+[src/script/stage.ts](src/script/stage.ts).
 
 ### Audio model
 
@@ -90,10 +95,10 @@ support gap (Safari) is acknowledged; a fallback path can be added later.
 
 ### Pause is hard
 
-`EntityPool.beginDialogue` sets `pool.paused = true` AND
+`StageManager.beginDialogue` sets `stage.paused = true` AND
 `scene.physics.pause()`. While paused: no script ticks, no body
 integration, no player input (`GameScene.update` gates `controlUpdate`
-on `!pool.paused`). Music is **not** paused. A previous Touhou-style
+on `!stage.paused`). Music is **not** paused. A previous Touhou-style
 soft-pause experiment (player could move during dialogs) was reverted.
 
 ### Fonts
@@ -115,18 +120,18 @@ is `number | { until: Entity } | { dialogue: DialogueOpts }`:
 - `yield { until: e }` — wait for entity death
 - `yield self.dialogue(opts)` — open a dialog, pause physics, resume on dismiss
 
-Stage queue actions can be either a sync function or one of these
-generators. For audio-time waits inside an action, prefer
-`yield* waitSeconds(s)` from
-[src/script/state.ts](src/script/state.ts) over `yield N` —
-it falls back to frame yields in practice mode where music isn't playing.
+Stage bodies are generators using these primitives plus the helpers
+in [src/script/stage.ts](src/script/stage.ts). For audio-time waits
+prefer `yield* waitSeconds(s)` over `yield N` — it falls back to frame
+yields in practice mode where music isn't playing.
 
 ### Debug HUD
 
-`GameScene` always renders a second HUD line (track / t / next entry /
-blocked filters) sourced from `getMusicTime()` + `pool.stage`. Grey
-during normal play, green during the sync-test stage. Useful any time
-you're working on stage timing.
+`GameScene` always renders a second HUD line (track / t / current beat)
+sourced from `getMusicTime()` + `stage.beat`. The beat is set by
+`markBeat(self, name)` calls in the stage body. Grey during normal
+play, green during the sync-test stage. Useful any time you're
+working on stage timing.
 
 ## Things to be careful with
 

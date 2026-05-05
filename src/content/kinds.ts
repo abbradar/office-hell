@@ -31,7 +31,7 @@ function* bossScript(self: Entity) {
   yield 20;
 
   // Pre-fight dialogue.
-  const ch = self.pool.player.character;
+  const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
@@ -47,9 +47,9 @@ function* bossScript(self: Entity) {
   // Claim the HUD header now that the fight is actually starting; release it
   // on death (covers both natural defeat and forced cleanup via release(),
   // which calls die() too).
-  self.pool.bossName = 'The Boss';
+  self.stage.bossName = 'The Boss';
   self.onDeath(() => {
-    self.pool.bossName = null;
+    self.stage.bossName = null;
   });
 
   // Become hittable.

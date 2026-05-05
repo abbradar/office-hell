@@ -94,4 +94,8 @@ export type SpawnOpts = {
   // of a kind needs to outlast its peers (e.g. a "lead" enemy that has to
   // survive long enough to deliver its solo intro).
   hp?: number;
+  // When true, each leaf yield of this script (and any raced child) writes
+  // a description to `manager.lockDebug` so the HUD can show what the
+  // script is currently parked on. Used by the stage script.
+  debugLocks?: boolean;
 };

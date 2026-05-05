@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, arc, ring } from '../../script/patterns';
-import { waitEnemiesClear } from '../../script/state';
+import { waitEnemiesClear } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { clearScreen } from '../stage';
@@ -22,7 +22,7 @@ function* gymBroScript(self: Entity) {
   self.setVelocity(0, 0);
   yield HOLD_BEFORE_TALK;
 
-  const ch = self.pool.player.character;
+  const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'gymBro', frame: 1, name: 'Brad' },
@@ -39,9 +39,9 @@ function* gymBroScript(self: Entity) {
   // Claim the HUD header now that the fight is actually starting; release it
   // on death (covers both natural defeat and forced cleanup via release(),
   // which calls die() too).
-  self.pool.bossName = 'Brad';
+  self.stage.bossName = 'Brad';
   self.onDeath(() => {
-    self.pool.bossName = null;
+    self.stage.bossName = null;
   });
 
   self.setDamagedByClasses(['enemy']);

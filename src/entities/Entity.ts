@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { characterAnimKey, type Direction, directionFromVelocity } from '../content/animations';
+import type { SceneScript, StageManager } from '../script/StageManager';
 import { type DamageClass, type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
-import type { EntityPool } from './EntityPool';
 
 // Below this speed (px/sec) we treat the entity as standing still and switch
 // to the idle animation. moveTo and the boss script call setVelocity(0, 0)
@@ -17,10 +17,16 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // skip the `as Phaser.Physics.Arcade.Body` cast at every call site.
   declare body: Phaser.Physics.Arcade.Body;
 
-  pool!: EntityPool;
+  stage!: StageManager;
   kind: EntityKind = INERT_KIND;
   hp: number | null = null;
   alive = false;
+  // The script currently driving this entity (top of any race tree).
+  // Set by `spawn` / `runScript`, cleared on `release`. Used so the
+  // engine can disable the script (set generation to null) when the
+  // entity is released or the script is replaced — pending wakeups
+  // then silently expire on the generation check.
+  script: SceneScript | null = null;
   // Bumped on every spawn so deferred callbacks (e.g. onDeath) can detect
   // that the entity they captured has since died and been reused for something else.
   gen = 0;
@@ -52,16 +58,16 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   }
 
   angleToPlayer(): number {
-    const p = this.pool.player;
+    const p = this.stage.player;
     return Math.atan2(p.y - this.y, p.x - this.x);
   }
 
   spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts?: SpawnOpts): Entity {
-    return this.pool.spawn(kind, x, y, vx, vy, opts);
+    return this.stage.spawn(kind, x, y, vx, vy, opts);
   }
 
   say(text: string, frames: number): void {
-    this.pool.bubbles.show(this, text, frames);
+    this.stage.bubbles.show(this, text, frames);
   }
 
   dialogue(opts: DialogueOpts): ScriptYield {
@@ -80,10 +86,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;
     for (const c of cur) {
-      if (!classes.includes(c)) this.pool.damagedBy[c].remove(this);
+      if (!classes.includes(c)) this.stage.damagedBy[c].remove(this);
     }
     for (const c of classes) {
-      if (!cur.includes(c)) this.pool.damagedBy[c].add(this);
+      if (!cur.includes(c)) this.stage.damagedBy[c].add(this);
     }
     this.activeDamagedBy = classes.slice();
     this.body.setVelocity(vx, vy);

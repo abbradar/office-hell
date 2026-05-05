@@ -10,14 +10,13 @@ import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
   markBeat,
-  runStage,
   startMusicLoop,
   startMusicWithIntro,
   waitEnemiesClear,
   waitScreenClear,
   waitSeconds,
   waitTrackEnded,
-} from '../script/state';
+} from '../script/stage';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';
@@ -39,10 +38,10 @@ const PLAYER_OUTRO_PAUSE_Y = 110;
 const PLAYER_OUTRO_EXIT_Y = -60;
 
 // Kill every non-player entity outright. die() only flips the alive flag and
-// fires onDeath; group cleanup happens later in pool.update, so we can iterate
+// fires onDeath; group cleanup happens later in stage.update, so we can iterate
 // the live children list directly.
 export function clearScreen(self: Entity): void {
-  for (const child of self.pool.damages.player.getChildren()) {
+  for (const child of self.stage.damages.player.getChildren()) {
     const e = child as Entity;
     if (e.alive) e.die();
   }
@@ -87,7 +86,7 @@ export const WAVES: WaveDef[] = [
 ];
 
 function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
-  const p = self.pool.player;
+  const p = self.stage.player;
   // Take the wheel: stop accepting input and let the player float past the top
   // edge unbothered by the world-bounds clamp the live controls relied on.
   p.controlsEnabled = false;
@@ -105,10 +104,10 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
 
 function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
   // Lock the player out for the whole intro — the lead-in beat plus dialogue.
-  // controlUpdate runs after pool.update, so this disable lands before any
+  // controlUpdate runs after stage.update, so this disable lands before any
   // input or auto-fire executes this frame. Re-enabled on the way out so the
   // first wave plays normally.
-  const p = self.pool.player;
+  const p = self.stage.player;
   p.controlsEnabled = false;
   const ch = p.character;
   yield self.dialogue({
@@ -141,7 +140,7 @@ function* introMonologue(self: Entity): Generator<ScriptYield, void, void> {
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
   markBeat(self, 'intro');
-  self.pool.player.controlsEnabled = false;
+  self.stage.player.controlsEnabled = false;
   yield 30;
   yield* introMonologue(self);
   yield 30;
@@ -200,7 +199,7 @@ export const stage = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStage(self, stageBody),
+  defaultScript: stageBody,
 });
 
 export function makeWaveStage(wave: WaveDef): EntityKind {

@@ -24,13 +24,12 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
   markBeat,
-  runStage,
   startMusicWithIntro,
   waitAudioTimeAtLeast,
   waitEnemiesClear,
   waitScreenClear,
   waitTrackEnded,
-} from '../script/state';
+} from '../script/stage';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
 import { bossOne } from './kinds';
@@ -161,5 +160,5 @@ export const stageTest = new EntityKind({
   hp: null,
   damageClass: [],
   damagedByClass: [],
-  defaultScript: (self) => runStage(self, testStageBody),
+  defaultScript: testStageBody,
 });
