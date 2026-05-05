@@ -287,7 +287,12 @@ export class TestMenuScene extends Phaser.Scene {
       // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
       const header = HEADERS[target.index]!;
       this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
-      this.scene.start(header.scene ?? 'Game', header.data);
+      // `?? {}` for the same reason as CharSelect.confirm — Phaser's
+      // Systems.start only overwrites settings.data when the new data is
+      // truthy. The `FULL STAGE (real)` header has no data field, so
+      // without the fallback it would inherit whichever test/music data
+      // was set by a previously-launched header.
+      this.scene.start(header.scene ?? 'Game', header.data ?? {});
       return;
     }
     const wave = WAVES[target.index];

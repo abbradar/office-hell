@@ -172,6 +172,14 @@ export class CharacterSelectScene extends Phaser.Scene {
     const ch = CHARACTERS[this.cursor];
     if (!ch) return;
     this.registry.set(CHARACTER_REGISTRY_KEY, ch);
-    this.scene.start(this.next, this.nextData);
+    // `?? {}` is load-bearing: Phaser's Systems.start only assigns
+    // settings.data if the new data arg is truthy (`if (data) { settings.data = data; }`),
+    // so passing undefined leaves the *previous* start's data in place
+    // and the next scene's init() reads stale fields. Concretely: launch
+    // STAGE TEST from the practice menu (sets settings.data on Game to
+    // `{ test: true }`), come back to the main menu, press Start →
+    // CharSelect calls this with nextData=undefined and the test flag
+    // sticks. Empty object forces an overwrite.
+    this.scene.start(this.next, this.nextData ?? {});
   }
 }
