@@ -21,11 +21,14 @@ const ROW_COLOR = '#ffffff';
 const SELECTED_COLOR = '#ffd96a';
 
 // Each header button is a "shortcut" that bypasses CharacterSelect (uses the
-// first CHARACTERS entry as the default) and starts the game with whatever
-// scene-init data the entry specifies. Adding a new diagnostic stage =
-// adding a row here. Order matches cursor index: 0..HEADERS.length - 1.
+// first CHARACTERS entry as the default) and starts a target scene with
+// whatever init data the entry specifies. Most go to GameScene; the pattern
+// sandbox lives in its own scene. Adding a new diagnostic stage = adding
+// a row here. Order matches cursor index: 0..HEADERS.length - 1.
 type HeaderButton = {
   label: string;
+  // Target scene key. Defaults to 'Game' since most headers run a stage.
+  scene?: string;
   // biome-ignore lint/suspicious/noExplicitAny: scene init data is opaque
   data?: any;
 };
@@ -34,6 +37,7 @@ const HEADERS: HeaderButton[] = [
   { label: 'STAGE TEST (sync)', data: { test: true } },
   { label: 'KAEDALUS (music test)', data: { music: 'kaedalus' } },
   { label: 'MONSTER RPG (music test)', data: { music: 'monster-rpg' } },
+  { label: 'PATTERN SANDBOX', scene: 'PatternTest' },
 ];
 
 type CursorTarget = { kind: 'header'; index: number } | { kind: 'wave'; index: number };
@@ -283,7 +287,7 @@ export class TestMenuScene extends Phaser.Scene {
       // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
       const header = HEADERS[target.index]!;
       this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
-      this.scene.start('Game', header.data);
+      this.scene.start(header.scene ?? 'Game', header.data);
       return;
     }
     const wave = WAVES[target.index];
