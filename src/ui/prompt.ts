@@ -24,13 +24,14 @@ type Style = Phaser.Types.GameObjects.Text.TextStyle;
 const TOKEN_RE = /<([a-zA-Z]+)>/g;
 
 // Lower bound on icon height regardless of text size. The smallest
-// preloaded SVG raster size is 16px (see ICON_RENDER_SIZES); requesting
+// preloaded SVG raster size is 18px (see ICON_RENDER_SIZES); requesting
 // less just snaps to that anyway, so this floor keeps prompt math honest.
-const MIN_ICON_PX = 16;
+const MIN_ICON_PX = 18;
 // Multiplier on text height for icons. Slightly larger than 1.0 so icons
-// pop next to text without towering over it — tuned to match the old
-// visible footprint when SVGs still had ~25% transparent padding.
-const DEFAULT_ICON_RATIO = 1.2;
+// pop next to text without towering over it. Bumped 10% over the original
+// 1.2 (which matched the old transparent-padding footprint) to give the
+// keys more presence next to body text.
+const DEFAULT_ICON_RATIO = 1.32;
 
 type Segment = { kind: 'text'; text: string } | { kind: 'icons'; icons: InputIcon[] };
 

@@ -222,7 +222,6 @@ export class TestMenuScene extends Phaser.Scene {
       const goBack = (): void => {
         this.scene.start('Menu');
       };
-      kb.on('keydown-BACKSPACE', goBack);
       kb.on('keydown-ESC', goBack);
     }
 

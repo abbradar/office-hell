@@ -30,10 +30,10 @@ import keyboardArrowUp from '../assets/icons/keyboard-vector/keyboard_arrow_up_o
 // `arrows_all` only ships in filled form (no outline variant in the pack).
 import keyboardArrowsAll from '../assets/icons/keyboard-vector/keyboard_arrows_all.svg';
 import keyboardArrowsHorizontal from '../assets/icons/keyboard-vector/keyboard_arrows_horizontal_outline.svg';
-// `back` is bound to Backspace — the `_icon_outline` variant shows ⌫
-// (vs the wide "Backspace" tile that doesn't fit inline).
-import keyboardBackspace from '../assets/icons/keyboard-vector/keyboard_backspace_icon_outline.svg';
 import keyboardEnter from '../assets/icons/keyboard-vector/keyboard_enter_outline.svg';
+// `back` is bound to Escape — the kenney pack ships no SVG variant for
+// it, so this is a hand-authored matching keycap with an "ESC" label.
+import keyboardEscape from '../assets/icons/keyboard-vector/keyboard_escape_outline.svg';
 import keyboardSpace from '../assets/icons/keyboard-vector/keyboard_space_outline.svg';
 import keyboardT from '../assets/icons/keyboard-vector/keyboard_t_outline.svg';
 import keyboardX from '../assets/icons/keyboard-vector/keyboard_x_outline.svg';
@@ -52,7 +52,7 @@ export type InputAction =
   | 'menuLeft'
   | 'menuRight'
   | 'confirm' // Z / Enter
-  | 'back' // Backspace
+  | 'back' // Escape
   | 'practice' // T (main-menu shortcut)
   | 'advanceDialogue'; // Z / Space
 
@@ -85,7 +85,7 @@ export const KEYBOARD_ICONS: Record<InputAction, InputIconRef> = {
   menuLeft: kb('arrow_left', keyboardArrowLeft),
   menuRight: kb('arrow_right', keyboardArrowRight),
   confirm: kb('z', keyboardZ),
-  back: kb('backspace', keyboardBackspace),
+  back: kb('escape', keyboardEscape),
   practice: kb('t', keyboardT),
   advanceDialogue: kb('z', keyboardZ),
 };
@@ -116,11 +116,12 @@ export function getInputIcon(action: InputAction): InputIconRef | undefined {
 // --- texture-key resolution ------------------------------------------------
 
 // Sizes we preload each icon at. Two tiers cover the two `iconHeight` values
-// that prompt.ts requests today (16 = FONT_DEBUG/SM floor, 20 = FONT_MENU
-// 16px × 1.2). The SVGs were trimmed to their content bbox (no transparent
-// padding), so the rendered texture size IS the visible icon size — these
-// sizes match the old visible footprint when icons had ~25% padding.
-export const ICON_RENDER_SIZES = [16, 20] as const;
+// that prompt.ts requests today (18 = FONT_DEBUG/SM floor, 22 = FONT_MENU
+// 16px × 1.32). The SVGs were trimmed to their content bbox (no transparent
+// padding), so the rendered texture size IS the visible icon size — both
+// sizes are 10% larger than the original [16, 20] tier so the keys read
+// better in-game without losing pixel-perfect rasterisation.
+export const ICON_RENDER_SIZES = [18, 22] as const;
 export type IconRenderSize = (typeof ICON_RENDER_SIZES)[number];
 
 // Texture key for a specific (icon, size) combo. Mirror of the construction

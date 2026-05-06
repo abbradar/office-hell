@@ -4,7 +4,7 @@ import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
-import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 
@@ -50,18 +50,6 @@ export class MenuScene extends Phaser.Scene {
       ...FONT_DIALOGUE_LG,
       color: '#ffd96a',
     }).setInteractive({ useHandCursor: true });
-
-    const controlsTemplate = isTouchDevice
-      ? 'on-screen buttons: move, get angry\nexcuses fire automatically'
-      : '<moveHorizontal>: move\n<fire>: fire excuses\n<bomb>: get angry (clears bullets, 3 per run)';
-    makePrompt(
-      this,
-      GAME_W / 2,
-      GAME_H * 0.8,
-      controlsTemplate,
-      { ...FONT_DEBUG, color: '#888888', align: 'center' },
-      { align: 'center' },
-    );
 
     const start = (): void => {
       playClick();

@@ -20,7 +20,8 @@ import {
 } from '../input/touch';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
-import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
+import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { makePrompt } from '../ui/prompt';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
 const SPECKS_SCROLL_PX_PER_MS = 0.55;
@@ -55,6 +56,13 @@ export class GameScene extends Phaser.Scene {
   private musicMode: 'kaedalus' | 'monster-rpg' | null = null;
   private debugHud: Phaser.GameObjects.Text | null = null;
   private playerKind!: PlayerKind;
+  // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
+  // we share the same physics/script freeze (set stage.paused + physics.pause)
+  // but track this flag so the second ESC routes to "exit to menu" instead of
+  // "toggle off". Only entered when no dialogue is active, so the two pause
+  // owners never overlap.
+  private userPaused = false;
+  private pauseOverlay: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('Game');
@@ -195,11 +203,70 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
 
+    const kb = this.input.keyboard;
+    if (!kb) throw new Error('Keyboard input plugin missing');
+    kb.on('keydown-ESC', this.handleEscape, this);
+    kb.on('keydown-Z', this.handleResume, this);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (this.practiceWave) {
         this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.practiceWave.id, this.playerKind.hits);
       }
     });
+  }
+
+  private handleEscape(event: KeyboardEvent): void {
+    if (event.repeat) return;
+    if (this.userPaused) {
+      this.scene.start('Menu');
+      return;
+    }
+    // Only own the freeze when nobody else does — dialogue holds the same
+    // stage.paused / physics.pause state during cutscenes, and toggling them
+    // out from under it would resume physics mid-line.
+    if (this.stage.paused) return;
+    this.pauseGame();
+  }
+
+  private handleResume(event: KeyboardEvent): void {
+    if (event.repeat) return;
+    if (!this.userPaused) return;
+    this.unpauseGame();
+  }
+
+  private pauseGame(): void {
+    this.userPaused = true;
+    this.stage.paused = true;
+    this.physics.pause();
+    this.showPauseOverlay();
+  }
+
+  private unpauseGame(): void {
+    this.userPaused = false;
+    this.stage.paused = false;
+    this.physics.resume();
+    this.hidePauseOverlay();
+  }
+
+  private showPauseOverlay(): void {
+    if (this.pauseOverlay) return;
+    const c = this.add.container(0, 0).setDepth(200);
+    const dim = this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x000000, 0.55);
+    c.add(dim);
+    const title = this.add.text(GAME_W / 2, GAME_H * 0.4, 'PAUSED', { ...FONT_TITLE, color: '#ffd866' }).setOrigin(0.5);
+    c.add(title);
+    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<fire>  RESUME\n<back>  MENU', {
+      ...FONT_MENU,
+      color: '#ffffff',
+      align: 'center',
+    });
+    c.add(hint);
+    this.pauseOverlay = c;
+  }
+
+  private hidePauseOverlay(): void {
+    this.pauseOverlay?.destroy();
+    this.pauseOverlay = null;
   }
 
   override update(time: number, delta: number): void {
