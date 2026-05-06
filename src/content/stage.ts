@@ -5,7 +5,7 @@ import {
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
-import { GAME_W } from '../config';
+import { gameW } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
@@ -59,7 +59,7 @@ function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+  const boss = self.spawn(bossOne, gameW() / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss };

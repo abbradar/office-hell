@@ -14,7 +14,7 @@
 // loop-to-loop hand-off lands on a musical seam.
 
 import { MONSTER_BATTLE_KEY, MONSTER_CHASE_KEY, MONSTER_FINAL_BOSS_KEY, MONSTER_INTRO_KEY } from '../audio/keys';
-import { GAME_W } from '../config';
+import { gameW } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
   markWave,
@@ -55,23 +55,23 @@ const PRE_BOSS2_DIALOG: DialogueOpts = {
 
 function spawnWave1(self: Entity): void {
   self.spawn(checkEmailCoworker, 80, -30, 0, 0);
-  self.spawn(checkEmailCoworker, GAME_W - 80, -30, 0, 0);
-  self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0);
+  self.spawn(checkEmailCoworker, gameW() - 80, -30, 0, 0);
+  self.spawn(checkEmailCoworker, gameW() * 0.5, -30, 0, 0);
 }
 
 function spawnWave2(self: Entity): void {
-  self.spawn(oversleeper, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(oversleeper, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(oversleeper, gameW() * 0.3, -30, 0, 0);
+  self.spawn(oversleeper, gameW() * 0.7, -30, 0, 0);
 }
 
 function spawnWave3(self: Entity): void {
-  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(janitor, gameW() * 0.3, -30, 0, 0);
+  self.spawn(janitor, gameW() * 0.7, -30, 0, 0);
 }
 
 function spawnWave4(self: Entity): void {
   self.spawn(colleague, -30, 240, 0, 0);
-  self.spawn(colleague, GAME_W + 30, 320, 0, 0);
+  self.spawn(colleague, gameW() + 30, 320, 0, 0);
 }
 
 function* monsterRpgBody(self: Entity) {
@@ -113,7 +113,7 @@ function* monsterRpgBody(self: Entity) {
 
   markWave(self, 'boss 1');
   // Reuse Mr. Hodges as a mid-tier boss (he's in waves/ already).
-  const boss1 = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
+  const boss1 = self.spawn(shrunkOldMan, gameW() / 2, -30, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss1 };
@@ -127,7 +127,7 @@ function* monsterRpgBody(self: Entity) {
   yield* startMusicLoop(MONSTER_FINAL_BOSS_KEY);
 
   markWave(self, 'boss 2');
-  const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+  const boss2 = self.spawn(bossOne, gameW() / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss2 };

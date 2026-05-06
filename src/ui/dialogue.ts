@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { GAME_H, GAME_W } from '../config';
+import { gameH, gameW } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG } from './fonts';
 import { makePrompt } from './prompt';
@@ -23,11 +23,11 @@ export type DialogueOpts = {
 
 const DEPTH = 200;
 const PORTRAIT_SCALE = 4;
-const PORTRAIT_Y = GAME_H * 0.42;
+const PORTRAIT_Y = gameH() * 0.42;
 const PORTRAIT_INSET = 24;
 const TEXT_BOX_H = 150;
 const TEXT_BOX_MARGIN = 12;
-const TEXT_BOX_Y = GAME_H - TEXT_BOX_H - TEXT_BOX_MARGIN;
+const TEXT_BOX_Y = gameH() - TEXT_BOX_H - TEXT_BOX_MARGIN;
 const TEXT_BOX_PAD = 14;
 const TEXT_BOX_FILL = 0x080820;
 const TEXT_BOX_ALPHA = 0.9;
@@ -130,7 +130,7 @@ export class DialogueManager {
 
     const container = this.scene.add.container(0, 0).setDepth(DEPTH);
 
-    const dim = this.scene.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x000000, DIM_ALPHA);
+    const dim = this.scene.add.rectangle(gameW() / 2, gameH() / 2, gameW(), gameH(), 0x000000, DIM_ALPHA);
     container.add(dim);
 
     const leftSprite = opts.left ? this.makePortrait(opts.left, 'left') : null;
@@ -140,9 +140,9 @@ export class DialogueManager {
 
     const box = this.scene.add.graphics();
     box.fillStyle(TEXT_BOX_FILL, TEXT_BOX_ALPHA);
-    box.fillRoundedRect(TEXT_BOX_MARGIN, TEXT_BOX_Y, GAME_W - TEXT_BOX_MARGIN * 2, TEXT_BOX_H, TEXT_BOX_RADIUS);
+    box.fillRoundedRect(TEXT_BOX_MARGIN, TEXT_BOX_Y, gameW() - TEXT_BOX_MARGIN * 2, TEXT_BOX_H, TEXT_BOX_RADIUS);
     box.lineStyle(2, TEXT_BOX_STROKE, TEXT_BOX_STROKE_ALPHA);
-    box.strokeRoundedRect(TEXT_BOX_MARGIN, TEXT_BOX_Y, GAME_W - TEXT_BOX_MARGIN * 2, TEXT_BOX_H, TEXT_BOX_RADIUS);
+    box.strokeRoundedRect(TEXT_BOX_MARGIN, TEXT_BOX_Y, gameW() - TEXT_BOX_MARGIN * 2, TEXT_BOX_H, TEXT_BOX_RADIUS);
     container.add(box);
 
     const nameBg = this.scene.add.graphics();
@@ -169,7 +169,7 @@ export class DialogueManager {
     const hintLineH = Math.round(11 * 1.4);
     const hint = makePrompt(
       this.scene,
-      GAME_W - TEXT_BOX_MARGIN - TEXT_BOX_PAD,
+      gameW() - TEXT_BOX_MARGIN - TEXT_BOX_PAD,
       TEXT_BOX_Y + TEXT_BOX_H - TEXT_BOX_PAD - hintLineH / 2,
       hintTemplate,
       { ...FONT_DEBUG, color: HINT_COLOR },
@@ -216,7 +216,7 @@ export class DialogueManager {
   }
 
   private makePortrait(p: DialoguePortrait, side: 'left' | 'right'): Phaser.GameObjects.Sprite {
-    const x = side === 'left' ? PORTRAIT_INSET : GAME_W - PORTRAIT_INSET;
+    const x = side === 'left' ? PORTRAIT_INSET : gameW() - PORTRAIT_INSET;
     const sprite = this.scene.add.sprite(x, PORTRAIT_Y, p.sprite, p.frame ?? 1);
     sprite.setOrigin(side === 'left' ? 0 : 1, 0.5);
     sprite.setScale(PORTRAIT_SCALE);
@@ -273,7 +273,7 @@ export class DialogueManager {
   private layoutRuns(runs: Run[]): { atoms: WordAtom[]; displayedLength: number } {
     const originX = TEXT_BOX_MARGIN + TEXT_BOX_PAD;
     const originY = TEXT_BOX_Y + TEXT_BOX_PAD + 24;
-    const maxWidth = GAME_W - TEXT_BOX_MARGIN * 2 - TEXT_BOX_PAD * 2;
+    const maxWidth = gameW() - TEXT_BOX_MARGIN * 2 - TEXT_BOX_PAD * 2;
     const plainStyle = { ...FONT_DIALOGUE_LG, color: TEXT_COLOR };
     const emphStyle = { ...FONT_DIALOGUE_LG, color: EMPHASIS_COLOR, fontStyle: 'bold' };
 

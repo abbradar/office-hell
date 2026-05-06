@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
-import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { gameW, PLAYER_SPEED, playerY } from '../config';
 import { type Action, characterAnimKey, type Direction } from '../content/animations';
 import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
@@ -52,7 +52,7 @@ export class Player extends Entity {
   private hitboxGfx: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, stage: StageManager, kind: PlayerKind) {
-    super(scene, GAME_W / 2, PLAYER_Y, kind.sprite ?? '');
+    super(scene, gameW() / 2, playerY(), kind.sprite ?? '');
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -171,10 +171,10 @@ export class Player extends Entity {
 
     const half = this.width / 2;
     if (dir < 0 && this.x <= half) dir = 0;
-    if (dir > 0 && this.x >= GAME_W - half) dir = 0;
+    if (dir > 0 && this.x >= gameW() - half) dir = 0;
     this.setVelocityX(dir * PLAYER_SPEED);
 
-    this.x = Phaser.Math.Clamp(this.x, half, GAME_W - half);
+    this.x = Phaser.Math.Clamp(this.x, half, gameW() - half);
 
     const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
     if (firing) {

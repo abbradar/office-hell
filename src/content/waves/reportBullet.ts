@@ -1,4 +1,4 @@
-import { BULLET_RADIUS } from '../../config';
+import { bulletRadius } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { EntityKind } from '../../script/types';
 
@@ -32,7 +32,7 @@ function* reportBulletScript(self: Entity) {
 
 export const reportBullet = new EntityKind({
   sprite: 'reportBullet',
-  hitboxRadius: BULLET_RADIUS,
+  hitboxRadius: bulletRadius(),
   hp: null,
   damageClass: ['player'],
   damagedByClass: [],

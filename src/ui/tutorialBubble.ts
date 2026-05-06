@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { GAME_W } from '../config';
+import { gameW } from '../config';
 import { FONT_DIALOGUE_SM } from './fonts';
 import { makePrompt } from './prompt';
 
@@ -24,7 +24,7 @@ const CORNER_RADIUS = 8;
 export function showTutorialBubble(scene: Phaser.Scene, template: string): () => void {
   const prompt = makePrompt(
     scene,
-    GAME_W / 2,
+    gameW() / 2,
     TOP_Y,
     template,
     { ...FONT_DIALOGUE_SM, color: TEXT_COLOR, fontStyle: 'bold' },
@@ -36,7 +36,7 @@ export function showTutorialBubble(scene: Phaser.Scene, template: string): () =>
 
   const w = prompt.width + PAD_X * 2;
   const h = prompt.height + PAD_Y * 2;
-  const x = GAME_W / 2 - w / 2;
+  const x = gameW() / 2 - w / 2;
   const y = TOP_Y - h / 2;
   const gfx = scene.add.graphics().setDepth(DEPTH);
   gfx.fillStyle(BUBBLE_FILL, BUBBLE_ALPHA);

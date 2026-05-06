@@ -1,4 +1,4 @@
-import { GAME_W } from '../../config';
+import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -8,7 +8,7 @@ import { missedCallBullet } from './missedCallBullet';
 // Colleague: a mid-screen drive-by that slides in from the side, asks for "a
 // quick call", fires a ring of missed-call bullets, then slides back out the
 // way it came — dropping more rings while in retreat for any player who didn't
-// finish them off. Spawn x picks the side: x < GAME_W/2 → enters from the left
+// finish them off. Spawn x picks the side: x < gameW()/2 → enters from the left
 // and exits left; otherwise mirror.
 
 const ENTER_SPEED = 130;
@@ -20,7 +20,7 @@ const BETWEEN_RINGS = 35;
 const RETREAT_RINGS = 2;
 
 function* colleagueScript(self: Entity) {
-  const fromLeft = self.x < GAME_W / 2;
+  const fromLeft = self.x < gameW() / 2;
   const dir = fromLeft ? 1 : -1;
 
   yield* moveTo(self, self.x + dir * ENTER_DX, self.y, ENTER_SPEED);
@@ -53,16 +53,16 @@ export function* colleaguesWave(self: Entity): Generator<ScriptYield, void, void
   markWave(self, 'colleagues');
   self.spawn(colleague, -30, 220, 0, 0);
   yield 80;
-  self.spawn(colleague, GAME_W + 30, 280, 0, 0);
+  self.spawn(colleague, gameW() + 30, 280, 0, 0);
   yield 100;
   self.spawn(colleague, -30, 200, 0, 0);
-  self.spawn(colleague, GAME_W + 30, 340, 0, 0);
+  self.spawn(colleague, gameW() + 30, 340, 0, 0);
   yield 120;
   self.spawn(colleague, -30, 260, 0, 0);
   yield 70;
-  self.spawn(colleague, GAME_W + 30, 180, 0, 0);
+  self.spawn(colleague, gameW() + 30, 180, 0, 0);
   self.spawn(colleague, -30, 360, 0, 0);
   yield 110;
-  self.spawn(colleague, GAME_W + 30, 240, 0, 0);
+  self.spawn(colleague, gameW() + 30, 240, 0, 0);
   self.spawn(colleague, -30, 320, 0, 0);
 }

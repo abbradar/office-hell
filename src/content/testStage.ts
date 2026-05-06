@@ -20,7 +20,7 @@ import {
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
-import { GAME_W } from '../config';
+import { gameW } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
   markWave,
@@ -77,23 +77,23 @@ const PRE_BOSS_DIALOG: DialogueOpts = {
 
 function spawnWave1(self: Entity): void {
   self.spawn(checkEmailCoworker, 80, -30, 0, 0);
-  self.spawn(checkEmailCoworker, GAME_W - 80, -30, 0, 0);
-  self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0);
+  self.spawn(checkEmailCoworker, gameW() - 80, -30, 0, 0);
+  self.spawn(checkEmailCoworker, gameW() * 0.5, -30, 0, 0);
 }
 
 function spawnWave2(self: Entity): void {
-  self.spawn(oversleeper, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(oversleeper, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(oversleeper, gameW() * 0.3, -30, 0, 0);
+  self.spawn(oversleeper, gameW() * 0.7, -30, 0, 0);
 }
 
 function spawnWave3(self: Entity): void {
-  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
+  self.spawn(janitor, gameW() * 0.3, -30, 0, 0);
+  self.spawn(janitor, gameW() * 0.7, -30, 0, 0);
 }
 
 function spawnWave4(self: Entity): void {
   self.spawn(colleague, -30, 240, 0, 0);
-  self.spawn(colleague, GAME_W + 30, 320, 0, 0);
+  self.spawn(colleague, gameW() + 30, 320, 0, 0);
 }
 
 function* testStageBody(self: Entity) {
@@ -144,7 +144,7 @@ function* testStageBody(self: Entity) {
   // kinds.ts) handles entry, dialogue, becoming hittable, and the
   // attack loop. We yield until the boss entity dies.
   markWave(self, 'boss');
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+  const boss = self.spawn(bossOne, gameW() / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss };

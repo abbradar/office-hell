@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
-import { GAME_H, GAME_W } from '../config';
+import { gameH, gameW } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -25,14 +25,14 @@ export class MenuScene extends Phaser.Scene {
     addMuteButton(this);
 
     this.add
-      .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {
+      .text(gameW() / 2, gameH() * 0.28, 'OFFICE HELL', {
         ...FONT_TITLE,
         color: '#ff5577',
       })
       .setOrigin(0.5);
 
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
-    const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
+    const startText = makePrompt(this, gameW() / 2, gameH() * 0.5, startTemplate, {
       ...FONT_MENU,
       color: '#ffffff',
     }).setInteractive({ useHandCursor: true });
@@ -46,7 +46,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
-    const practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
+    const practiceText = makePrompt(this, gameW() / 2, gameH() * 0.62, practiceTemplate, {
       ...FONT_DIALOGUE_LG,
       color: '#ffd96a',
     }).setInteractive({ useHandCursor: true });

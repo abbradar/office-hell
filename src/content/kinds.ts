@@ -1,4 +1,4 @@
-import { BULLET_RADIUS } from '../config';
+import { bulletRadius } from '../config';
 import type { Entity } from '../entities/Entity';
 import { BossKind } from '../script/boss';
 import { aimed, arc, ring } from '../script/patterns';
@@ -6,7 +6,7 @@ import { EntityKind } from '../script/types';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
-  hitboxRadius: BULLET_RADIUS,
+  hitboxRadius: bulletRadius(),
   hp: null,
   damageClass: ['player'],
   damagedByClass: [],

@@ -1,5 +1,5 @@
 import { shoot } from '../../audio/sfx/events';
-import { GAME_W } from '../../config';
+import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -18,7 +18,7 @@ import { bullet } from '../kinds';
 // they travel inward, which sells the inhale.
 
 const ENTRY_SPEED = 110;
-const ENTRY_X = GAME_W / 2;
+const ENTRY_X = gameW() / 2;
 const ENTRY_Y = 110;
 
 const SPAWN_RADIUS = 360;
@@ -100,6 +100,6 @@ export const wellnessCoach = new EntityKind({
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
-  const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0);
+  const coach = self.spawn(wellnessCoach, gameW() / 2, -30, 0, 0);
   yield { until: coach };
 }

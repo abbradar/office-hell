@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BULLET_RADIUS, GAME_W } from '../config';
+import { bulletRadius, gameW } from '../config';
 
 // Runtime-generated textures. Each function draws into a fresh Graphics,
 // registers a single texture by key, and destroys the Graphics. Callers
@@ -9,9 +9,9 @@ import { BULLET_RADIUS, GAME_W } from '../config';
 
 export function generateBulletTexture(scene: Phaser.Scene): void {
   const g = scene.add.graphics();
-  const d = BULLET_RADIUS * 2;
+  const d = bulletRadius() * 2;
   g.fillStyle(0xffffff, 1);
-  g.fillCircle(BULLET_RADIUS, BULLET_RADIUS, BULLET_RADIUS);
+  g.fillCircle(bulletRadius(), bulletRadius(), bulletRadius());
   g.generateTexture('bullet', d, d);
   g.destroy();
 }
@@ -115,7 +115,7 @@ export function generateDrinkBulletTexture(scene: Phaser.Scene): void {
 
 export function generateCorridorTexture(scene: Phaser.Scene): void {
   const g = scene.add.graphics();
-  const w = GAME_W;
+  const w = gameW();
   const h = 128;
   g.fillStyle(0x1a1a28, 1);
   g.fillRect(0, 0, w, h);
@@ -133,7 +133,7 @@ export function generateCorridorTexture(scene: Phaser.Scene): void {
 
 export function generateCorridorSpecksTexture(scene: Phaser.Scene): void {
   const g = scene.add.graphics();
-  const w = GAME_W;
+  const w = gameW();
   const h = 256;
   g.fillStyle(0xa0a8d0, 1);
   for (let i = 0; i < 32; i++) {

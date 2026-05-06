@@ -1,11 +1,15 @@
-import { BUTTON_BAND_H, CANVAS_H, GAME_H, GAME_W } from '../config';
+import { buttonBandH, canvasH, gameH, gameW } from '../config';
 
-export const TOUCH_BUTTON_RADIUS = 90;
+export function touchButtonRadius(): number {
+  return 90;
+}
 // On touch devices with a control band, the move button hugs the canvas
 // bottom (its lower half clips off-screen, same as before — the corner
 // position works well for a thumb at the edge). Without a band (desktop)
 // it falls back to the original in-playfield position.
-export const TOUCH_BUTTON_Y = BUTTON_BAND_H > 0 ? CANVAS_H - 60 : GAME_H - 60;
+export function touchButtonY(): number {
+  return buttonBandH() > 0 ? canvasH() - 60 : gameH() - 60;
+}
 
 // Single bomb button centred horizontally between the two corner-clipped
 // move pads. With a band, it sits at the canvas bottom (same y as the move
@@ -13,9 +17,15 @@ export const TOUCH_BUTTON_Y = BUTTON_BAND_H > 0 ? CANVAS_H - 60 : GAME_H - 60;
 // so the bomb ring is fully visible without overlapping the move pads.
 // Without a band (desktop), falls back to the original layout where it
 // was tucked above the move pad inside the playfield.
-export const BOMB_BUTTON_RADIUS = 50;
-export const BOMB_BUTTON_X = GAME_W / 2;
-export const BOMB_BUTTON_Y = BUTTON_BAND_H > 0 ? CANVAS_H - 60 : GAME_H - 220;
+export function bombButtonRadius(): number {
+  return 50;
+}
+export function bombButtonX(): number {
+  return gameW() / 2;
+}
+export function bombButtonY(): number {
+  return buttonBandH() > 0 ? canvasH() - 60 : gameH() - 220;
+}
 
 type Pointer = { x: number; y: number };
 
@@ -33,30 +43,30 @@ function toGameCoords(clientX: number, clientY: number): Pointer {
   const rect = c.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return { x: clientX, y: clientY };
   return {
-    x: (clientX - rect.left) * (GAME_W / rect.width),
-    y: (clientY - rect.top) * (CANVAS_H / rect.height),
+    x: (clientX - rect.left) * (gameW() / rect.width),
+    y: (clientY - rect.top) * (canvasH() / rect.height),
   };
 }
 
-const MOVE_R2 = TOUCH_BUTTON_RADIUS * TOUCH_BUTTON_RADIUS;
-const BOMB_R2 = BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
-
 function inLeftButton(p: Pointer): boolean {
   const dx = p.x;
-  const dy = p.y - TOUCH_BUTTON_Y;
-  return dx * dx + dy * dy <= MOVE_R2;
+  const dy = p.y - touchButtonY();
+  const r = touchButtonRadius();
+  return dx * dx + dy * dy <= r * r;
 }
 
 function inRightButton(p: Pointer): boolean {
-  const dx = p.x - GAME_W;
-  const dy = p.y - TOUCH_BUTTON_Y;
-  return dx * dx + dy * dy <= MOVE_R2;
+  const dx = p.x - gameW();
+  const dy = p.y - touchButtonY();
+  const r = touchButtonRadius();
+  return dx * dx + dy * dy <= r * r;
 }
 
 function inBombButton(p: Pointer): boolean {
-  const dx = p.x - BOMB_BUTTON_X;
-  const dy = p.y - BOMB_BUTTON_Y;
-  return dx * dx + dy * dy <= BOMB_R2;
+  const dx = p.x - bombButtonX();
+  const dy = p.y - bombButtonY();
+  const r = bombButtonRadius();
+  return dx * dx + dy * dy <= r * r;
 }
 
 // Edge-triggered bomb input. A fresh pointerdown landing inside the

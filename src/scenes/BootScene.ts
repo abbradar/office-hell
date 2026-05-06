@@ -4,7 +4,7 @@ import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { configureVoiceCaps, preloadAudio } from '../audio/preload';
 import { setSoundManager } from '../audio/sfx/pool';
-import { GAME_H, GAME_W } from '../config';
+import { canvasH, gameH, gameW, recomputeSizes } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { generateTextures } from '../content/textures';
 import { isTouchDevice } from '../input/device';
@@ -97,28 +97,75 @@ export class BootScene extends Phaser.Scene {
       const promptText = isTouchDevice ? 'tap to continue' : 'press any key or click to continue';
       this.loadingText.setText(promptText);
 
+      // Native DOM listeners, not Phaser input events: Phaser drains pointer/
+      // key events from its update loop, so a Phaser-dispatched callback runs
+      // outside the user-gesture stack and requestFullscreen() gets rejected.
+      // Calling it synchronously from the DOM handler keeps transient
+      // activation alive. The same handler also unlocks the AudioContext
+      // (browsers require a gesture for that too) by starting the loop.
+      //
+      // Pointerup, not pointerdown: per the HTML spec, touch pointerdown does
+      // NOT grant user activation — only pointerup/touchend do. On mouse the
+      // activation from the preceding pointerdown is still live at pointerup,
+      // so this works for both inputs.
+      let fired = false;
       const onGesture = () => {
+        if (fired) return;
+        fired = true;
+        window.removeEventListener('pointerup', onGesture);
+        window.removeEventListener('keydown', onGesture);
+
+        if (isTouchDevice && !this.scale.isFullscreen) {
+          this.scale.startFullscreen();
+        }
         // 1s self-crossfade dissolves the loop seam; the menu sits open long
         // enough that a hard wrap (even a sample-accurate one) gets perceptible.
-        // Browsers also require a user gesture to unlock the AudioContext —
-        // this handler is that gesture, which is why we don't start the loop
-        // until the player presses something.
         playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
         this.scene.start('Menu');
       };
 
-      // Register both — a laptop with a touch screen can produce either, and
-      // there's no harm in listening for both since we only fire once.
-      this.input.once(Phaser.Input.Events.POINTER_DOWN, onGesture);
-      this.input.keyboard?.once(Phaser.Input.Keyboard.Events.ANY_KEY_DOWN, onGesture);
+      // Listen on window so a laptop with a touch screen catches either input.
+      window.addEventListener('pointerup', onGesture);
+      window.addEventListener('keydown', onGesture);
+
+      // When the viewport changes shape (fullscreen toggling on/off, address
+      // bar hide/show, orientation flip) we want the canvas's logical aspect
+      // to match the new viewport so Scale.FIT fills it edge-to-edge instead
+      // of letterboxing.
+      //
+      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after*
+      // its own getParentBounds() call has refreshed `scale.parentSize`, so
+      // reading parentSize here gives the live post-fullscreen viewport.
+      // ENTER_FULLSCREEN fires inside the DOM fullscreenchange handler before
+      // the browser has settled the new layout — body/parent bounds are
+      // still stale at that point.
+      //
+      // Guard: only call resize when canvasH() actually changes, otherwise
+      // our resize() triggers another RESIZE → infinite loop.
+      this.scale.on(Phaser.Scale.Events.RESIZE, () => {
+        const pw = this.scale.parentSize.width;
+        const ph = this.scale.parentSize.height;
+        if (!pw || !ph) return;
+        const before = canvasH();
+        recomputeSizes(pw, ph);
+        if (canvasH() !== before) {
+          // setGameSize, not resize: resize() is documented for the NONE
+          // scale mode and doesn't refresh the FIT aspect ratio, so display
+          // size ends up computed against the *previous* aspect (canvas
+          // letterboxes inside the parent). setGameSize calls
+          // displaySize.setAspectRatio() before refresh(), giving us a
+          // proper aspect-correct fit.
+          this.scale.setGameSize(gameW(), canvasH());
+        }
+      });
     });
   }
 
   private showLoadingUI(): void {
     this.cameras.main.setBackgroundColor('#10101a');
 
-    const cx = GAME_W / 2;
-    const cy = GAME_H / 2;
+    const cx = gameW() / 2;
+    const cy = gameH() / 2;
     const barW = 320;
     const barH = 14;
     const barX = cx - barW / 2;

@@ -16,7 +16,7 @@
 // pressed contributes the source.
 
 import Phaser from 'phaser';
-import { GAME_H, GAME_W } from '../config';
+import { gameH, gameW } from '../config';
 import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
@@ -216,9 +216,9 @@ const DUMMY_ENEMY = new EntityKind({
 // --- layout ---------------------------------------------------------------
 
 const TITLE_Y = 22;
-const ENEMY_X = GAME_W / 2;
+const ENEMY_X = gameW() / 2;
 const ENEMY_Y = 70;
-const STUB_PLAYER_X = GAME_W / 2;
+const STUB_PLAYER_X = gameW() / 2;
 const STUB_PLAYER_Y = 200;
 
 // Tab strip + editor area share the same vertical band; the active tab's
@@ -318,7 +318,7 @@ export class PatternTestScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#10101a');
     addMuteButton(this);
 
-    this.add.text(GAME_W / 2, TITLE_Y, 'PATTERN SANDBOX', { ...FONT_TITLE, color: COLOR_HIGHLIGHT }).setOrigin(0.5);
+    this.add.text(gameW() / 2, TITLE_Y, 'PATTERN SANDBOX', { ...FONT_TITLE, color: COLOR_HIGHLIGHT }).setOrigin(0.5);
 
     this.stage = new StageManager(this);
     this.stage.player = { x: STUB_PLAYER_X, y: STUB_PLAYER_Y } as unknown as Player;
@@ -348,13 +348,13 @@ export class PatternTestScene extends Phaser.Scene {
 
   private buildTabs(): void {
     this.codeTab = this.add
-      .text(GAME_W / 2 - 60, TABS_Y, 'CODE', { ...FONT_MENU })
+      .text(gameW() / 2 - 60, TABS_Y, 'CODE', { ...FONT_MENU })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.codeTab.on('pointerup', () => this.setMode('code'));
 
     this.visualTab = this.add
-      .text(GAME_W / 2 + 60, TABS_Y, 'VISUAL', { ...FONT_MENU })
+      .text(gameW() / 2 + 60, TABS_Y, 'VISUAL', { ...FONT_MENU })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     this.visualTab.on('pointerup', () => this.setMode('visual'));
@@ -411,7 +411,7 @@ export class PatternTestScene extends Phaser.Scene {
     const sy = rect.height / canvas.height;
     const left = rect.left + EDITOR_LEFT * sx;
     const top = rect.top + EDITOR_TOP * sy;
-    const width = (GAME_W - EDITOR_LEFT * 2) * sx;
+    const width = (gameW() - EDITOR_LEFT * 2) * sx;
     const height = EDITOR_HEIGHT * sy;
     const fontPx = Math.max(11, Math.round(13 * Math.min(sx, sy)));
     this.codeEditor.style.left = `${left}px`;
@@ -430,7 +430,7 @@ export class PatternTestScene extends Phaser.Scene {
     // top/bottom edges.
     const maskG = this.make.graphics({});
     maskG.fillStyle(0xffffff);
-    maskG.fillRect(EDITOR_LEFT, EDITOR_TOP, GAME_W - EDITOR_LEFT * 2, EDITOR_HEIGHT);
+    maskG.fillRect(EDITOR_LEFT, EDITOR_TOP, gameW() - EDITOR_LEFT * 2, EDITOR_HEIGHT);
     this.visualMask = maskG.createGeometryMask();
 
     // Wheel scrolls the block list when the visual tab is active.
@@ -509,9 +509,9 @@ export class PatternTestScene extends Phaser.Scene {
       // Background panel.
       const bg = this.add.graphics();
       bg.fillStyle(COLOR_BLOCK_BG, 0.85);
-      bg.fillRoundedRect(EDITOR_LEFT + 2, y, GAME_W - (EDITOR_LEFT + 2) * 2, totalH, 4);
+      bg.fillRoundedRect(EDITOR_LEFT + 2, y, gameW() - (EDITOR_LEFT + 2) * 2, totalH, 4);
       bg.lineStyle(1, block.expanded ? COLOR_BLOCK_BORDER_EXPANDED : COLOR_BLOCK_BORDER, 1);
-      bg.strokeRoundedRect(EDITOR_LEFT + 2, y, GAME_W - (EDITOR_LEFT + 2) * 2, totalH, 4);
+      bg.strokeRoundedRect(EDITOR_LEFT + 2, y, gameW() - (EDITOR_LEFT + 2) * 2, totalH, 4);
       listContainer.add(bg);
 
       // Header content.
@@ -542,7 +542,7 @@ export class PatternTestScene extends Phaser.Scene {
   private renderBlockHeader(parent: Phaser.GameObjects.Container, block: Block, index: number, y: number): void {
     const spec = BLOCK_SPECS[block.type];
     const px = EDITOR_LEFT + 8;
-    const right = GAME_W - EDITOR_LEFT - 6;
+    const right = gameW() - EDITOR_LEFT - 6;
     const created: Phaser.GameObjects.GameObject[] = [];
 
     const caret = this.add
@@ -572,7 +572,7 @@ export class PatternTestScene extends Phaser.Scene {
     // Click region — covers caret + label so either toggles expansion.
     // Stops short of the ▲▼× cluster so those don't double-trigger.
     const headerHit = this.add
-      .zone(EDITOR_LEFT + 4, y, GAME_W - (EDITOR_LEFT + 4) * 2 - 80, BLOCK_HEADER_H)
+      .zone(EDITOR_LEFT + 4, y, gameW() - (EDITOR_LEFT + 4) * 2 - 80, BLOCK_HEADER_H)
       .setOrigin(0, 0)
       .setInteractive({ useHandCursor: true });
     headerHit.on('pointerup', () => {
@@ -608,7 +608,7 @@ export class PatternTestScene extends Phaser.Scene {
 
   private renderParamRow(parent: Phaser.GameObjects.Container, block: Block, ps: ParamSpec, y: number): void {
     const px = EDITOR_LEFT + 24;
-    const right = GAME_W - EDITOR_LEFT - 6;
+    const right = gameW() - EDITOR_LEFT - 6;
     const value = block.params[ps.name] ?? ps.default;
 
     const label = this.add
@@ -656,19 +656,19 @@ export class PatternTestScene extends Phaser.Scene {
   private buildActions(): void {
     // Row 1: run / stop / reset.
     const run = this.add
-      .text(GAME_W / 2 - 90, ACTIONS_Y_1, '▶ RUN', { ...FONT_MENU, color: COLOR_RUN })
+      .text(gameW() / 2 - 90, ACTIONS_Y_1, '▶ RUN', { ...FONT_MENU, color: COLOR_RUN })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     run.on('pointerup', () => this.runUserScript());
 
     const stop = this.add
-      .text(GAME_W / 2, ACTIONS_Y_1, '■ STOP', { ...FONT_MENU, color: COLOR_DANGER })
+      .text(gameW() / 2, ACTIONS_Y_1, '■ STOP', { ...FONT_MENU, color: COLOR_DANGER })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     stop.on('pointerup', () => this.stopUserScript());
 
     const reset = this.add
-      .text(GAME_W / 2 + 90, ACTIONS_Y_1, '↻ RESET', { ...FONT_MENU, color: COLOR_DIM })
+      .text(gameW() / 2 + 90, ACTIONS_Y_1, '↻ RESET', { ...FONT_MENU, color: COLOR_DIM })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     reset.on('pointerup', () => {
@@ -685,21 +685,21 @@ export class PatternTestScene extends Phaser.Scene {
 
     // Row 2: save / load — localStorage-backed.
     const save = this.add
-      .text(GAME_W / 2 - 60, ACTIONS_Y_2, '💾 SAVE', { ...FONT_MENU, color: COLOR_HIGHLIGHT })
+      .text(gameW() / 2 - 60, ACTIONS_Y_2, '💾 SAVE', { ...FONT_MENU, color: COLOR_HIGHLIGHT })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     save.on('pointerup', () => this.savePrompt());
 
     const load = this.add
-      .text(GAME_W / 2 + 60, ACTIONS_Y_2, '📂 LOAD', { ...FONT_MENU, color: COLOR_HIGHLIGHT })
+      .text(gameW() / 2 + 60, ACTIONS_Y_2, '📂 LOAD', { ...FONT_MENU, color: COLOR_HIGHLIGHT })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     load.on('pointerup', () => this.openLoadModal());
 
-    this.statusText = this.add.text(GAME_W / 2, STATUS_Y, 'idle', { ...FONT_DEBUG, color: COLOR_DIM }).setOrigin(0.5);
+    this.statusText = this.add.text(gameW() / 2, STATUS_Y, 'idle', { ...FONT_DEBUG, color: COLOR_DIM }).setOrigin(0.5);
 
     const back = this.add
-      .text(GAME_W / 2, BACK_Y, '← back', { ...FONT_DIALOGUE_SM, color: COLOR_DIM })
+      .text(gameW() / 2, BACK_Y, '← back', { ...FONT_DIALOGUE_SM, color: COLOR_DIM })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     back.on('pointerup', () => this.scene.start('TestMenu'));
@@ -855,7 +855,7 @@ export class PatternTestScene extends Phaser.Scene {
     const modal = this.add.container(0, 0).setDepth(300);
 
     // Backdrop — click to dismiss.
-    const backdrop = this.add.rectangle(0, 0, GAME_W, GAME_H, 0x000000, 0.7).setOrigin(0, 0).setInteractive();
+    const backdrop = this.add.rectangle(0, 0, gameW(), gameH(), 0x000000, 0.7).setOrigin(0, 0).setInteractive();
     backdrop.on('pointerup', () => this.closeLoadModal());
     modal.add(backdrop);
 
@@ -864,9 +864,9 @@ export class PatternTestScene extends Phaser.Scene {
     const rowH = 28;
     const footerH = 36;
     const visibleRows = Math.max(1, names.length || 1);
-    const panelH = Math.min(GAME_H - 80, headerH + visibleRows * rowH + footerH);
-    const panelX = (GAME_W - panelW) / 2;
-    const panelY = (GAME_H - panelH) / 2;
+    const panelH = Math.min(gameH() - 80, headerH + visibleRows * rowH + footerH);
+    const panelX = (gameW() - panelW) / 2;
+    const panelY = (gameH() - panelH) / 2;
 
     const panel = this.add.graphics();
     panel.fillStyle(0x1c1c2e, 0.98);

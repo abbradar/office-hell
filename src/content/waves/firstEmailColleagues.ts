@@ -1,4 +1,4 @@
-import { GAME_W } from '../../config';
+import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -18,7 +18,7 @@ const EMAIL_SPEED = 110;
 const EMAIL_SPREAD = Math.PI / 9;
 
 const SPAWN_LEFT_X = -30;
-const SPAWN_RIGHT_X = GAME_W + 30;
+const SPAWN_RIGHT_X = gameW() + 30;
 
 // `side` is travel direction: +1 spawns at left edge moving right; -1 spawns
 // at right edge moving left. Aimed volleys track the player either way.

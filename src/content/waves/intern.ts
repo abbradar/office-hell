@@ -1,4 +1,4 @@
-import { GAME_W } from '../../config';
+import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -91,8 +91,8 @@ function* internSidesLine(self: Entity): Generator<ScriptYield, void, void> {
     self.spawn(intern, -30, y, 0, 0, {
       script: makeInternMarchScript(lx, y),
     });
-    self.spawn(intern, GAME_W + 30, y, 0, 0, {
-      script: makeInternMarchScript(GAME_W - lx, y),
+    self.spawn(intern, gameW() + 30, y, 0, 0, {
+      script: makeInternMarchScript(gameW() - lx, y),
     });
     if (i < leftTargets.length - 1) yield 12;
   }
@@ -102,7 +102,7 @@ function* internSidesLine(self: Entity): Generator<ScriptYield, void, void> {
 // both sides at once and forming a horizontal line across the playfield.
 export function* internsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'interns');
-  yield* internLine(self, GAME_W * 0.25, 1);
+  yield* internLine(self, gameW() * 0.25, 1);
   yield 60;
   yield* internSidesLine(self);
 }

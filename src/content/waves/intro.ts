@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { shoot } from '../../audio/sfx/events';
-import { GAME_W } from '../../config';
+import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { isTouchDevice } from '../../input/device';
 import { consumeBombPress, isLeftHeld, isRightHeld } from '../../input/touch';
@@ -103,11 +103,11 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
 
   // Spawn scriptless and drive the coach from here — keeps the email
   // reference local and dodges the closure-narrowing dance.
-  const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0, {
+  const coach = self.spawn(wellnessCoach, gameW() / 2, -30, 0, 0, {
     damagedByClass: [],
     script: null,
   });
-  yield* moveTo(coach, GAME_W / 2, COACH_INTRO_Y, COACH_INTRO_SPEED);
+  yield* moveTo(coach, gameW() / 2, COACH_INTRO_Y, COACH_INTRO_SPEED);
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'coach1', frame: 1, name: 'Coach Becky' },
@@ -143,7 +143,7 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
   // Stop the email *just* before it would hit — moveTo halts and snaps
   // it to a position above the player, so the "getting angry" dialog
   // pauses physics with the email frozen close but not touching. The
-  // bomb radius (≥ GAME_W/2) guarantees it gets swept regardless of how
+  // bomb radius (≥ gameW()/2) guarantees it gets swept regardless of how
   // far the player dodged sideways.
   yield* moveTo(email, email.x, p.y - EMAIL_NEAR_MARGIN, COACH_EMAIL_SPEED);
 
