@@ -20,6 +20,11 @@
 // Asset source: Kenney "Input Prompts 1.4" (CC0). SVGs live under
 // src/assets/icons/keyboard-vector/; raster PNGs (legacy) under
 // src/assets/icons/keyboard/. See LICENSE-kenney.txt one level up.
+//
+// Icon size: every prompt in the game uses 22px keys (main menu, character
+// select, dialogue hint, tutorial bubble). Mixing sizes broke visual
+// consistency between scenes, so we standardised on one tier — anything
+// that wants smaller "buttons" can just use plain text.
 
 import type Phaser from 'phaser';
 // Outline variants — open-frame look reads better on the dark UI.
@@ -115,13 +120,11 @@ export function getInputIcon(action: InputAction): InputIconRef | undefined {
 
 // --- texture-key resolution ------------------------------------------------
 
-// Sizes we preload each icon at. Two tiers cover the two `iconHeight` values
-// that prompt.ts requests today (18 = FONT_DEBUG/SM floor, 22 = FONT_MENU
-// 16px × 1.32). The SVGs were trimmed to their content bbox (no transparent
-// padding), so the rendered texture size IS the visible icon size — both
-// sizes are 10% larger than the original [16, 20] tier so the keys read
-// better in-game without losing pixel-perfect rasterisation.
-export const ICON_RENDER_SIZES = [18, 22] as const;
+// Sizes we preload each icon at. A single tier (22px) — every prompt in the
+// game uses this size, so the second-tier raster was just dead weight. The
+// SVGs were trimmed to their content bbox (no transparent padding), so the
+// rendered texture size IS the visible icon size.
+export const ICON_RENDER_SIZES = [22] as const;
 export type IconRenderSize = (typeof ICON_RENDER_SIZES)[number];
 
 // Texture key for a specific (icon, size) combo. Mirror of the construction

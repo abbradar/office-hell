@@ -26,9 +26,11 @@ const EMAIL_NEAR_MARGIN = 16;
 // Tutorial bubble templates. Touch sessions get plain text — the touch
 // icon map is intentionally empty (see ui/inputIcons.ts) so a `<bomb>`
 // token would render as `[bomb]`, which is worse than nothing.
-const ARROW_TEMPLATE = isTouchDevice ? 'TAP ◀ ▶ TO DODGE' : '<moveHorizontal>  DODGE!';
-const BOMB_TEMPLATE = isTouchDevice ? 'TAP ✱ TO GET ANGRY' : '<bomb>  GET ANGRY!';
-const FIRE_TEMPLATE = '<fire>  FIRE EXCUSES!';
+// Two-line layout keeps icons on their own row above the action label so
+// keys read at full size without crowding the text.
+const ARROW_TEMPLATE = isTouchDevice ? 'TAP ◀ ▶\nTO DODGE' : '<moveHorizontal>\nDODGE!';
+const BOMB_TEMPLATE = isTouchDevice ? 'TAP ✱\nTO GET ANGRY' : '<bomb>\nGET ANGRY!';
+const FIRE_TEMPLATE = '<fire>\nFIRE EXCUSES!';
 
 type TutorialKind = 'arrows' | 'bomb' | 'fire';
 

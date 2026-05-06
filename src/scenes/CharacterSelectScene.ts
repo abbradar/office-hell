@@ -71,17 +71,27 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.cards.push(this.makeCard(i, ch, cx));
     }
 
-    const hintTemplate = isTouchDevice
-      ? 'tap a card to select   •   tap "back" to return'
-      : '<moveHorizontal>: switch   <confirm>: select   <back>: back';
-    makePrompt(
-      this,
-      GAME_W / 2,
-      GAME_H - 96,
-      hintTemplate,
-      { ...FONT_DEBUG, color: '#888888', align: 'center' },
-      { align: 'center' },
-    );
+    // Keyboard hint: three column-stacked prompts (icon on top, label below)
+    // laid out side-by-side. makePrompt is line-based, so a single template
+    // can't column-align an icon row above a text row — render each pair as
+    // its own prompt, then re-center the group around GAME_W / 2.
+    const HINT_Y = GAME_H - 130;
+    const HINT_GAP = 60;
+    const hintStyle = { ...FONT_DEBUG, color: '#888888', align: 'center' };
+    if (isTouchDevice) {
+      makePrompt(this, GAME_W / 2, HINT_Y, 'tap a card to select   •   tap "back" to return', hintStyle, {
+        align: 'center',
+      });
+    } else {
+      const cols = ['<moveHorizontal>\nswitch', '<confirm>\nselect', '<back>\nback'];
+      const prompts = cols.map((t) => makePrompt(this, 0, HINT_Y, t, hintStyle, { align: 'center' }));
+      const groupW = prompts.reduce((sum, p) => sum + p.width, 0) + HINT_GAP * (prompts.length - 1);
+      let cx = GAME_W / 2 - groupW / 2;
+      for (const p of prompts) {
+        p.x = Math.round(cx + p.width / 2);
+        cx += p.width + HINT_GAP;
+      }
+    }
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 56, '← back', {

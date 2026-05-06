@@ -23,10 +23,11 @@ type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
 const TOKEN_RE = /<([a-zA-Z]+)>/g;
 
-// Lower bound on icon height regardless of text size. The smallest
-// preloaded SVG raster size is 18px (see ICON_RENDER_SIZES); requesting
-// less just snaps to that anyway, so this floor keeps prompt math honest.
-const MIN_ICON_PX = 18;
+// Lower bound on icon height regardless of text size. Pinned to the only
+// preloaded SVG raster size (see ICON_RENDER_SIZES) so every prompt across
+// the game — menu, character select, dialogue hint, tutorial bubble — ends
+// up with the same-size keys regardless of its own text tier.
+const MIN_ICON_PX = 22;
 // Multiplier on text height for icons. Slightly larger than 1.0 so icons
 // pop next to text without towering over it. Bumped 10% over the original
 // 1.2 (which matched the old transparent-padding footprint) to give the
@@ -121,6 +122,10 @@ export type PromptOpts = {
   // itself is positioned at (x, y); alignment shifts each line's content
   // around its own center/edge.
   align?: 'left' | 'center' | 'right';
+  // Tint applied to icon images. Source SVGs are white, so the tint
+  // multiplies straight through to the target colour — pass e.g. 0x1a1a2a
+  // to render icons dark against a light bubble fill. Default: untinted.
+  iconTint?: number;
 };
 
 export function makePrompt(
@@ -142,6 +147,7 @@ export function makePrompt(
   // lines don't overlap when icons exceed the font's own line box.
   const lineH = opts.lineHeight ?? Math.max(iconH + 4, Math.round(fontPx * 1.4));
   const align = opts.align ?? 'center';
+  const iconTint = opts.iconTint;
 
   const container = scene.add.container(Math.round(x), Math.round(y));
   const lines = template.split('\n');
@@ -194,6 +200,7 @@ export function makePrompt(
           // the browser's SVG renderer at exactly this size, so no scaling
           // or filtering needed; the image renders 1:1.
           const img = scene.add.image(0, 0, iconTextureKey(icon, iconH)).setOrigin(0, 0.5);
+          if (iconTint !== undefined) img.setTint(iconTint);
           children.push(img);
           lineW += img.displayWidth;
           if (ii < seg.icons.length - 1) lineW += gap;
