@@ -290,6 +290,19 @@ export function killEnemies(self: Entity): void {
   }
 }
 
+// Symmetric counterpart to `killEnemies`: sweep every in-flight bullet
+// while leaving live enemies (and the boss) untouched. Iterates
+// `damages.player` — which holds bullets *and* enemies — and partitions
+// by `hp === null`, the same trick `bomb.ts` uses (bullet kinds have no
+// HP; enemies always do). Useful at phase transitions where the field
+// should reset but the boss should survive.
+export function clearBullets(self: Entity): void {
+  for (const child of self.stage.damages.player.getChildren()) {
+    const e = child as Entity;
+    if (e.alive && e.hp === null) e.die();
+  }
+}
+
 // --- stage-globals scratchpad accessors ----------------------------------
 
 // Set-on-first-call guard scoped to the StageManager's lifetime. True the

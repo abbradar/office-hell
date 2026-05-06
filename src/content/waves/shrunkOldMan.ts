@@ -1,8 +1,9 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
+import { BossKind } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
 import { markWave, waitEnemiesClear } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 // Circular import: stage.ts also imports shrunkOldManWave from this file. ES
 // module live bindings make this safe — these helpers are only invoked at
@@ -110,7 +111,7 @@ function* shrunkOldManScript(self: Entity) {
   }
 }
 
-export const shrunkOldMan = new EntityKind({
+export const shrunkOldMan = new BossKind({
   sprite: 'geezer',
   hitboxRadius: 16,
   hp: 72,

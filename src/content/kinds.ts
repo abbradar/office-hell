@@ -1,5 +1,6 @@
 import { BULLET_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
+import { BossKind } from '../script/boss';
 import { aimed, arc, ring } from '../script/patterns';
 import { EntityKind } from '../script/types';
 
@@ -85,7 +86,7 @@ function* bossScript(self: Entity) {
   }
 }
 
-export const bossOne = new EntityKind({
+export const bossOne = new BossKind({
   sprite: 'boss',
   hitboxRadius: 18,
   hp: 65,
