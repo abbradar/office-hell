@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { gameH, gameW } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
+import { addElevatorBackdrop, ELEVATOR_CLOSE_ANIM, ELEVATOR_FRAME_OPEN } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -39,6 +40,10 @@ export class CharacterSelectScene extends Phaser.Scene {
   private next!: string;
   // biome-ignore lint/suspicious/noExplicitAny: passthrough init payload
   private nextData: any;
+  // True once the back handler has fired — prevents the close animation
+  // from being retriggered (and the destination scene started twice) by
+  // a stray pointerdown / keydown while the doors are sliding shut.
+  private closing = false;
 
   constructor() {
     super('CharacterSelect');
@@ -49,6 +54,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.nextData = data?.nextData;
     this.cards = [];
     this.cursor = 0;
+    this.closing = false;
   }
 
   create(): void {
@@ -64,6 +70,20 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
       this.input.enabled = true;
     });
+
+    // Carry the open elevator across from MenuScene's open animation as a
+    // full-screen backdrop. Sits behind the title + cards so the dark
+    // interior of the open frame doubles as the scene background.
+    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_OPEN);
+
+    const goBack = (): void => {
+      if (this.closing) return;
+      this.closing = true;
+      elevator.play(ELEVATOR_CLOSE_ANIM);
+      elevator.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+        this.scene.start('Menu');
+      });
+    };
 
     this.add
       .text(gameW() / 2, 70, 'CHOOSE A SHIFT WORKER', {
@@ -111,9 +131,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    onTap(this, back, () => {
-      this.scene.start('Menu');
-    });
+    onTap(this, back, goBack);
 
     const kb = this.input.keyboard;
     if (kb) {
@@ -127,9 +145,6 @@ export class CharacterSelectScene extends Phaser.Scene {
       });
       kb.on('keydown-Z', () => this.confirm());
       kb.on('keydown-ENTER', () => this.confirm());
-      const goBack = (): void => {
-        this.scene.start('Menu');
-      };
       kb.on('keydown-ESC', goBack);
     }
 

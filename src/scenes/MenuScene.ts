@@ -3,13 +3,26 @@ import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { gameH, gameW } from '../config';
+import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
+// "Elevator stops at a floor" jitter: small enough to read as motor
+// vibration on a full-screen backdrop without making the menu text wobble
+// noticeably. The sprite is intentionally oversized (see
+// ELEVATOR_BACKDROP_OVERFLOW) so this shift never exposes the scene
+// clear color.
+const RUMBLE_PIXELS = 4;
+const RUMBLE_MIN_MS = 4000;
+const RUMBLE_MAX_MS = 6000;
+const RUMBLE_DURATION_MS = 100;
+
 export class MenuScene extends Phaser.Scene {
+  private starting = false;
+
   constructor() {
     super('Menu');
   }
@@ -21,9 +34,13 @@ export class MenuScene extends Phaser.Scene {
     // the loop keeps playing across CharacterSelect / TestMenu / End. The
     // call is idempotent for the same key — calling it again on a return to
     // the menu (e.g. from EndScene) just no-ops while the loop is alive.
-    playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
+    playMusicLoop(MENU_LOOP_KEY);
 
     addMuteButton(this);
+    this.starting = false;
+
+    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED);
+    this.scheduleRumble(elevator);
 
     this.add
       .text(gameW() / 2, gameH() * 0.28, 'OFFICE HELL', {
@@ -42,7 +59,7 @@ export class MenuScene extends Phaser.Scene {
     // local coords (origin at the centre of the prompt).
     setLargeHit(startText, gameW() * 0.7, 110);
 
-    this.tweens.add({
+    const startTween = this.tweens.add({
       targets: startText,
       alpha: 0.35,
       duration: 700,
@@ -58,10 +75,20 @@ export class MenuScene extends Phaser.Scene {
     setLargeHit(practiceText, gameW() * 0.6, 80);
 
     const start = (): void => {
+      if (this.starting) return;
+      this.starting = true;
       playClick();
-      this.scene.start('CharacterSelect', { next: 'Game' });
+      // Stop the START button's pulse so it doesn't keep flickering during
+      // the door-open animation.
+      startTween.stop();
+      startText.setAlpha(1);
+      elevator.play(ELEVATOR_OPEN_ANIM);
+      elevator.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+        this.scene.start('CharacterSelect', { next: 'Game' });
+      });
     };
     const goPractice = (): void => {
+      if (this.starting) return;
       playClick();
       this.scene.start('TestMenu');
     };
@@ -70,6 +97,34 @@ export class MenuScene extends Phaser.Scene {
     onTap(this, practiceText, goPractice);
     this.input.keyboard?.once('keydown-Z', start);
     this.input.keyboard?.once('keydown-T', goPractice);
+  }
+
+  // Schedule a short up/down jitter on the elevator at a random interval
+  // between RUMBLE_MIN_MS and RUMBLE_MAX_MS — sells "the elevator is
+  // working" without being noisy. Recurses by re-arming the timer at the
+  // tween's end.
+  private scheduleRumble(target: Phaser.GameObjects.Sprite): void {
+    const delay = Phaser.Math.Between(RUMBLE_MIN_MS, RUMBLE_MAX_MS);
+    this.time.delayedCall(delay, () => {
+      // The scene may have been torn down between scheduling and firing
+      // (e.g. quick START press). Bail if we're no longer the active menu.
+      if (!this.scene.isActive() || this.starting) return;
+      // Compute the rest position lazily — gameH() can change at runtime
+      // when the viewport reshapes (fullscreen / orientation), and we want
+      // each tween to read the live value.
+      const baseY = gameH() / 2;
+      this.tweens.add({
+        targets: target,
+        y: baseY - RUMBLE_PIXELS,
+        duration: RUMBLE_DURATION_MS,
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          target.y = baseY;
+          this.scheduleRumble(target);
+        },
+      });
+    });
   }
 }
 

@@ -6,6 +6,7 @@ import { configureVoiceCaps, preloadAudio } from '../audio/preload';
 import { setSoundManager } from '../audio/sfx/pool';
 import { canvasH, gameH, gameW, recomputeSizes } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
+import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import { generateTextures } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { preloadInputIcons } from '../ui/inputIcons';
@@ -38,6 +39,7 @@ export class BootScene extends Phaser.Scene {
     // loader. Phaser is happy to run a second pass after preload — the
     // existing PROGRESS handler refills the bar for this batch.
     preloadCharacterSheets(this);
+    preloadElevator(this);
     preloadAudio(this);
     preloadInputIcons(this);
     preloadMuteIcons(this);
@@ -71,6 +73,7 @@ export class BootScene extends Phaser.Scene {
         try {
           // Anims tie into spritesheets that just landed — register now.
           registerAllCharacterAnims(this);
+          registerElevatorAnims(this);
           resolve();
         } catch (err) {
           reject(err);
@@ -118,9 +121,10 @@ export class BootScene extends Phaser.Scene {
         if (isTouchDevice && !this.scale.isFullscreen) {
           this.scale.startFullscreen();
         }
-        // 1s self-crossfade dissolves the loop seam; the menu sits open long
-        // enough that a hard wrap (even a sample-accurate one) gets perceptible.
-        playMusicLoop(MENU_LOOP_KEY, { crossfadeMs: 1000 });
+        // Browsers require a user gesture to unlock the AudioContext —
+        // this handler is that gesture, which is why we don't start the loop
+        // until the player presses something.
+        playMusicLoop(MENU_LOOP_KEY);
         this.scene.start('Menu');
       };
 
