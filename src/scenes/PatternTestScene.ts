@@ -306,6 +306,15 @@ export class PatternTestScene extends Phaser.Scene {
   private visualMask!: Phaser.Display.Masks.GeometryMask;
 
   private statusText!: Phaser.GameObjects.Text;
+  // Status text has two flavours:
+  //   'live'   — auto-appends `  fps: N  active: M` each frame.
+  //              Used for steady-state messages (idle / running / stopped)
+  //              where ambient stats are useful to watch during stress tests.
+  //   'static' — left as-is until the next setStatus call. For error messages,
+  //              save/load confirmations, etc. that shouldn't get clobbered
+  //              by the per-frame refresh.
+  private statusKind: 'live' | 'static' = 'live';
+  private statusPrefix = 'idle';
   // Currently-open load modal (null when closed). Holds backdrop + panel
   // + entry rows in a single Container so dismissing tears the lot down.
   private loadModal: Phaser.GameObjects.Container | null = null;
@@ -342,6 +351,7 @@ export class PatternTestScene extends Phaser.Scene {
   override update(time: number, delta: number): void {
     this.stage.update(time, delta);
     if (this.mode === 'code') this.repositionCodeEditor();
+    this.refreshLiveStats();
   }
 
   // --- tabs ---------------------------------------------------------------
@@ -725,14 +735,14 @@ export class PatternTestScene extends Phaser.Scene {
     if (this.enemy?.alive) this.enemy.die();
     this.clearBullets();
     this.enemy = this.stage.spawn(DUMMY_ENEMY, ENEMY_X, ENEMY_Y, 0, 0, { script: result.fn });
-    this.setStatus('running', COLOR_RUN);
+    this.setStatus('running', COLOR_RUN, 'live');
   }
 
   private stopUserScript(): void {
     if (this.enemy?.alive) this.enemy.die();
     this.clearBullets();
     this.spawnIdleEnemy();
-    this.setStatus('stopped', COLOR_DIM);
+    this.setStatus('stopped', COLOR_DIM, 'live');
   }
 
   private clearBullets(): void {
@@ -809,9 +819,21 @@ export class PatternTestScene extends Phaser.Scene {
     });
   }
 
-  private setStatus(message: string, color: string): void {
+  private setStatus(message: string, color: string, kind: 'live' | 'static' = 'static'): void {
     this.statusText.setColor(color);
     this.statusText.setText(message);
+    this.statusPrefix = message;
+    this.statusKind = kind;
+  }
+
+  // Per-frame stats append. Only fires when the status is "live"
+  // (idle / running / stopped) — error and save/load messages keep their
+  // static text.
+  private refreshLiveStats(): void {
+    if (this.statusKind !== 'live') return;
+    const fps = Math.round(this.game.loop.actualFps);
+    const active = this.stage.damages.player.countActive(true);
+    this.statusText.setText(`${this.statusPrefix}  fps: ${fps}  active: ${active}`);
   }
 
   // --- save / load -------------------------------------------------------

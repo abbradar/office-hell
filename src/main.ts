@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { canvasH, canvasW } from './config';
 import { BootScene } from './scenes/BootScene';
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.WEBGL,
   // Phaser's parent (#viewport) is an inner div; #game is the fullscreen
   // target. Padding on #game:fullscreen shrinks #viewport so the canvas
@@ -28,3 +28,9 @@ new Phaser.Game({
   },
   scene: [BootScene],
 });
+
+// Expose the game for in-browser debugging + automated tests (the
+// playwright stress test reads `__game.loop.actualFps` and pokes into
+// scene state via `__game.scene.getScene(key)`). Tiny convenience; not
+// load-bearing — production users won't notice it.
+(globalThis as typeof globalThis & { __game?: Phaser.Game }).__game = game;
