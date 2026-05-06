@@ -38,6 +38,16 @@
         touch-action: none;
         display: block;
       }
+      /* #viewport is Phaser's parent, so its bounds are what FIT mode scales
+         against. Both wrappers must fill the body's content box; otherwise
+         the parent collapses to canvas size and FIT has nothing to scale to.
+         (Phaser's expandParent only adjusts the parent itself, not its
+         ancestors — without explicit sizing on #game, #viewport's 100%
+         resolves against a min-content #game.) */
+      #game, #viewport {
+        width: 100%;
+        height: 100%;
+      }
       #game canvas {
         image-rendering: pixelated;
         max-width: 100%;
@@ -45,17 +55,11 @@
       }
       /* In fullscreen the body's safe-area padding doesn't apply (the
          fullscreen element renders in the top layer, outside the body's
-         layout). Re-apply the inset on #game itself so the canvas — which
-         lives inside #viewport, the content area — clears the notch/bezels.
-         #viewport is Phaser's parent, so its bounds are what FIT mode
-         scales against; padding shrinks them by the safe-area amount. */
+         layout). Re-apply the top inset on #game itself so the canvas
+         clears the notch/bezels. */
       #game:fullscreen {
         padding-top: env(safe-area-inset-top);
         background: #000;
-      }
-      #game:fullscreen #viewport {
-        width: 100%;
-        height: 100%;
       }
     </style>
   </head>
