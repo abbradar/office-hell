@@ -21,6 +21,7 @@ import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
+import { StageManager } from '../script/StageManager';
 import {
   markWave,
   waitAudioTimeAtLeast,
@@ -29,7 +30,6 @@ import {
   waitScreenClear,
   waitSeconds,
 } from '../script/stage';
-import { StageManager } from '../script/StageManager';
 import { EntityKind, type EntityScript } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -318,17 +318,12 @@ export class PatternTestScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#10101a');
     addMuteButton(this);
 
-    this.add
-      .text(GAME_W / 2, TITLE_Y, 'PATTERN SANDBOX', { ...FONT_TITLE, color: COLOR_HIGHLIGHT })
-      .setOrigin(0.5);
+    this.add.text(GAME_W / 2, TITLE_Y, 'PATTERN SANDBOX', { ...FONT_TITLE, color: COLOR_HIGHLIGHT }).setOrigin(0.5);
 
     this.stage = new StageManager(this);
     this.stage.player = { x: STUB_PLAYER_X, y: STUB_PLAYER_Y } as unknown as Player;
 
-    this.add
-      .circle(STUB_PLAYER_X, STUB_PLAYER_Y, 6, 0xffffff, 0)
-      .setStrokeStyle(1, 0xffffff, 0.4)
-      .setDepth(50);
+    this.add.circle(STUB_PLAYER_X, STUB_PLAYER_Y, 6, 0xffffff, 0).setStrokeStyle(1, 0xffffff, 0.4).setDepth(50);
 
     this.spawnIdleEnemy();
 
@@ -564,9 +559,7 @@ export class PatternTestScene extends Phaser.Scene {
     // Compact summary of params on the collapsed row so the user can
     // glance the values without expanding (e.g. "count=16 speed=130 angle=0°").
     if (!block.expanded) {
-      const summary = spec.params
-        .map((p) => `${p.name}=${this.formatValue(block.params[p.name] ?? 0, p)}`)
-        .join('  ');
+      const summary = spec.params.map((p) => `${p.name}=${this.formatValue(block.params[p.name] ?? 0, p)}`).join('  ');
       const summaryText = this.add
         .text(labelX + label.width + 8, y + BLOCK_HEADER_H / 2, summary, {
           ...FONT_DEBUG,
@@ -703,9 +696,7 @@ export class PatternTestScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     load.on('pointerup', () => this.openLoadModal());
 
-    this.statusText = this.add
-      .text(GAME_W / 2, STATUS_Y, 'idle', { ...FONT_DEBUG, color: COLOR_DIM })
-      .setOrigin(0.5);
+    this.statusText = this.add.text(GAME_W / 2, STATUS_Y, 'idle', { ...FONT_DEBUG, color: COLOR_DIM }).setOrigin(0.5);
 
     const back = this.add
       .text(GAME_W / 2, BACK_Y, '← back', { ...FONT_DIALOGUE_SM, color: COLOR_DIM })
@@ -762,10 +753,9 @@ export class PatternTestScene extends Phaser.Scene {
         bulletStyle: (opts: BulletStyleOpts = {}) => this.makeBullet(opts),
       };
       const keys = Object.keys(helpers);
-      const factory = new Function(
-        ...keys,
-        `return function* (self) {\n${src}\n};`,
-      ) as (...args: unknown[]) => EntityScript;
+      const factory = new Function(...keys, `return function* (self) {\n${src}\n};`) as (
+        ...args: unknown[]
+      ) => EntityScript;
       const args = keys.map((k) => (helpers as Record<string, unknown>)[k]);
       const fn = factory(...args);
       return { fn };
@@ -887,10 +877,7 @@ export class PatternTestScene extends Phaser.Scene {
 
     // Block backdrop clicks landing inside the panel from dismissing —
     // only outside-the-panel clicks should close.
-    const panelBlocker = this.add
-      .zone(panelX, panelY, panelW, panelH)
-      .setOrigin(0, 0)
-      .setInteractive();
+    const panelBlocker = this.add.zone(panelX, panelY, panelW, panelH).setOrigin(0, 0).setInteractive();
     modal.add(panelBlocker);
 
     const title = this.add

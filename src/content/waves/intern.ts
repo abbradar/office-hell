@@ -87,8 +87,7 @@ function makeInternMarchScript(targetX: number, y: number): EntityScript {
 function* internSidesLine(self: Entity): Generator<ScriptYield, void, void> {
   const y = 90;
   const leftTargets = [170, 110, 50];
-  for (let i = 0; i < leftTargets.length; i++) {
-    const lx = leftTargets[i]!;
+  for (const [i, lx] of leftTargets.entries()) {
     self.spawn(intern, -30, y, 0, 0, {
       script: makeInternMarchScript(lx, y),
     });
