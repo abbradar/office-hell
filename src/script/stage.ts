@@ -142,6 +142,28 @@ export function* withTimeout(
   yield* race(inner, waitSeconds(seconds));
 }
 
+// Run `inner` for exactly `seconds` of audio time, then sweep any
+// surviving enemies off the field. Inner is cancelled mid-flight if it
+// would run longer; if it finishes earlier, the slot is padded out via
+// `waitAudioTimeAtLeast` against the start-of-slot timestamp. Bullets
+// in flight are left alone — only `damagedBy.enemy` (the enemy entities
+// themselves) is cleared, so the next slot inherits a half-busy field
+// rather than a hard reset.
+//
+// Used by stage scripts to give each wave a fixed audio-time slot
+// independent of how fast the player kills enemies or whether spawned
+// enemies linger off-screen — completion gates only on the timer.
+export function* timeWave(
+  self: Entity,
+  seconds: number,
+  inner: Generator<ScriptYield, void, void>,
+): Generator<ScriptYield, void, void> {
+  const start = getMusicTime();
+  yield* withTimeout(seconds, inner);
+  if (start !== null) yield* waitAudioTimeAtLeast(start.time + seconds);
+  killEnemies(self);
+}
+
 // --- audio-clock waits ----------------------------------------------------
 
 // Yield until the current track's clock reaches `t` (seconds, from the
@@ -254,6 +276,18 @@ function* waitScreenClearBody(self: Entity): Generator<ScriptYield, void, void> 
 // Yield until a specific entity is dead.
 export function* waitEntityDead(e: Entity): Generator<ScriptYield, void, void> {
   if (e.alive) yield { until: e };
+}
+
+// Kill every live enemy on the field. Bullets in flight are untouched —
+// only `damagedBy.enemy` (the enemy entities themselves) is swept, so
+// the playfield retains its in-flight projectiles. die() flips the
+// alive flag and fires onDeath; the pool tears the body down on its
+// next sweep.
+export function killEnemies(self: Entity): void {
+  for (const child of self.stage.damagedBy.enemy.getChildren()) {
+    const e = child as Entity;
+    if (e.alive) e.die();
+  }
 }
 
 // --- stage-globals scratchpad accessors ----------------------------------

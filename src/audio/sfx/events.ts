@@ -23,6 +23,14 @@ export function hit(): void {
   playPooled(HURT_SFX_KEY, { volume: 0.7 });
 }
 
+// Player-death cue. Two falling pitches of the hurt sample chained ~130ms
+// apart so it reads as a Mario/Undertale-style "down-down" finisher instead
+// of a regular hit. Reuses HURT_SFX_KEY so no new asset is needed.
+export function playerDeath(): void {
+  playPooled(HURT_SFX_KEY, { volume: 0.9, detune: -400 });
+  setTimeout(() => playPooled(HURT_SFX_KEY, { volume: 0.9, detune: -1000 }), 130);
+}
+
 export function playClick(): void {
   playPooled(CLICK_SFX_KEY, { volume: 0.6 });
 }

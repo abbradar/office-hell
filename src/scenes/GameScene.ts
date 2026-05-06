@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
+import { playerDeath } from '../audio/sfx/events';
 import { BUTTON_BAND_H, CANVAS_W, GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { stageKaedalus } from '../content/kaedalusStage';
@@ -63,6 +64,10 @@ export class GameScene extends Phaser.Scene {
   // owners never overlap.
   private userPaused = false;
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
+  // Set once when the player has died and we've kicked off the flicker /
+  // game-over transition. Idempotent: keeps update() from re-firing the
+  // sequence on every subsequent frame while the animation plays out.
+  private deathStarted = false;
 
   constructor() {
     super('Game');
@@ -291,7 +296,7 @@ export class GameScene extends Phaser.Scene {
     // end-of-update check would be fine — but Phaser 3's order is the other
     // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
-      this.scene.start('End', { won: false });
+      if (!this.deathStarted) this.startDeathSequence();
       return;
     }
 
@@ -326,6 +331,43 @@ export class GameScene extends Phaser.Scene {
     this.bossNameText.setText(this.stage.bossName ?? '');
 
     if (this.debugHud) this.debugHud.setText(this.formatDebugLine());
+  }
+
+  // Death animation: freeze the world (stage script + physics), strobe the
+  // player sprite a few times, hide it, then sit on the frozen frame for a
+  // beat before swapping to End. Tweens and scene.time keep running because
+  // we only pause physics — not the scene itself — so the sequence
+  // self-completes without needing update() ticks.
+  private startDeathSequence(): void {
+    this.deathStarted = true;
+    this.stage.paused = true;
+    this.physics.pause();
+
+    playerDeath();
+
+    // Stepped strobe: 8 toggles at ~80ms = ~640ms of flicker. setTint
+    // alternates between white (full visible) and a transparent alpha
+    // toggle would also work, but alpha is cheaper and reads clearly.
+    const FLICKER_TOGGLES = 8;
+    const FLICKER_INTERVAL_MS = 80;
+    let toggle = 0;
+    this.time.addEvent({
+      delay: FLICKER_INTERVAL_MS,
+      repeat: FLICKER_TOGGLES - 1,
+      callback: () => {
+        toggle++;
+        this.player.setAlpha(toggle % 2 === 0 ? 1 : 0);
+      },
+    });
+
+    const FLICKER_TOTAL_MS = FLICKER_INTERVAL_MS * FLICKER_TOGGLES;
+    const POST_FLICKER_HOLD_MS = 600;
+    this.time.delayedCall(FLICKER_TOTAL_MS, () => {
+      this.player.setVisible(false);
+    });
+    this.time.delayedCall(FLICKER_TOTAL_MS + POST_FLICKER_HOLD_MS, () => {
+      this.scene.start('End', { won: false });
+    });
   }
 
   private formatDebugLine(): string {

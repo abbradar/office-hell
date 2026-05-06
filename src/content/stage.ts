@@ -12,9 +12,9 @@ import {
   markWave,
   startMusicLoop,
   startMusicWithIntro,
+  timeWave,
   waitEnemiesClear,
   waitScreenClear,
-  waitSeconds,
   waitTrackEnded,
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
@@ -71,24 +71,29 @@ export type WaveDef = {
   script: (self: Entity) => Generator<ScriptYield, void, void>;
 };
 
+// Practice menu order matches the real stage's progression: intro,
+// the four retro-01 timeWave slots, first boss, vacation photos,
+// stage boss, final boss, outro — then the encounters not currently
+// placed in the stage, in roughly difficulty order, as a sandbox of
+// cut / not-yet-placed content.
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
-  { id: 'r-interns', name: 'Interns', script: internsWave },
   { id: 'r-first-email-colleagues', name: 'First Email Colleagues', script: firstEmailColleagues },
-  { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
-  { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
-  { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
-  { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
-  { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },
+  { id: 'r-interns', name: 'Interns', script: internsWave },
   { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
-  { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },
+  { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
+  { id: 'r-gym-bro', name: 'First Boss — Brad', script: gymBroWave },
   { id: 'r-vacation-photos', name: 'Vacation Photos', script: vacationPhotosWave },
-  { id: 'r-gym-bro', name: 'Gym Bro', script: gymBroWave },
-  { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
-  { id: 'r-wellness-coach', name: 'Wellness Coach', script: wellnessCoachWave },
   { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
+  { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
+  { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
+  { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
+  { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },
+  { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },
+  { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
+  { id: 'r-wellness-coach', name: 'Wellness Coach', script: wellnessCoachWave },
 ];
 
 function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
@@ -108,12 +113,15 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(p, p.x, PLAYER_OUTRO_EXIT_Y, PLAYER_OUTRO_SPEED);
 }
 
-// Top-level stage script. Sequential composition via `yield*`. Inter-wave
-// gaps use `waitSeconds(s)` (audio-time-based) so the schedule is
-// synced to music. Music switches are explicit `yield* startMusicLoop(...)`
-// calls — those yield until the requested track is ticking, so the next
-// step can assume music is up. Frame yields still appear in the pre/post
-// music beats where audio time isn't meaningful.
+// Top-level stage script. Sequential composition via `yield*`. The first
+// loop's waves run on a fixed audio-time schedule (`runFor` slots) so
+// each wave starts at a known offset from the loop body's start; later
+// stage segments (boss intro, music switches) still gate on world state
+// via `waitEnemiesClear`/`waitTrackEnded`. Music switches are explicit
+// `yield* startMusicLoop(...)` calls — those yield until the requested
+// track is ticking, so the next step can assume music is up. Frame
+// yields still appear in the pre/post music beats where audio time
+// isn't meaningful.
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
   markWave(self, 'intro');
@@ -124,16 +132,22 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 
   // Retro opening fanfare → retro 01 loop. `startMusicWithIntro` yields
   // until the track is actually ticking, so the wave below sees music up.
+  // The first wave starts immediately under the fanfare — silent dead
+  // air between the intro monologue and wave 1 felt much too long.
   markWave(self, 'music: retro 01');
   yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
 
-  yield* firstEmailColleagues(self);
-  yield* waitSeconds(2.5);
-  yield* internsWave(self);
-  yield* waitSeconds(2.5);
-  yield* checkEmailWave(self);
-  yield* waitSeconds(3.0);
-  yield* colleaguesWave(self);
+  // Each slot runs its wave for exactly that many audio seconds —
+  // timeWave caps long spawn sequences, pads short ones, and sweeps
+  // surviving enemies at the slot's end so the schedule doesn't drift
+  // with how the player is doing. Bullets in flight carry over so the
+  // seam isn't a hard reset. Total ≈59s, sized to fit under the retro
+  // 01 loop's 60s body; `waitTrackEnded` below snaps the music switch
+  // to the natural loop boundary regardless of where the waves land.
+  yield* timeWave(self, 18, firstEmailColleagues(self));
+  yield* timeWave(self, 11, internsWave(self));
+  yield* timeWave(self, 17, checkEmailWave(self));
+  yield* timeWave(self, 13, colleaguesWave(self));
 
   // Halfway pivot — snap the music switch to the next loop boundary so
   // the cut lands on a musical seam rather than mid-bar.
@@ -141,11 +155,15 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitTrackEnded();
   yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
 
+  // First boss — Brad. Drops in right at the music seam so the new
+  // track's first measures are his entrance.
+  yield* gymBroWave(self);
+
   yield* vacationPhotosWave(self);
 
-  // Mid-stage boss — internal script waits for field to clear, then plays
-  // its own dialogue + attack loop. The metal music switch below gates on
-  // his death via waitEnemiesClear.
+  // Stage boss — internal script waits for field to clear, then plays
+  // its own dialogue + attack loop. The metal music switch below gates
+  // on his death via waitEnemiesClear.
   yield* shrunkOldManWave(self);
 
   markWave(self, 'music: metal');

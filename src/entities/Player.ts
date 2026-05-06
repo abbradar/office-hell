@@ -105,6 +105,16 @@ export class Player extends Entity {
     this.kind.render(this);
   }
 
+  override die(): void {
+    super.die();
+    // Freeze the sprite mid-frame and hide the hitbox dot. controlUpdate is
+    // what normally drives the dot's visibility, but the death sequence
+    // pauses the stage so controlUpdate never runs again — without this the
+    // dot would linger over the flickering corpse.
+    this.anims.pause();
+    this.hitboxGfx.setVisible(false);
+  }
+
   pushInvincible(): void {
     if (this.invincibleDepth === 0) {
       this.savedDamagedBy = this.activeDamagedBy.slice();

@@ -10,9 +10,13 @@ import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
 const ROW_SPACING = 44;
 const HEADER_Y = 60;
-const HEADER_BUTTONS_TOP = 130;
 const HEADER_BUTTON_SPACING = 32;
+// Top of the unified scroll viewport — both header buttons and wave
+// rows live inside listContainer so the whole list scrolls as one.
+const LIST_VIEW_TOP = 130;
 const LIST_VIEW_BOTTOM = GAME_H - 75;
+// Vertical gap between the last header button and the first wave row.
+const HEADER_WAVE_GAP = 16;
 // Treat motion under this many game-pixels as a tap rather than a swipe.
 const DRAG_THRESHOLD = 6;
 
@@ -92,9 +96,17 @@ export class TestMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // Single scroll viewport covering both header shortcuts and wave
+    // rows. Headers live at the top of listContainer; waves follow
+    // after a fixed gap. Everything scrolls together so the headers
+    // can disappear off the top to make room for the long wave list.
+    this.listViewTop = LIST_VIEW_TOP;
+    this.listViewHeight = LIST_VIEW_BOTTOM - this.listViewTop;
+    this.listContainer = this.add.container(0, this.listViewTop);
+
     // Header shortcuts — full stage + each diagnostics test stage.
     for (let i = 0; i < HEADERS.length; i++) {
-      const y = HEADER_BUTTONS_TOP + i * HEADER_BUTTON_SPACING;
+      const y = i * HEADER_BUTTON_SPACING + HEADER_BUTTON_SPACING / 2;
       const text = this.add
         .text(GAME_W / 2, y, '', {
           ...FONT_MENU,
@@ -112,19 +124,17 @@ export class TestMenuScene extends Phaser.Scene {
         this.cursor = i;
         this.start();
       });
+      this.listContainer.add(text);
       this.headerTexts.push(text);
     }
 
-    // Wave list sits below the last header button.
-    this.listViewTop = HEADER_BUTTONS_TOP + HEADERS.length * HEADER_BUTTON_SPACING + 16;
-    this.listViewHeight = LIST_VIEW_BOTTOM - this.listViewTop;
-    this.listContainer = this.add.container(0, this.listViewTop);
+    const wavesTop = HEADERS.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
 
     for (let i = 0; i < WAVES.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
       const wave = WAVES[i]!;
       const row = this.add
-        .text(GAME_W / 2, i * ROW_SPACING + ROW_SPACING / 2, this.rowText(wave), {
+        .text(GAME_W / 2, wavesTop + i * ROW_SPACING + ROW_SPACING / 2, this.rowText(wave), {
           ...FONT_MENU,
           color: ROW_COLOR,
         })
@@ -155,7 +165,8 @@ export class TestMenuScene extends Phaser.Scene {
     maskGraphics.fillRect(0, this.listViewTop, GAME_W, this.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
-    this.maxScroll = Math.max(0, WAVES.length * ROW_SPACING - this.listViewHeight);
+    const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
+    this.maxScroll = Math.max(0, totalHeight - this.listViewHeight);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
@@ -236,14 +247,17 @@ export class TestMenuScene extends Phaser.Scene {
 
   private scrollToCursor(): void {
     const target = this.cursorTarget(this.cursor);
-    if (target.kind !== 'wave') {
-      // Header buttons sit above the scroll viewport — bring the list back to
-      // the top so the user sees both the highlighted header and the list.
-      this.setScroll(0);
-      return;
+    let top: number;
+    let height: number;
+    if (target.kind === 'header') {
+      top = target.index * HEADER_BUTTON_SPACING;
+      height = HEADER_BUTTON_SPACING;
+    } else {
+      const wavesTop = HEADERS.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
+      top = wavesTop + target.index * ROW_SPACING;
+      height = ROW_SPACING;
     }
-    const top = target.index * ROW_SPACING;
-    const bottom = top + ROW_SPACING;
+    const bottom = top + height;
     if (top < this.scrollY) this.setScroll(top);
     else if (bottom > this.scrollY + this.listViewHeight) {
       this.setScroll(bottom - this.listViewHeight);
