@@ -43,6 +43,24 @@ export function aimed(self: Entity, count: number, kind: EntityKind, speed: numb
   }
 }
 
+// Fire `count` bullets aimed at the player, all sharing the same heading
+// but spawned from random offsets within a small disk around the entity.
+// They fly as a tight pack rather than fanning out into a line, so the
+// volley reads as one heavy clump to dodge instead of a wall to weave
+// through.
+export function cluster(self: Entity, count: number, kind: EntityKind, speed: number, spreadPx = 14): void {
+  if (offScreen(self)) return;
+  shoot();
+  const aim = self.angleToPlayer();
+  const vx = Math.cos(aim) * speed;
+  const vy = Math.sin(aim) * speed;
+  for (let i = 0; i < count; i++) {
+    const r = Math.random() * spreadPx;
+    const a = Math.random() * Math.PI * 2;
+    self.spawn(kind, self.x + Math.cos(a) * r, self.y + Math.sin(a) * r, vx, vy);
+  }
+}
+
 export function spread(
   self: Entity,
   count: number,

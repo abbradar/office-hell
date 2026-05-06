@@ -189,8 +189,18 @@ export class Player extends Entity {
       }
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.bombKey) || consumeBombPress()) {
-      if (this.kind.consumeBomb(this)) activateBomb(this, this.stage);
+    // Drain JustDown unconditionally — Phaser leaves the `_justDown`
+    // flag set until something reads it, so skipping the read while
+    // bombs=0 would queue a press that fires the moment bombs unlock
+    // (intro tutorial). The touch tap queue is the opposite: only drain
+    // it when a bomb is actually available, otherwise the intro's bomb
+    // tutorial poll loses every press to this same consumer (controls
+    // run every frame, the script polls every other frame, so half the
+    // taps got eaten here before the tutorial saw them).
+    const bombJustDown = Phaser.Input.Keyboard.JustDown(this.bombKey);
+    if (this.kind.bombs > 0 && (bombJustDown || consumeBombPress())) {
+      this.kind.consumeBomb(this);
+      activateBomb(this, this.stage);
     }
   }
 }

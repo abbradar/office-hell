@@ -6,6 +6,7 @@ import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
+import { onTap } from '../ui/tap';
 import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
 const ROW_SPACING = 44;
@@ -119,7 +120,7 @@ export class TestMenuScene extends Phaser.Scene {
         this.cursor = i;
         this.refresh();
       });
-      text.on('pointerup', () => {
+      onTap(this, text, () => {
         if (this.gesture?.moved) return;
         this.cursor = i;
         this.start();
@@ -148,10 +149,10 @@ export class TestMenuScene extends Phaser.Scene {
         this.cursor = HEADERS.length + i;
         this.refresh();
       });
-      row.on('pointerup', () => {
-        // Game-object pointerup fires before scene-level pointerup, so .gesture
-        // is still set here. If the gesture moved past threshold, treat it as a
-        // swipe and skip the tap.
+      // onTap registers its scene-level pointerup before the gesture-clearing
+      // listener below, so the action sees `gesture` intact and can read
+      // `.moved` to distinguish swipes from taps.
+      onTap(this, row, () => {
         if (this.gesture?.moved) return;
         this.cursor = HEADERS.length + i;
         this.start();
@@ -175,7 +176,7 @@ export class TestMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    back.on('pointerup', () => {
+    onTap(this, back, () => {
       if (this.gesture?.moved) return;
       this.scene.start('Menu');
     });

@@ -1,5 +1,5 @@
 import { playJump, playThump, shoot } from '../../audio/sfx/events';
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
@@ -37,8 +37,8 @@ const JUMP_PEAK_OFFSET = -110;
 // Boss is 48px wide; an ~80px inset keeps him fully on screen at the apex
 // even with the parabolic overshoot the easing produces near the edges.
 const JUMP_LEFT_X = 80;
-const JUMP_RIGHT_X = gameW() - 80;
-const JUMP_HOME_X = gameW() / 2;
+const JUMP_RIGHT_X = GAME_W - 80;
+const JUMP_HOME_X = GAME_W / 2;
 // Far enough below the HUD (28px header) that the sprite's apex (home Y +
 // peak offset = 60) plus its 24px half-height still clears the bar. Phase 1
 // has him idling higher up at the entry stop; phase 2 slides him down to
@@ -321,7 +321,7 @@ export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(gymBro, gameW() / 2, -60, 0, 0, {
+  const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss };

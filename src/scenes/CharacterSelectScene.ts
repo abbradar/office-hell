@@ -5,6 +5,7 @@ import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
+import { onTap } from '../ui/tap';
 
 export type CharacterSelectData = {
   next: string;
@@ -54,6 +55,16 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#10101a');
     addMuteButton(this);
 
+    // Drop scene input for the first frame so the pointerdown that
+    // brought us here (Menu's start button sits at the same Y as the
+    // cards on touch) can't be dispatched into our freshly-registered
+    // interactives. By POST_UPDATE, the in-flight event has been fully
+    // walked past our zones.
+    this.input.enabled = false;
+    this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
+      this.input.enabled = true;
+    });
+
     this.add
       .text(gameW() / 2, 70, 'CHOOSE A SHIFT WORKER', {
         ...FONT_MENU,
@@ -100,7 +111,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    back.on('pointerdown', () => {
+    onTap(this, back, () => {
       this.scene.start('Menu');
     });
 
@@ -155,7 +166,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       this.cursor = index;
       this.refresh();
     });
-    zone.on('pointerdown', () => {
+    onTap(this, zone, () => {
       this.cursor = index;
       this.confirm();
     });

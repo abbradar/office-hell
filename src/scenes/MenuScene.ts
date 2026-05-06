@@ -7,6 +7,7 @@ import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
+import { onTap } from '../ui/tap';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -35,7 +36,11 @@ export class MenuScene extends Phaser.Scene {
     const startText = makePrompt(this, gameW() / 2, gameH() * 0.5, startTemplate, {
       ...FONT_MENU,
       color: '#ffffff',
-    }).setInteractive({ useHandCursor: true });
+    });
+    // Fat-finger pad: tap area extends well past the rendered text so a
+    // thumb tap doesn't have to be precise. Hit area is in container
+    // local coords (origin at the centre of the prompt).
+    setLargeHit(startText, gameW() * 0.7, 110);
 
     this.tweens.add({
       targets: startText,
@@ -49,7 +54,8 @@ export class MenuScene extends Phaser.Scene {
     const practiceText = makePrompt(this, gameW() / 2, gameH() * 0.62, practiceTemplate, {
       ...FONT_DIALOGUE_LG,
       color: '#ffd96a',
-    }).setInteractive({ useHandCursor: true });
+    });
+    setLargeHit(practiceText, gameW() * 0.6, 80);
 
     const start = (): void => {
       playClick();
@@ -60,9 +66,15 @@ export class MenuScene extends Phaser.Scene {
       this.scene.start('TestMenu');
     };
 
-    startText.on('pointerdown', start);
-    practiceText.on('pointerdown', goPractice);
+    onTap(this, startText, start);
+    onTap(this, practiceText, goPractice);
     this.input.keyboard?.once('keydown-Z', start);
     this.input.keyboard?.once('keydown-T', goPractice);
   }
+}
+
+function setLargeHit(target: Phaser.GameObjects.Container, w: number, h: number): void {
+  // Container local origin sits at the prompt's centre, so a centred
+  // rectangle gives a hit pad evenly extending in all four directions.
+  target.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
 }

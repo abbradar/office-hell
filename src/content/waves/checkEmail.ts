@@ -1,6 +1,6 @@
 import { gameW } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { aimed, ring } from '../../script/patterns';
+import { aimed, cluster, ring } from '../../script/patterns';
 import { checkStageOnce, markWave } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
@@ -30,6 +30,8 @@ const VOLLEY_GAP = 70;
 const EMAIL_COUNT = 3;
 const EMAIL_SPEED = 110;
 const EMAIL_SPREAD = Math.PI / 6;
+const CLUSTER_COUNT = 3;
+const CLUSTER_SPREAD_PX = 16;
 const RING_COUNT = 10;
 const RING_SPEED = 130;
 
@@ -45,7 +47,14 @@ function* checkEmailScript(self: Entity) {
   yield HOLD_FRAMES;
 
   for (let i = 0; i < VOLLEYS; i++) {
-    aimed(self, EMAIL_COUNT, emailBullet, EMAIL_SPEED, EMAIL_SPREAD);
+    // Second volley breaks the line cadence: a tight clump of envelopes
+    // arriving as one wall, so the player can't ride the same lane that
+    // dodged the fan on volley 1.
+    if (i === 1) {
+      cluster(self, CLUSTER_COUNT, emailBullet, EMAIL_SPEED, CLUSTER_SPREAD_PX);
+    } else {
+      aimed(self, EMAIL_COUNT, emailBullet, EMAIL_SPEED, EMAIL_SPREAD);
+    }
     yield Math.round(VOLLEY_GAP * 0.5);
     ring(self, RING_COUNT, bullet, RING_SPEED, Math.random() * Math.PI * 2);
     yield VOLLEY_GAP;
@@ -57,7 +66,7 @@ function* checkEmailScript(self: Entity) {
 export const checkEmailCoworker = new EntityKind({
   sprite: 'checkEmail',
   hitboxRadius: 12,
-  hp: 14,
+  hp: 20,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: checkEmailScript,
