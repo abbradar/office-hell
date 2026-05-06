@@ -7,8 +7,14 @@ import { setSoundManager } from '../audio/sfx/pool';
 import { canvasH, gameH, gameW, recomputeSizes } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
-import { generateTextures } from '../content/textures';
+import { generateTextures, preloadFloorPattern, recolorFloorPattern } from '../content/textures';
 import { isTouchDevice } from '../input/device';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_DIM_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
 
@@ -40,6 +46,7 @@ export class BootScene extends Phaser.Scene {
     // existing PROGRESS handler refills the bar for this batch.
     preloadCharacterSheets(this);
     preloadElevator(this);
+    preloadFloorPattern(this);
     preloadAudio(this);
     preloadInputIcons(this);
     preloadMuteIcons(this);
@@ -74,6 +81,10 @@ export class BootScene extends Phaser.Scene {
           // Anims tie into spritesheets that just landed — register now.
           registerAllCharacterAnims(this);
           registerElevatorAnims(this);
+          // Floor pattern needs the source PNG in the texture cache before
+          // we can recolor it — must run inside the COMPLETE handler, not
+          // alongside the synchronous bullet generators.
+          recolorFloorPattern(this);
           resolve();
         } catch (err) {
           reject(err);
@@ -166,7 +177,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   private showLoadingUI(): void {
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
     const cx = gameW() / 2;
     const cy = gameH() / 2;
@@ -177,19 +188,19 @@ export class BootScene extends Phaser.Scene {
 
     this.loadingText = this.add
       .text(cx, cy - 24, 'loading…', {
-        color: '#888888',
+        color: COLOR_TEXT_DIM_STR,
         fontSize: '14px',
       })
       .setOrigin(0.5);
 
     const border = this.add.graphics();
-    border.lineStyle(2, 0x444466, 1);
+    border.lineStyle(2, COLOR_PANEL_BORDER, 1);
     border.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
     const fill = this.add.graphics();
     this.load.on(Phaser.Loader.Events.PROGRESS, (value: number) => {
       fill.clear();
-      fill.fillStyle(0xffd96a, 1);
+      fill.fillStyle(COLOR_ACCENT_GOLD, 1);
       fill.fillRect(barX, barY, barW * value, barH);
     });
   }

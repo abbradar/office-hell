@@ -5,6 +5,14 @@ import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
+import {
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_ACCENT_GREEN_STR,
+  COLOR_TEXT_DIM_STR,
+  COLOR_TEXT_MUTED_STR,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
@@ -21,9 +29,11 @@ const HEADER_WAVE_GAP = 16;
 // Treat motion under this many game-pixels as a tap rather than a swipe.
 const DRAG_THRESHOLD = 6;
 
-const HEADER_COLOR = '#6cf0a8';
-const ROW_COLOR = '#ffffff';
-const SELECTED_COLOR = '#ffd96a';
+// Header rows = accented green ("diagnostics shortcut"); regular rows = dark
+// primary text on cream; selected = gold highlight regardless of row type.
+const HEADER_COLOR = COLOR_ACCENT_GREEN_STR;
+const ROW_COLOR = COLOR_TEXT_PRIMARY_STR;
+const SELECTED_COLOR = COLOR_ACCENT_GOLD_STR;
 
 // Each header button is a "shortcut" that bypasses CharacterSelect (uses the
 // first CHARACTERS entry as the default) and starts a target scene with
@@ -75,7 +85,7 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
     this.rows = [];
     this.headerTexts = [];
@@ -86,14 +96,14 @@ export class TestMenuScene extends Phaser.Scene {
     this.add
       .text(gameW() / 2, HEADER_Y, 'PRACTICE', {
         ...FONT_TITLE,
-        color: '#ffd96a',
+        color: COLOR_ACCENT_GOLD_STR,
       })
       .setOrigin(0.5);
 
     this.add
       .text(gameW() / 2, HEADER_Y + 38, 'select a wave', {
         ...FONT_DIALOGUE_SM,
-        color: '#aaaaaa',
+        color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5);
 
@@ -172,7 +182,7 @@ export class TestMenuScene extends Phaser.Scene {
     const back = this.add
       .text(gameW() / 2, gameH() - 55, '← back to menu', {
         ...FONT_DIALOGUE_SM,
-        color: '#888888',
+        color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -189,7 +199,7 @@ export class TestMenuScene extends Phaser.Scene {
       gameW() / 2,
       gameH() - 25,
       hintTemplate,
-      { ...FONT_DEBUG, color: '#666666', align: 'center' },
+      { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' },
       { align: 'center' },
     );
 

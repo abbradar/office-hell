@@ -2,6 +2,15 @@ import type Phaser from 'phaser';
 import { gameH, gameW } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG } from './fonts';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_NO_TINT,
+  COLOR_PANEL,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_INVERSE_STR,
+  COLOR_TEXT_PRIMARY_STR,
+} from './palette';
 import { makePrompt } from './prompt';
 
 export type DialoguePortrait = {
@@ -29,25 +38,32 @@ const TEXT_BOX_H = 150;
 const TEXT_BOX_MARGIN = 12;
 const TEXT_BOX_Y = gameH() - TEXT_BOX_H - TEXT_BOX_MARGIN;
 const TEXT_BOX_PAD = 14;
-const TEXT_BOX_FILL = 0x080820;
-const TEXT_BOX_ALPHA = 0.9;
-const TEXT_BOX_STROKE = 0xffd96a;
+const TEXT_BOX_FILL = COLOR_PANEL;
+const TEXT_BOX_ALPHA = 0.95;
+const TEXT_BOX_STROKE = COLOR_ACCENT_GOLD;
 const TEXT_BOX_STROKE_ALPHA = 0.85;
 const TEXT_BOX_RADIUS = 10;
-const NAME_BG_FILL = 0xffd96a;
+const NAME_BG_FILL = COLOR_ACCENT_GOLD;
 const NAME_BG_ALPHA = 0.95;
-const NAME_COLOR = '#1a1a2a';
+// Name plate is gold; text on top is dark for contrast. INVERSE captures
+// "always dark" — independent of the theme's PRIMARY (which flips with bg).
+const NAME_COLOR = COLOR_TEXT_INVERSE_STR;
 const NAME_PAD_X = 8;
 const NAME_PAD_Y = 3;
-const TEXT_COLOR = '#f4f4f8';
-const EMPHASIS_COLOR = '#ffd96a';
+const TEXT_COLOR = COLOR_TEXT_PRIMARY_STR;
+// Emphasis pops against body text via the cool sky-blue accent — body is
+// light grey, emphasis shifts to a slightly more saturated cool blue.
+const EMPHASIS_COLOR = COLOR_ACCENT_GOLD_STR;
 // Body text uses FONT_DIALOGUE_LG (16px) with 4px leading — 20px per
 // rendered line. Used for manual wrap when laying out the per-word Text
 // atoms (Phaser's wordWrap doesn't apply across separate Text objects).
 const BODY_LINE_H = 20;
-const HINT_COLOR = '#ffd96a';
-const INACTIVE_TINT = 0x4a4a6a;
-const ACTIVE_TINT = 0xffffff;
+const HINT_COLOR = COLOR_ACCENT_GOLD_STR;
+// Inactive portrait sits at 40% alpha; pick a desaturated panel-border
+// shade so it reads as "stepped back" rather than tinted a different
+// hue from the active sprite.
+const INACTIVE_TINT = COLOR_PANEL_BORDER;
+const ACTIVE_TINT = COLOR_NO_TINT;
 const TYPE_INTERVAL_MS = 18;
 const DIM_ALPHA = 0.4;
 

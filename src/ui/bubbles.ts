@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameW } from '../config';
 import type { Entity } from '../entities/Entity';
 import { FONT_DIALOGUE_SM } from './fonts';
+import { COLOR_BUBBLE, COLOR_TEXT_INVERSE_STR } from './palette';
 
 const BUBBLE_DEPTH = 50;
 const PADDING_X = 8;
@@ -10,9 +11,10 @@ const TAIL_HEIGHT = 8;
 const TAIL_HALF_WIDTH = 5;
 const OFFSET_Y = 30;
 const CORNER_RADIUS = 6;
-const BUBBLE_FILL = 0xfff8e0;
+const BUBBLE_FILL = COLOR_BUBBLE;
 const BUBBLE_ALPHA = 0.95;
-const TEXT_COLOR = '#1a1a2a';
+// Bubble fill stays cream regardless of theme — text always dark to read.
+const TEXT_COLOR = COLOR_TEXT_INVERSE_STR;
 const SCREEN_PAD = 4;
 
 type Bubble = {

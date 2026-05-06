@@ -18,6 +18,7 @@
 
 import type Phaser from 'phaser';
 import { getInputIcon, type InputAction, type InputIcon, iconTextureKey, nearestIconRenderSize } from './inputIcons';
+import { COLOR_TEXT_PRIMARY } from './palette';
 
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
@@ -123,8 +124,10 @@ export type PromptOpts = {
   // around its own center/edge.
   align?: 'left' | 'center' | 'right';
   // Tint applied to icon images. Source SVGs are white, so the tint
-  // multiplies straight through to the target colour — pass e.g. 0x1a1a2a
-  // to render icons dark against a light bubble fill. Default: untinted.
+  // multiplies straight through to the target colour. Defaults to the
+  // primary text colour so icons read as dark glyphs on the light UI;
+  // pass `0xffffff` to opt out (identity tint = white icons unchanged),
+  // or any other 24-bit color to force a specific shade.
   iconTint?: number;
 };
 
@@ -147,7 +150,7 @@ export function makePrompt(
   // lines don't overlap when icons exceed the font's own line box.
   const lineH = opts.lineHeight ?? Math.max(iconH + 4, Math.round(fontPx * 1.4));
   const align = opts.align ?? 'center';
-  const iconTint = opts.iconTint;
+  const iconTint = opts.iconTint ?? COLOR_TEXT_PRIMARY;
 
   const container = scene.add.container(Math.round(x), Math.round(y));
   const lines = template.split('\n');
@@ -200,7 +203,7 @@ export function makePrompt(
           // the browser's SVG renderer at exactly this size, so no scaling
           // or filtering needed; the image renders 1:1.
           const img = scene.add.image(0, 0, iconTextureKey(icon, iconH)).setOrigin(0, 0.5);
-          if (iconTint !== undefined) img.setTint(iconTint);
+          img.setTint(iconTint);
           children.push(img);
           lineW += img.displayWidth;
           if (ii < seg.icons.length - 1) lineW += gap;

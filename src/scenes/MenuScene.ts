@@ -7,6 +7,12 @@ import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
+import {
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_ACCENT_RED_STR,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -28,7 +34,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
     // Music is owned by the audio module and survives scene transitions, so
     // the loop keeps playing across CharacterSelect / TestMenu / End. The
@@ -45,14 +51,14 @@ export class MenuScene extends Phaser.Scene {
     this.add
       .text(gameW() / 2, gameH() * 0.28, 'OFFICE HELL', {
         ...FONT_TITLE,
-        color: '#ff5577',
+        color: COLOR_ACCENT_RED_STR,
       })
       .setOrigin(0.5);
 
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
     const startText = makePrompt(this, gameW() / 2, gameH() * 0.5, startTemplate, {
       ...FONT_MENU,
-      color: '#ffffff',
+      color: COLOR_TEXT_PRIMARY_STR,
     });
     // Fat-finger pad: tap area extends well past the rendered text so a
     // thumb tap doesn't have to be precise. Hit area is in container
@@ -70,7 +76,7 @@ export class MenuScene extends Phaser.Scene {
     const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
     const practiceText = makePrompt(this, gameW() / 2, gameH() * 0.62, practiceTemplate, {
       ...FONT_DIALOGUE_LG,
-      color: '#ffd96a',
+      color: COLOR_ACCENT_GOLD_STR,
     });
     setLargeHit(practiceText, gameW() * 0.6, 80);
 

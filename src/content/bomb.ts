@@ -2,6 +2,13 @@ import { gameW } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
+import {
+  COLOR_BOMB_CORE,
+  COLOR_BOMB_GLOW,
+  COLOR_BOMB_HIGHLIGHT,
+  COLOR_BOMB_HOT,
+  COLOR_BOMB_RING,
+} from '../ui/palette';
 
 // Three-phase bomb: brief freeze (the player visibly snaps), an
 // expanding shockwave that consumes anything it touches, and a flicker-
@@ -140,9 +147,9 @@ function drawBomb(
     // the freeze as deliberate ("she's about to *snap*") rather than a
     // physics hiccup.
     const f = t / freezeFrac;
-    g.fillStyle(0xff3322, 0.25 + 0.55 * f);
+    g.fillStyle(COLOR_BOMB_CORE, 0.25 + 0.55 * f);
     g.fillCircle(cx, cy, 10 + 28 * f);
-    g.fillStyle(0xffe066, 0.7 * f);
+    g.fillStyle(COLOR_BOMB_GLOW, 0.7 * f);
     g.fillCircle(cx, cy, 6 + 14 * f);
     return;
   }
@@ -170,17 +177,17 @@ function drawBomb(
   // it expands so it doesn't feel like a hard line plowing across the
   // field.
   const ringFade = alpha * (1 - waveT * 0.55);
-  g.lineStyle(8, 0xff3322, ringFade);
+  g.lineStyle(8, COLOR_BOMB_CORE, ringFade);
   g.strokeCircle(cx, cy, r);
-  g.lineStyle(4, 0xff9933, ringFade);
+  g.lineStyle(4, COLOR_BOMB_RING, ringFade);
   g.strokeCircle(cx, cy, r * 0.92);
 
   // Hot core — a white-hot dot inside a yellow halo, both shrinking as
   // the wave expands.
   const coreScale = 1 - waveT * 0.7;
-  g.fillStyle(0xfff066, alpha * coreScale);
+  g.fillStyle(COLOR_BOMB_HOT, alpha * coreScale);
   g.fillCircle(cx, cy, 50 * coreScale);
-  g.fillStyle(0xffffff, alpha * coreScale * 0.85);
+  g.fillStyle(COLOR_BOMB_HIGHLIGHT, alpha * coreScale * 0.85);
   g.fillCircle(cx, cy, 22 * coreScale);
 
   // Comic-book anger starburst: a 16-vertex star (8 long spikes
@@ -201,8 +208,8 @@ function drawBomb(
     else g.lineTo(px, py);
   }
   g.closePath();
-  g.fillStyle(0xffe066, alpha);
+  g.fillStyle(COLOR_BOMB_GLOW, alpha);
   g.fillPath();
-  g.lineStyle(2, 0xff3322, alpha);
+  g.lineStyle(2, COLOR_BOMB_CORE, alpha);
   g.strokePath();
 }

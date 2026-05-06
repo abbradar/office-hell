@@ -10,6 +10,7 @@ import { isTouchDevice } from '../input/device';
 import { consumeBombPress, isLeftHeld, isRightHeld } from '../input/touch';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
+import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
 import { Entity } from './Entity';
 
 const FIRE_INTERVAL_MS = 140;
@@ -81,9 +82,9 @@ export class Player extends Entity {
     // Touhou-style hitbox marker: a bright dot the player can centre on dense
     // bullet streams. Sits above the sprite in z-order.
     this.hitboxGfx = scene.add.graphics();
-    this.hitboxGfx.fillStyle(0xff3344, 0.9);
+    this.hitboxGfx.fillStyle(COLOR_DANGER, 0.9);
     this.hitboxGfx.fillCircle(0, 0, kind.hitboxRadius);
-    this.hitboxGfx.lineStyle(1, 0xffffff, 0.9);
+    this.hitboxGfx.lineStyle(1, COLOR_NO_TINT, 0.9);
     this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
     this.hitboxGfx.setDepth(this.depth + 1);
 
@@ -131,29 +132,17 @@ export class Player extends Entity {
     }
   }
 
-  // Player anim rules: while no enemies are on screen the corridor's still
-  // scrolling and the MC reads as running into it (run + up). Once an enemy
-  // is up, she stands her ground (idle + up) unless she sidesteps, in which
-  // case she runs sideways. damagedBy.enemy is the live enemy roster — bullets
-  // sit in damages.player but not here, so a wave's leftover bullets don't
-  // freeze her in idle after the enemy has already left.
+  // The corridor scrolls forward continuously, so the MC is always running.
+  // Direction comes purely from horizontal input: stationary → up, holding
+  // left/right → run sideways. No enemy check, no idle frames — sliding
+  // sideways while the sprite faces up reads as a hop, so the rule stays
+  // tied to vx alone.
   override updateAnim(): void {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
-    const enemyOnScreen = this.stage.damagedBy.enemy.countActive(true) > 0;
     const vx = this.body.velocity.x;
-    let action: Action;
-    let dir: Direction;
-    if (!enemyOnScreen) {
-      action = 'run';
-      dir = 'up';
-    } else if (vx !== 0) {
-      action = 'run';
-      dir = vx > 0 ? 'right' : 'left';
-    } else {
-      action = 'idle';
-      dir = 'up';
-    }
+    const action: Action = 'run';
+    const dir: Direction = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
     this.facing = dir;
     const key = characterAnimKey(sheet, action, dir);
     if (this.anims.currentAnim?.key !== key) this.play(key);

@@ -1,16 +1,19 @@
 import type Phaser from 'phaser';
 import { gameW } from '../config';
 import { FONT_DIALOGUE_SM } from './fonts';
+import { COLOR_ACCENT_GOLD, COLOR_BUBBLE, COLOR_TEXT_INVERSE, COLOR_TEXT_INVERSE_STR } from './palette';
 import { makePrompt } from './prompt';
 
 const DEPTH = 150;
 const TOP_Y = 70;
-const BUBBLE_FILL = 0xfff8e0;
+const BUBBLE_FILL = COLOR_BUBBLE;
 const BUBBLE_ALPHA = 0.95;
-const STROKE_COLOR = 0xffd96a;
+// Bubble fill stays cream regardless of theme; stroke uses the dark-navy
+// accent (formerly gold), text + icons stay dark for readability on cream.
+const STROKE_COLOR = COLOR_ACCENT_GOLD;
 const STROKE_ALPHA = 0.85;
-const TEXT_COLOR = '#1a1a2a';
-const ICON_TINT = 0x1a1a2a;
+const TEXT_COLOR = COLOR_TEXT_INVERSE_STR;
+const ICON_TINT = COLOR_TEXT_INVERSE;
 const PAD_X = 14;
 const PAD_Y = 8;
 const CORNER_RADIUS = 8;

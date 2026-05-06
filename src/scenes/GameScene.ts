@@ -8,6 +8,7 @@ import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
+import { FLOOR_PATTERN_KEY } from '../content/textures';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
@@ -22,10 +23,22 @@ import {
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_ACCENT_GREEN_STR,
+  COLOR_ACCENT_RED_STR,
+  COLOR_PANEL,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_DIM_STR,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL,
+  COLOR_WALL_BORDER,
+} from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 
-const CORRIDOR_SCROLL_PX_PER_MS = 0.25;
-const SPECKS_SCROLL_PX_PER_MS = 0.55;
+const CORRIDOR_SCROLL_PX_PER_MS = 0.8;
+const WALL_W = 40;
 
 const HEADER_H = 28;
 
@@ -51,7 +64,6 @@ export class GameScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private bossNameText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
-  private specks!: Phaser.GameObjects.TileSprite;
   private practiceWave: WaveDef | null = null;
   private testMode = false;
   private musicMode: 'kaedalus' | 'monster-rpg' | null = null;
@@ -82,36 +94,49 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     stopMusicLoop();
 
-    this.bg = this.add.tileSprite(gameW() / 2, gameH() / 2, gameW(), gameH(), 'corridor').setDepth(-10);
-    this.specks = this.add.tileSprite(gameW() / 2, gameH() / 2, gameW(), gameH(), 'corridor_specks').setDepth(-9);
+    // Floor: tiled diamond pattern (recolored to two warm greys at boot)
+    // scrolling vertically as the corridor advances. Spans the full
+    // playfield; wall rects cover the gutters on top.
+    this.bg = this.add
+      .tileSprite(gameW() / 2, gameH() / 2, gameW(), gameH(), FLOOR_PATTERN_KEY)
+      .setDepth(-10)
+      .setTileScale(0.1, 0.1);
+
+    // Walls: static cream strips on each side. They don't scroll — the
+    // architecture is fixed, motion reads off the moving floor underneath.
+    this.add.rectangle(0, 0, WALL_W, gameH(), COLOR_WALL).setOrigin(0, 0).setDepth(-9);
+    this.add.rectangle(gameW() - WALL_W, 0, WALL_W, gameH(), COLOR_WALL).setOrigin(0, 0).setDepth(-9);
+    // Wall/floor seam — a thin border line on each inner edge.
+    this.add.rectangle(WALL_W - 2, 0, 2, gameH(), COLOR_WALL_BORDER).setOrigin(0, 0).setDepth(-8);
+    this.add.rectangle(gameW() - WALL_W, 0, 2, gameH(), COLOR_WALL_BORDER).setOrigin(0, 0).setDepth(-8);
 
     // Mask the touch-control band so bullets that drift below the playfield
     // (within cullMargin() before being culled) don't peek through behind the
     // buttons. Depth 50 sits above entities (default 0) and below HUD (99+).
     if (buttonBandH() > 0) {
-      this.add.rectangle(0, gameH(), canvasW(), buttonBandH(), 0x10101a).setOrigin(0, 0).setDepth(50);
+      this.add.rectangle(0, gameH(), canvasW(), buttonBandH(), COLOR_WALL).setOrigin(0, 0).setDepth(50);
     }
 
     this.stage = new StageManager(this);
 
-    this.add.rectangle(0, 0, gameW(), HEADER_H, 0x000000, 0.55).setOrigin(0, 0).setDepth(99);
+    this.add.rectangle(0, 0, gameW(), HEADER_H, COLOR_PANEL, 0.92).setOrigin(0, 0).setDepth(99);
     this.add
-      .rectangle(0, HEADER_H - 1, gameW(), 1, 0xffffff, 0.18)
+      .rectangle(0, HEADER_H - 1, gameW(), 1, COLOR_PANEL_BORDER, 0.6)
       .setOrigin(0, 0)
       .setDepth(99);
 
     this.hpText = this.add
-      .text(8, HEADER_H / 2, '', { ...FONT_MENU, color: '#ff5577' })
+      .text(8, HEADER_H / 2, '', { ...FONT_MENU, color: COLOR_ACCENT_RED_STR })
       .setOrigin(0, 0.5)
       .setDepth(100);
     // Bombs sit just right of HP. Allowing ~64px of HP slot covers the
     // widest hp string ("♥♥") at FONT_MENU 16px.
     this.bombsText = this.add
-      .text(72, HEADER_H / 2, '', { ...FONT_MENU, color: '#ffd866' })
+      .text(72, HEADER_H / 2, '', { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
       .setOrigin(0, 0.5)
       .setDepth(100);
     this.bossNameText = this.add
-      .text(gameW() / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: '#ffffff' })
+      .text(gameW() / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: COLOR_TEXT_PRIMARY_STR })
       .setOrigin(0.5)
       .setDepth(100);
 
@@ -161,41 +186,40 @@ export class GameScene extends Phaser.Scene {
 
     if (isTouchDevice) {
       this.add
-        .circle(0, touchButtonY(), touchButtonRadius(), 0xffffff, 0.12)
-        .setStrokeStyle(2, 0xffffff, 0.35)
+        .circle(0, touchButtonY(), touchButtonRadius(), COLOR_PANEL_BORDER, 0.18)
+        .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
         .setDepth(100);
       this.add
-        .circle(gameW(), touchButtonY(), touchButtonRadius(), 0xffffff, 0.12)
-        .setStrokeStyle(2, 0xffffff, 0.35)
+        .circle(gameW(), touchButtonY(), touchButtonRadius(), COLOR_PANEL_BORDER, 0.18)
+        .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
         .setDepth(100);
       this.add
-        .text(28, touchButtonY(), '◀', { color: '#ffffff', fontSize: '34px' })
+        .text(28, touchButtonY(), '◀', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
         .setOrigin(0.5)
         .setAlpha(0.65)
         .setDepth(101);
       this.add
-        .text(gameW() - 28, touchButtonY(), '▶', { color: '#ffffff', fontSize: '34px' })
+        .text(gameW() - 28, touchButtonY(), '▶', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
         .setOrigin(0.5)
         .setAlpha(0.65)
         .setDepth(101);
 
-      // Bomb button — yellow tint matches the bombs HUD glyph (#ffd866)
-      // so the button reads as "the ✱-button" without a separate label.
-      // Centred between the two corner-clipped move pads so neither thumb
-      // sits in front of it during normal play.
+      // Bomb button — gold accent reads as "the ✱-button" without a
+      // separate label. Centred between the two corner-clipped move pads
+      // so neither thumb sits in front of it during normal play.
       this.add
-        .circle(bombButtonX(), bombButtonY(), bombButtonRadius(), 0xffffff, 0.12)
-        .setStrokeStyle(2, 0xffd866, 0.5)
+        .circle(bombButtonX(), bombButtonY(), bombButtonRadius(), COLOR_ACCENT_GOLD, 0.2)
+        .setStrokeStyle(2, COLOR_ACCENT_GOLD, 0.6)
         .setDepth(100);
       this.add
-        .text(bombButtonX(), bombButtonY(), '✱', { color: '#ffd866', fontSize: '30px' })
+        .text(bombButtonX(), bombButtonY(), '✱', { color: COLOR_ACCENT_GOLD_STR, fontSize: '30px' })
         .setOrigin(0.5)
-        .setAlpha(0.85)
+        .setAlpha(0.95)
         .setDepth(101);
     }
 
     this.hud = this.add
-      .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: '#aaaaaa' })
+      .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -204,7 +228,7 @@ export class GameScene extends Phaser.Scene {
     // "you're in test mode" cue; real-stage version is greyer so it recedes.
     const debugTinted = this.testMode || this.musicMode !== null;
     this.debugHud = this.add
-      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: debugTinted ? '#6cf0a8' : '#888888' })
+      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR })
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -256,15 +280,15 @@ export class GameScene extends Phaser.Scene {
   private showPauseOverlay(): void {
     if (this.pauseOverlay) return;
     const c = this.add.container(0, 0).setDepth(200);
-    const dim = this.add.rectangle(gameW() / 2, gameH() / 2, gameW(), gameH(), 0x000000, 0.55);
+    const dim = this.add.rectangle(gameW() / 2, gameH() / 2, gameW(), gameH(), COLOR_PANEL, 0.85);
     c.add(dim);
     const title = this.add
-      .text(gameW() / 2, gameH() * 0.4, 'PAUSED', { ...FONT_TITLE, color: '#ffd866' })
+      .text(gameW() / 2, gameH() * 0.4, 'PAUSED', { ...FONT_TITLE, color: COLOR_ACCENT_GOLD_STR })
       .setOrigin(0.5);
     c.add(title);
     const hint = makePrompt(this, gameW() / 2, gameH() * 0.55, '<fire>  RESUME\n<back>  MENU', {
       ...FONT_MENU,
-      color: '#ffffff',
+      color: COLOR_TEXT_PRIMARY_STR,
       align: 'center',
     });
     c.add(hint);
@@ -311,7 +335,6 @@ export class GameScene extends Phaser.Scene {
     this.stage.update(time, delta);
     if (!this.stage.paused) {
       this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
-      this.specks.tilePositionY -= delta * SPECKS_SCROLL_PX_PER_MS;
 
       this.player.controlUpdate();
     } else {

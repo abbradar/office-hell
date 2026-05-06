@@ -5,6 +5,17 @@ import { addElevatorBackdrop, ELEVATOR_CLOSE_ANIM, ELEVATOR_FRAME_OPEN } from '.
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_NO_TINT,
+  COLOR_PANEL,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_DIM_STR,
+  COLOR_TEXT_MUTED_STR,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -19,11 +30,11 @@ const CARD_H = 320;
 const CARD_GAP = 24;
 const CARD_Y = gameH() * 0.42;
 const PORTRAIT_SCALE = 4;
-const ACTIVE_BORDER = 0xffd96a;
-const INACTIVE_BORDER = 0x444466;
-const CARD_FILL = 0x1c1c2e;
-const ACTIVE_TINT = 0xffffff;
-const INACTIVE_TINT = 0x6a6a8a;
+const ACTIVE_BORDER = COLOR_ACCENT_GOLD;
+const INACTIVE_BORDER = COLOR_PANEL_BORDER;
+const CARD_FILL = COLOR_PANEL;
+const ACTIVE_TINT = COLOR_NO_TINT;
+const INACTIVE_TINT = 0x9a9080;
 
 type Card = {
   index: number;
@@ -58,7 +69,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 
     // Drop scene input for the first frame so the pointerdown that
@@ -88,7 +99,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     this.add
       .text(gameW() / 2, 70, 'CHOOSE A SHIFT WORKER', {
         ...FONT_MENU,
-        color: '#ffd96a',
+        color: COLOR_ACCENT_GOLD_STR,
       })
       .setOrigin(0.5);
 
@@ -108,7 +119,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     // its own prompt, then re-center the group around gameW() / 2.
     const HINT_Y = gameH() - 130;
     const HINT_GAP = 60;
-    const hintStyle = { ...FONT_DEBUG, color: '#888888', align: 'center' };
+    const hintStyle = { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' };
     if (isTouchDevice) {
       makePrompt(this, gameW() / 2, HINT_Y, 'tap a card to select   •   tap "back" to return', hintStyle, {
         align: 'center',
@@ -127,7 +138,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const back = this.add
       .text(gameW() / 2, gameH() - 56, '← back', {
         ...FONT_DIALOGUE_SM,
-        color: '#888888',
+        color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
@@ -160,7 +171,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const nameText = this.add
       .text(cx, cy + CARD_H / 2 - 64, ch.name, {
         ...FONT_DIALOGUE_LG,
-        color: '#ffffff',
+        color: COLOR_TEXT_PRIMARY_STR,
         fontStyle: 'bold',
       })
       .setOrigin(0.5);
@@ -168,7 +179,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const blurbText = this.add
       .text(cx, cy + CARD_H / 2 - 32, ch.blurb, {
         ...FONT_DEBUG,
-        color: '#aaaaaa',
+        color: COLOR_TEXT_MUTED_STR,
         align: 'center',
         wordWrap: { width: CARD_W - 16 },
       })
@@ -199,7 +210,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       card.graphics.lineStyle(selected ? 3 : 2, selected ? ACTIVE_BORDER : INACTIVE_BORDER, 1);
       card.graphics.strokeRoundedRect(card.centerX - CARD_W / 2, cy - CARD_H / 2, CARD_W, CARD_H, 10);
       card.sprite.setTint(selected ? ACTIVE_TINT : INACTIVE_TINT);
-      card.nameText.setColor(selected ? '#ffd96a' : '#cccccc');
+      card.nameText.setColor(selected ? COLOR_ACCENT_GOLD_STR : COLOR_TEXT_PRIMARY_STR);
     }
   }
 

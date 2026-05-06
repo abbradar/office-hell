@@ -4,6 +4,13 @@ import { gameH, gameW } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
+import {
+  COLOR_ACCENT_GREEN_STR,
+  COLOR_ACCENT_RED_STR,
+  COLOR_TEXT_MUTED_STR,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 
 export type EndSceneData = { won: boolean };
@@ -21,11 +28,11 @@ export class EndScene extends Phaser.Scene {
 
   create(): void {
     stopMusicLoop();
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 
     const title = this.won ? 'STAGE CLEAR' : 'GAME OVER';
-    const titleColor = this.won ? '#6cf0a8' : '#f06c6c';
+    const titleColor = this.won ? COLOR_ACCENT_GREEN_STR : COLOR_ACCENT_RED_STR;
     const subtitle = this.won ? 'you survived office hell' : 'office hell consumed you';
 
     this.add
@@ -38,14 +45,14 @@ export class EndScene extends Phaser.Scene {
     this.add
       .text(gameW() / 2, gameH() * 0.32 + 56, subtitle, {
         ...FONT_DIALOGUE_SM,
-        color: '#aaaaaa',
+        color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5);
 
     const restartTemplate = isTouchDevice ? '▶ TAP TO RESTART' : '▶ <confirm>  RESTART';
     const restart = makePrompt(this, gameW() / 2, gameH() * 0.6, restartTemplate, {
       ...FONT_MENU,
-      color: '#ffffff',
+      color: COLOR_TEXT_PRIMARY_STR,
     });
 
     this.tweens.add({

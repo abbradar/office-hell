@@ -33,6 +33,21 @@ import {
 import { EntityKind, type EntityScript } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_ACCENT_GOLD_STR,
+  COLOR_ACCENT_GREEN_STR,
+  COLOR_ACCENT_RED_STR,
+  COLOR_PANEL,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_DIM_STR,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_PRIMARY_STR,
+  COLOR_WALL_STR,
+  DOM_TEXTAREA_BG,
+  DOM_TEXTAREA_BORDER,
+  DOM_TEXTAREA_FG,
+} from '../ui/palette';
 
 // --- helpers exposed to user scripts --------------------------------------
 
@@ -272,14 +287,14 @@ const BLOCK_HEADER_H = 22;
 const BLOCK_PARAM_H = 20;
 const BLOCK_GAP = 4;
 
-const COLOR_DIM = '#888888';
-const COLOR_RUN = '#6cf0a8';
-const COLOR_DANGER = '#ff5577';
-const COLOR_HIGHLIGHT = '#ffd96a';
-const COLOR_TEXT = '#ffffff';
-const COLOR_BLOCK_BG = 0x1c1c2e;
-const COLOR_BLOCK_BORDER = 0x444466;
-const COLOR_BLOCK_BORDER_EXPANDED = 0xffd96a;
+const COLOR_DIM = COLOR_TEXT_DIM_STR;
+const COLOR_RUN = COLOR_ACCENT_GREEN_STR;
+const COLOR_DANGER = COLOR_ACCENT_RED_STR;
+const COLOR_HIGHLIGHT = COLOR_ACCENT_GOLD_STR;
+const COLOR_TEXT = COLOR_TEXT_PRIMARY_STR;
+const COLOR_BLOCK_BG = COLOR_PANEL;
+const COLOR_BLOCK_BORDER = COLOR_PANEL_BORDER;
+const COLOR_BLOCK_BORDER_EXPANDED = COLOR_ACCENT_GOLD;
 
 type Mode = 'code' | 'visual';
 type CompileResult = { fn: EntityScript } | { error: string };
@@ -324,7 +339,7 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#10101a');
+    this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 
     this.add.text(gameW() / 2, TITLE_Y, 'PATTERN SANDBOX', { ...FONT_TITLE, color: COLOR_HIGHLIGHT }).setOrigin(0.5);
@@ -332,7 +347,10 @@ export class PatternTestScene extends Phaser.Scene {
     this.stage = new StageManager(this);
     this.stage.player = { x: STUB_PLAYER_X, y: STUB_PLAYER_Y } as unknown as Player;
 
-    this.add.circle(STUB_PLAYER_X, STUB_PLAYER_Y, 6, 0xffffff, 0).setStrokeStyle(1, 0xffffff, 0.4).setDepth(50);
+    this.add
+      .circle(STUB_PLAYER_X, STUB_PLAYER_Y, 6, COLOR_TEXT_PRIMARY, 0)
+      .setStrokeStyle(1, COLOR_TEXT_PRIMARY, 0.4)
+      .setDepth(50);
 
     this.spawnIdleEnemy();
 
@@ -398,9 +416,9 @@ export class PatternTestScene extends Phaser.Scene {
       position: 'absolute',
       zIndex: '10',
       fontFamily: 'ui-monospace, "SF Mono", Consolas, Menlo, monospace',
-      background: 'rgba(8, 8, 32, 0.95)',
-      color: '#f4f4f8',
-      border: '1px solid #444466',
+      background: DOM_TEXTAREA_BG,
+      color: DOM_TEXTAREA_FG,
+      border: `1px solid ${DOM_TEXTAREA_BORDER}`,
       borderRadius: '4px',
       resize: 'none',
       padding: '8px',
@@ -876,8 +894,12 @@ export class PatternTestScene extends Phaser.Scene {
 
     const modal = this.add.container(0, 0).setDepth(300);
 
-    // Backdrop — click to dismiss.
-    const backdrop = this.add.rectangle(0, 0, gameW(), gameH(), 0x000000, 0.7).setOrigin(0, 0).setInteractive();
+    // Backdrop — click to dismiss. Dim with the dark text color so it
+    // reads as a "darken everything below" overlay.
+    const backdrop = this.add
+      .rectangle(0, 0, gameW(), gameH(), COLOR_TEXT_PRIMARY, 0.55)
+      .setOrigin(0, 0)
+      .setInteractive();
     backdrop.on('pointerup', () => this.closeLoadModal());
     modal.add(backdrop);
 
@@ -891,7 +913,7 @@ export class PatternTestScene extends Phaser.Scene {
     const panelY = (gameH() - panelH) / 2;
 
     const panel = this.add.graphics();
-    panel.fillStyle(0x1c1c2e, 0.98);
+    panel.fillStyle(COLOR_BLOCK_BG, 0.98);
     panel.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
     panel.lineStyle(1, COLOR_BLOCK_BORDER_EXPANDED, 1);
     panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 6);
