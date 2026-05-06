@@ -68,7 +68,11 @@ function makeInternMarchScript(targetX: number, y: number): EntityScript {
     yield* moveTo(self, targetX, y, 130);
     yield 30;
     aimed(self, 1, reportBullet, 170);
-    yield 40;
+    yield 35;
+    aimed(self, 1, reportBullet, 170);
+    yield 35;
+    aimed(self, 1, reportBullet, 170);
+    yield 35;
     aimed(self, 1, reportBullet, 170);
     yield 30;
     self.setVelocity(0, 100);
