@@ -45,6 +45,12 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // running enemy that pauses keeps facing the way it was going instead of
   // snapping back to a default. Reset on spawn to match the initial velocity.
   facing: Direction = 'down';
+  // Per-entity scratchpad for kind-specific flags (e.g. boss phase markers).
+  // Reset to null on spawn so pooled entities don't inherit state from a
+  // previous life. Kinds should write to `vars ??= {}` when they need a slot
+  // and read with optional chaining. Named `vars` rather than `state` because
+  // Phaser's GameObject already owns `state: string | number`.
+  vars: Record<string, unknown> | null = null;
 
   setMotion(angleRad: number, speed: number): void {
     this.setVelocity(Math.cos(angleRad) * speed, Math.sin(angleRad) * speed);
@@ -111,10 +117,12 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   die(): void {
     this.alive = false;
     this.body.enable = false;
-    // Reset hit-feedback state so the next pool reuse starts clean — no
-    // lingering red tint or shifted origin from a mid-flash death.
+    // Reset transient render state so the next pool reuse starts clean —
+    // no lingering red tint, shifted origin from a mid-flash death, or
+    // sprite rotation from a previous kind that aimed itself at the player.
     this.clearTint();
     this.setOrigin(0.5, 0.5);
+    this.setRotation(0);
     const cbs = this.onDeathQueue;
     if (cbs) for (const cb of cbs) cb();
   }

@@ -2,13 +2,9 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { markWave, suspendRunning, waitEnemiesClear } from '../../script/stage';
+import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
-// Circular import: stage.ts also imports shrunkOldManWave from this file. ES
-// module live bindings make this safe — these helpers are only invoked at
-// runtime, after both modules finish loading.
-import { clearScreen } from '../stage';
 import { reportBullet } from './reportBullet';
 
 // Stage boss: a sad, retired old man "shrunk" from the company. Security is
@@ -127,9 +123,7 @@ export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, vo
   // pause for funereal tone, then he shuffles in. Spawned unhittable so
   // player bullets pass through during entrance + dialogue; the script
   // re-enables damage after he's done speaking.
-  yield* waitEnemiesClear(self);
-  clearScreen(self);
-  yield 30;
+  yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
       damagedByClass: [],

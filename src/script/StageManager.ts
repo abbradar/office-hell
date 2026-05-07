@@ -204,6 +204,7 @@ export class StageManager {
     e.gen++;
     e.hasEnteredScreen = false;
     e.onDeathQueue = null;
+    e.vars = null;
 
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
@@ -212,6 +213,11 @@ export class StageManager {
       e.setVisible(false);
     }
     e.anims.stop();
+    // Reset scale to (1, 1) so a pooled entity that was last spawned as a
+    // setScale-driven beam doesn't render the next bullet kind oversized.
+    // The Arcade Body auto-tracks GameObject scale, so this also restores
+    // the body's source size for the upcoming hitbox configuration below.
+    e.setScale(1);
     e.setActive(true);
 
     // Group.add() runs a createCallback that overwrites body properties
@@ -225,7 +231,13 @@ export class StageManager {
     const body = e.body;
     if (kind.hitboxRadius > 0) {
       body.enable = true;
-      body.setCircle(kind.hitboxRadius, e.width / 2 - kind.hitboxRadius, e.height / 2 - kind.hitboxRadius);
+      if (kind.hitboxShape === 'square') {
+        const side = kind.hitboxRadius * 2;
+        body.setSize(side, side);
+        body.setOffset(e.width / 2 - kind.hitboxRadius, e.height / 2 - kind.hitboxRadius);
+      } else {
+        body.setCircle(kind.hitboxRadius, e.width / 2 - kind.hitboxRadius, e.height / 2 - kind.hitboxRadius);
+      }
       body.reset(x, y);
       body.setVelocity(vx, vy);
     } else {

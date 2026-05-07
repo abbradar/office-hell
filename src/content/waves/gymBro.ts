@@ -3,10 +3,9 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, race, suspendRunning, waitEnemiesClear } from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
-import { clearScreen } from '../stage';
 
 // Gym Bro (Brad): two-phase mid-boss. Phase 1 is the "current barrage" cycle
 // — short rhythmic shouts and aimed/ring/arc volleys. When his first HP pool
@@ -54,24 +53,31 @@ const CONE_SPEED = 190;
 const REST_RING_BULLETS = 22;
 const REST_RING_SPEED = 90;
 
-const PHASE_TWO_FLAG = 'gymBroPhaseTwo';
-const PHASE_ONE_DOWN_FLAG = 'gymBroPhaseOneDown';
+// Boss-death flicker is FLICKER_TOGGLES * FLICKER_INTERVAL_FRAMES +
+// POST_FLICKER_HOLD_FRAMES = 56 frames; pad the bubble a touch beyond that so
+// the line stays readable right up until die() flips alive=false and the
+// bubble manager auto-clears it.
+const DEFEAT_LINE_FRAMES = 70;
 
 // Custom kind override so phase-1 damage gets pinned at zero instead of
-// killing the boss. The phase-1 race below polls the flag to detect the
-// transition; phase-2 takeDamage falls through to BossKind, which routes
-// the lethal hit through the shared boss-death animation.
+// killing the boss. The phase-1 race below polls `self.vars.phaseOneDown`
+// for the transition; phase-2 takeDamage falls through to BossKind, which
+// routes the lethal hit through the shared boss-death animation.
 class GymBroKind extends BossKind {
   override takeDamage(self: Entity, amount: number): void {
     if (self.hp === null) return;
-    if (self.stage.globals[PHASE_TWO_FLAG] === true) {
+    if (self.vars?.phaseTwo === true) {
+      if (self.hp - amount <= 0) {
+        self.say('My muscles will soon shrink like a balloon...', DEFEAT_LINE_FRAMES);
+      }
       super.takeDamage(self, amount);
       return;
     }
     self.hp -= amount;
     if (self.hp <= 0) {
       self.hp = 0;
-      self.stage.globals[PHASE_ONE_DOWN_FLAG] = true;
+      self.vars ??= {};
+      self.vars.phaseOneDown = true;
       return;
     }
     self.flashDamage();
@@ -161,7 +167,7 @@ function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
 // phase-1 HP runs out. Lives as the loser's race partner — when this resolves,
 // the barrage above gets dropped mid-volley.
 function* waitPhaseOneDown(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.alive && self.stage.globals[PHASE_ONE_DOWN_FLAG] !== true) yield 1;
+  while (self.alive && self.vars?.phaseOneDown !== true) yield 1;
 }
 
 // 4 * (1-t) * t parabola; peak at t=0.5 lands at fromY + JUMP_PEAK_OFFSET.
@@ -257,11 +263,8 @@ function* gymBroScript(self: Entity) {
 
   // Claim the HUD header now that the fight is actually starting; release it
   // on death (covers both natural defeat and forced cleanup via release(),
-  // which calls die() too). Wipe phase flags too so a retry through the
-  // practice menu doesn't inherit stale state from the previous run.
+  // which calls die() too).
   self.stage.bossName = 'Brad';
-  self.stage.globals[PHASE_ONE_DOWN_FLAG] = false;
-  self.stage.globals[PHASE_TWO_FLAG] = false;
   self.onDeath(() => {
     self.stage.bossName = null;
   });
@@ -297,7 +300,8 @@ function* gymBroScript(self: Entity) {
   yield 30;
 
   // --- Phase 2 ---
-  self.stage.globals[PHASE_TWO_FLAG] = true;
+  self.vars ??= {};
+  self.vars.phaseTwo = true;
   self.hp = PHASE_TWO_HP;
   self.setDamagedByClasses(['enemy']);
 
@@ -318,9 +322,7 @@ export const gymBro = new GymBroKind({
 // can run entry + dialogue before becoming damageable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'gym bro');
-  yield* waitEnemiesClear(self);
-  clearScreen(self);
-  yield 30;
+  yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {
       damagedByClass: [],

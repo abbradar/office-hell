@@ -224,7 +224,7 @@ mid-flight drop from losing a race. Wrap **every** wave call with it:
 
 ```ts
 yield* self.stage.separateWave(gymBroWave(self));
-yield* timeWave(self, 18, self.stage.separateWave(firstEmailColleagues(self)));
+yield* timeWave(self, 8, self.stage.separateWave(emailColleagues2(self)));
 ```
 
 ### Convention: don't clean up inside a wave

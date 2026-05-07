@@ -75,6 +75,15 @@ transition. **Read
 content/stage.ts or adding new stages.** Helpers live in
 [src/script/stage.ts](src/script/stage.ts).
 
+### Practice menu mirrors stage order
+
+The `WAVES` list in [src/content/stage.ts](src/content/stage.ts) is
+both the practice-menu source and a sanity check on stage layout: any
+wave that runs in the main stage script must appear in `WAVES` in the
+same order it plays in. New encounters added to the stage get a new
+`WAVES` entry at the matching position; encounters not (yet) placed
+in the stage trail at the end as a sandbox in roughly-difficulty order.
+
 ### Audio model
 
 - `Phaser` owns the AudioContext; we never call `new AudioContext()`.
@@ -151,3 +160,9 @@ working on stage timing.
   exports. Always use the asset-relative path: `'../assets/audio/.../foo.ogg'`.
 - **No direct push to main.** The repo enforces this; use a feature
   branch + PR. See git history for the existing flow.
+- **`git add` every new file before handing work back.** New wave files,
+  new texture sources, new docs are imported by name from elsewhere in
+  the tree, so leaving them untracked makes the working tree compile
+  locally but breaks anyone who clones the branch. After creating any
+  new file, run `git add <path>` (or `git status` to spot the `??`
+  entries) before declaring the task done.

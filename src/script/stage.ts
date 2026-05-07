@@ -324,6 +324,29 @@ export function clearBullets(self: Entity): void {
   }
 }
 
+// Hard reset of the corridor: kill every live entity on the player-damage
+// group — bullets *and* enemies. Stronger than `killEnemies` + `clearBullets`
+// in one pass; used at boss-entry beats so leftover crumbs from the
+// preceding wave don't smear over the boss's intro dialogue.
+export function clearScreen(self: Entity): void {
+  for (const child of self.stage.damages.player.getChildren()) {
+    const e = child as Entity;
+    if (e.alive) e.die();
+  }
+}
+
+// Standard pre-boss field-clean beat: drain remaining enemies, sweep
+// in-flight bullets too, then a half-second of dead air before the boss
+// shuffles in. Both stage bosses and the final boss share this opener,
+// so callers can `yield* prepareForBoss(self)` instead of repeating the
+// three-step dance.
+const PRE_BOSS_PAUSE_FRAMES = 30;
+export function* prepareForBoss(self: Entity): Generator<ScriptYield, void, void> {
+  yield* waitEnemiesClear(self);
+  clearScreen(self);
+  yield PRE_BOSS_PAUSE_FRAMES;
+}
+
 // --- stage-globals scratchpad accessors ----------------------------------
 
 // Set-on-first-call guard scoped to the StageManager's lifetime. True the

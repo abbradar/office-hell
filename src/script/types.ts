@@ -39,9 +39,17 @@ export type EntityScript = (self: Entity) => Generator<ScriptYield, void, void>;
 export const DAMAGE_CLASSES = ['player', 'enemy'] as const;
 export type DamageClass = (typeof DAMAGE_CLASSES)[number];
 
+// Hitbox shape — circles are the default and what every legacy kind uses;
+// squares are for chunky letter-shaped bullets where a circle would either
+// underclaim the corners or stick out past flat edges. In both cases the
+// `hitboxRadius` is the half-extent: a circle's radius, or half the square's
+// side length.
+export type HitboxShape = 'circle' | 'square';
+
 export type EntityKindOpts = {
   sprite: string | null;
   hitboxRadius: number;
+  hitboxShape?: HitboxShape;
   hp: number | null;
   damageClass: DamageClass[];
   damagedByClass: DamageClass[];
@@ -51,6 +59,7 @@ export type EntityKindOpts = {
 export class EntityKind {
   readonly sprite: string | null;
   readonly hitboxRadius: number;
+  readonly hitboxShape: HitboxShape;
   readonly hp: number | null;
   readonly damageClass: DamageClass[];
   readonly damagedByClass: DamageClass[];
@@ -59,6 +68,7 @@ export class EntityKind {
   constructor(opts: EntityKindOpts) {
     this.sprite = opts.sprite;
     this.hitboxRadius = opts.hitboxRadius;
+    this.hitboxShape = opts.hitboxShape ?? 'circle';
     this.hp = opts.hp;
     this.damageClass = opts.damageClass;
     this.damagedByClass = opts.damagedByClass;

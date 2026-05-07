@@ -9,7 +9,9 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
+  clearScreen,
   markWave,
+  prepareForBoss,
   startMusicLoop,
   startMusicWithIntro,
   suspendRunning,
@@ -24,7 +26,7 @@ import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
 import { colleaguesWave } from './waves/colleague';
-import { firstEmailColleagues } from './waves/firstEmailColleagues';
+import { emailColleagues1, emailColleagues2, emailColleagues3 } from './waves/emailColleagues';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
@@ -32,6 +34,8 @@ import { internsWave } from './waves/intern';
 import { introMonologue } from './waves/intro';
 import { itAdminsWave } from './waves/itAdmin';
 import { janitorsWave } from './waves/janitor';
+import { meetingInternsWave } from './waves/meetingInterns';
+import { moreChartsWave } from './waves/moreCharts';
 import { oversleeperWave } from './waves/oversleeper';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
@@ -49,25 +53,13 @@ const PLAYER_OUTRO_EXIT_Y = -60;
 // "I'm advancing" beat reads as a hard cut.
 const INTER_WAVE_GAP = 3;
 
-// Kill every non-player entity outright. die() only flips the alive flag and
-// fires onDeath; group cleanup happens later in stage.update, so we can iterate
-// the live children list directly.
-export function clearScreen(self: Entity): void {
-  for (const child of self.stage.damages.player.getChildren()) {
-    const e = child as Entity;
-    if (e.alive) e.die();
-  }
-}
-
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
-  // Don't open the encounter while wave-4 leftovers are still on screen.
-  // Wait for enemies to clear, sweep in-flight bullets, brief beat, then bring on
-  // the boss. He spawns unhittable (damagedByClass override) — his own script
-  // handles entry, dialogue, and re-enabling damage after the dialogue ends.
-  yield* waitEnemiesClear(self);
-  clearScreen(self);
-  yield 30;
+  // Don't open the encounter while leftovers are still on screen. Sweep
+  // enemies + in-flight bullets, brief beat, then bring on the boss. He
+  // spawns unhittable (damagedByClass override) — his own script handles
+  // entry, dialogue, and re-enabling damage after the dialogue ends.
+  yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
       damagedByClass: [],
@@ -82,41 +74,186 @@ export type WaveDef = {
   script: (self: Entity) => Generator<ScriptYield, void, void>;
 };
 
+// --- substage subgenerators ----------------------------------------------
+//
+// Each part is a self-contained chunk of stage progression that ends
+// with its boss/mid-boss. Pattern, top to bottom:
+//   1. (optional) music switch — done inside the part that opens a
+//      new music section. Parts continuing a previous section's music
+//      don't switch; a leading `waitSeconds(INTER_WAVE_GAP)` covers
+//      the breath after the previous part's boss.
+//   2. The wave block — `timeWave(...)` slots in stage 1 (timing
+//      tuned to the music loops) and untimed `separateWave(...)`
+//      calls in stage 2 (timing left for later); every gap is a
+//      `waitSeconds(INTER_WAVE_GAP)`.
+//   3. The closing boss — `self.stage.separateWave(<boss>Wave(self))`
+//      with no per-call setup; each boss wave function internally
+//      runs `prepareForBoss(self)` so screen-clear + pause happen
+//      whether the boss is run from a part or directly from the
+//      practice menu.
+//
+// Each part is exported so the practice menu can run it standalone;
+// the `WAVES` list below threads them in at the top of the practice
+// menu in stage progression order.
+
+// Stage 1, part 1 — retro-01 → retro-02 across the music seam, ending
+// with Brad. Five timed openers under the upbeat theme then a music
+// switch into Brad's entrance: 9+6+8+11+13 = 47s of waves + 4 × 3s
+// gaps + the music switch (waitTrackEnded snaps to the loop boundary
+// so the cut lands on a musical seam rather than mid-bar) + Brad
+// himself. Sized to fit under the retro-01 loop's 60s body so the
+// switch lands at the next natural seam.
+export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'music: retro 01');
+  yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
+
+  yield* timeWave(self, 9, self.stage.separateWave(internsWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 6, self.stage.separateWave(emailColleagues1(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues2(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 11, self.stage.separateWave(colleaguesWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 13, self.stage.separateWave(checkEmailWave(self)));
+
+  markWave(self, 'music: retro 02');
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
+  yield* self.stage.separateWave(gymBroWave(self));
+}
+
+// Stage 1, part 2 — retro-02 continues from part 1's mid-boss seam,
+// then switches to metal for Coach Becky as the stage-1 end boss.
+// Five timed waves (more charts, vacation photos, the harder
+// email-pinch pass, meeting interns, janitors) before the metal cut
+// and her entrance. Total of the wave block = 63s (5 waves:
+// 11+11+7+8+8 = 45s, plus 6 × 3s gaps including gaps adjacent to
+// each boss); the music switch via `waitTrackEnded` snaps to the
+// next retro-02 loop boundary at-or-after the block ends. More
+// charts is strictly sequential (pie-chart colleague then bar-chart
+// colleague) and gets the same 11s slot as vacation photos so both
+// fit comfortably; timeWave truncates the tail if the player drags.
+//
+// The leading `startMusicLoop` is idempotent — no-op in live flow
+// (retro-02 is already playing from part 1) and switches into
+// retro-02 when the part is run from the practice menu under menu
+// music.
+export function* stage1Part2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  yield* timeWave(self, 11, self.stage.separateWave(moreChartsWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 11, self.stage.separateWave(vacationPhotosWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 7, self.stage.separateWave(emailColleagues3(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 8, self.stage.separateWave(meetingInternsWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 8, self.stage.separateWave(janitorsWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  markWave(self, 'music: metal');
+  yield* waitTrackEnded();
+  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+
+  yield* self.stage.separateWave(wellnessCoachWave(self));
+}
+
+// Stage 2, part 1 — retro-01 takes over for the early stage-2 beats,
+// then switches to retro-02 for Mr. Hodges as the stage-2 mid-boss.
+// `startMusicLoop` (no intro fanfare; it played at game start in
+// stage 1 part 1 and re-firing here would feel like a restart) snaps
+// the previous loop — metal from the stage-1 end-boss fight — back
+// down to retro-01. Run a couple of evening-shift waves (IT admin,
+// sales-and-client), switch to retro-02 at the music seam, then
+// hand off to Hodges. Untimed for now — timing pass comes after the
+// wave content settles.
+export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'music: retro 01');
+  yield* waitEnemiesClear(self);
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
+
+  yield* self.stage.separateWave(itAdminsWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* self.stage.separateWave(salesClientWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  markWave(self, 'music: retro 02');
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
+  yield* self.stage.separateWave(shrunkOldManWave(self));
+}
+
+// Stage 2, part 2 — retro-02 continues from part 1's mid-boss seam,
+// then switches to metal for The Boss as the final-boss bookend.
+// Three remaining late-day waves (HR trio, oversleeper,
+// Friday-party) before the metal cut and his entrance. Untimed for
+// now — same as part 1, timing pass is a later concern. Idempotent
+// leading `startMusicLoop(retro-02)` mirrors part 2 of stage 1: no-op
+// in live flow, switch in from menu music in practice.
+export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  yield* self.stage.separateWave(hrTrioWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* self.stage.separateWave(oversleeperWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* self.stage.separateWave(fridayPartyWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  markWave(self, 'music: metal');
+  yield* waitTrackEnded();
+  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+
+  yield* self.stage.separateWave(bossWave(self));
+}
+
 // Practice menu order matches the real stage's progression: intro,
-// the four retro-01 timeWave slots, first boss, vacation photos,
-// stage boss, final boss, outro — then the encounters not currently
-// placed in the stage, in roughly difficulty order, as a sandbox of
-// cut / not-yet-placed content.
+// the four substage subgenerators, then every individually-runnable
+// wave in the order it plays in the live stage, ending with the
+// outro. Substage entries up top let you practice a whole part
+// end-to-end with its music; the per-wave entries below let you
+// drill any single beat in isolation.
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
-  {
-    id: 'r-first-email-colleagues',
-    name: 'First Email Colleagues',
-    script: firstEmailColleagues,
-  },
+  { id: 's-stage-1-part-1', name: 'Stage 1 — Part 1', script: stage1Part1 },
+  { id: 's-stage-1-part-2', name: 'Stage 1 — Part 2', script: stage1Part2 },
+  { id: 's-stage-2-part-1', name: 'Stage 2 — Part 1', script: stage2Part1 },
+  { id: 's-stage-2-part-2', name: 'Stage 2 — Part 2', script: stage2Part2 },
   { id: 'r-interns', name: 'Interns', script: internsWave },
-  { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
+  { id: 'r-email-colleagues-1', name: 'Email Colleagues 1', script: emailColleagues1 },
+  { id: 'r-email-colleagues-2', name: 'Email Colleagues 2', script: emailColleagues2 },
   { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
-  { id: 'r-gym-bro', name: 'First Boss — Brad', script: gymBroWave },
+  { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
+  { id: 'r-gym-bro', name: 'Mid-Stage Boss — Brad', script: gymBroWave },
+  { id: 'r-more-charts', name: 'More Charts', script: moreChartsWave },
   {
     id: 'r-vacation-photos',
     name: 'Vacation Photos',
     script: vacationPhotosWave,
   },
-  {
-    id: 'r-shrunk-old-man',
-    name: 'Stage Boss — Mr. Hodges',
-    script: shrunkOldManWave,
-  },
-  { id: 'boss', name: 'Boss — The Boss', script: bossWave },
-  { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
+  { id: 'r-email-colleagues-3', name: 'Email Colleagues 3', script: emailColleagues3 },
+  { id: 'r-meeting-interns', name: 'Meeting Interns', script: meetingInternsWave },
   { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
-  { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
-  { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
+  {
+    id: 'r-wellness-coach',
+    name: 'Stage 1 Boss — Coach Becky',
+    script: wellnessCoachWave,
+  },
   { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },
+  { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
+  { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: shrunkOldManWave },
+  { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
   { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },
   { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
-  { id: 'r-wellness-coach', name: 'Wellness Coach', script: wellnessCoachWave },
+  { id: 'boss', name: 'Final Boss — The Boss', script: bossWave },
+  { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];
 
 function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
@@ -136,74 +273,20 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(p, p.x, PLAYER_OUTRO_EXIT_Y, PLAYER_OUTRO_SPEED);
 }
 
-// Top-level stage script. Sequential composition via `yield*`. The first
-// loop's waves run on a fixed audio-time schedule (`runFor` slots) so
-// each wave starts at a known offset from the loop body's start; later
-// stage segments (boss intro, music switches) still gate on world state
-// via `waitEnemiesClear`/`waitTrackEnded`. Music switches are explicit
-// `yield* startMusicLoop(...)` calls — those yield until the requested
-// track is ticking, so the next step can assume music is up. Frame
-// yields still appear in the pre/post music beats where audio time
-// isn't meaningful.
+// Top-level stage script. Just sequences the four substages around
+// the intro and outro; each part owns its own music + wave schedule.
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
-  // FIXME: disable for quicker debugging.
-  // markWave(self, 'intro');
-  // self.stage.player.lockControls();
-  // yield 30;
-  // yield* introMonologue(self);
-  // yield 30;
+  markWave(self, 'intro');
+  self.stage.player.lockControls();
+  yield 30;
+  yield* introMonologue(self);
+  yield 30;
 
-  // Retro opening fanfare → retro 01 loop. `startMusicWithIntro` yields
-  // until the track is actually ticking, so the wave below sees music up.
-  // The first wave starts immediately under the fanfare — silent dead
-  // air between the intro monologue and wave 1 felt much too long.
-  markWave(self, 'music: retro 01');
-  yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
-
-  // Each slot runs its wave for exactly that many audio seconds —
-  // timeWave caps long spawn sequences, pads short ones, and sweeps
-  // surviving enemies at the slot's end so the schedule doesn't drift
-  // with how the player is doing. Bullets in flight carry over so the
-  // seam isn't a hard reset. `waitSeconds(INTER_WAVE_GAP)` between
-  // slots gives the corridor a breath where the MC runs forward with
-  // no enemies on screen. Total = 59s (4 waves: 11+11+13+15 = 50s, plus
-  // 3 × 3s gaps), sized to fit under the retro 01 loop's 60s body;
-  // any leftover budget is absorbed by `waitTrackEnded` snapping to
-  // the next natural loop boundary regardless of where the waves land.
-  yield* timeWave(self, 11, self.stage.separateWave(internsWave(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 11, self.stage.separateWave(firstEmailColleagues(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 13, self.stage.separateWave(colleaguesWave(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 15, self.stage.separateWave(checkEmailWave(self)));
-
-  // Halfway pivot — snap the music switch to the next loop boundary so
-  // the cut lands on a musical seam rather than mid-bar.
-  markWave(self, 'music: retro 02');
-  yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
-
-  // First boss — Brad. Drops in right at the music seam so the new
-  // track's first measures are his entrance.
-  yield* self.stage.separateWave(gymBroWave(self));
-  yield* waitSeconds(INTER_WAVE_GAP);
-
-  yield* self.stage.separateWave(vacationPhotosWave(self));
-  yield* waitSeconds(INTER_WAVE_GAP);
-
-  // Stage boss — internal script waits for field to clear, then plays
-  // its own dialogue + attack loop. The metal music switch below gates
-  // on his death via waitEnemiesClear.
-  yield* self.stage.separateWave(shrunkOldManWave(self));
-
-  markWave(self, 'music: metal');
-  yield* waitEnemiesClear(self);
-  yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
-
-  yield* self.stage.separateWave(bossWave(self));
+  yield* stage1Part1(self);
+  yield* stage1Part2(self);
+  yield* stage2Part1(self);
+  yield* stage2Part2(self);
 
   // Outro: brief pause, sweep stragglers, brief pause, player exits.
   markWave(self, 'outro');
