@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
@@ -23,7 +23,7 @@ const HEADER_BUTTON_SPACING = 32;
 // Top of the unified scroll viewport — both header buttons and wave
 // rows live inside listContainer so the whole list scrolls as one.
 const LIST_VIEW_TOP = 130;
-const LIST_VIEW_BOTTOM = gameH() - 75;
+const LIST_VIEW_BOTTOM = GAME_H - 75;
 // Vertical gap between the last header button and the first wave row.
 const HEADER_WAVE_GAP = 16;
 // Treat motion under this many game-pixels as a tap rather than a swipe.
@@ -94,14 +94,14 @@ export class TestMenuScene extends Phaser.Scene {
     this.cursor = 0;
 
     this.add
-      .text(gameW() / 2, HEADER_Y, 'PRACTICE', {
+      .text(GAME_W / 2, HEADER_Y, 'PRACTICE', {
         ...FONT_TITLE,
         color: COLOR_ACCENT_GOLD_STR,
       })
       .setOrigin(0.5);
 
     this.add
-      .text(gameW() / 2, HEADER_Y + 38, 'select a wave', {
+      .text(GAME_W / 2, HEADER_Y + 38, 'select a wave', {
         ...FONT_DIALOGUE_SM,
         color: COLOR_TEXT_MUTED_STR,
       })
@@ -119,7 +119,7 @@ export class TestMenuScene extends Phaser.Scene {
     for (let i = 0; i < HEADERS.length; i++) {
       const y = i * HEADER_BUTTON_SPACING + HEADER_BUTTON_SPACING / 2;
       const text = this.add
-        .text(gameW() / 2, y, '', {
+        .text(GAME_W / 2, y, '', {
           ...FONT_MENU,
           color: HEADER_COLOR,
         })
@@ -145,7 +145,7 @@ export class TestMenuScene extends Phaser.Scene {
       // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
       const wave = WAVES[i]!;
       const row = this.add
-        .text(gameW() / 2, wavesTop + i * ROW_SPACING + ROW_SPACING / 2, this.rowText(wave), {
+        .text(GAME_W / 2, wavesTop + i * ROW_SPACING + ROW_SPACING / 2, this.rowText(wave), {
           ...FONT_MENU,
           color: ROW_COLOR,
         })
@@ -173,14 +173,14 @@ export class TestMenuScene extends Phaser.Scene {
 
     const maskGraphics = this.make.graphics({});
     maskGraphics.fillStyle(0xffffff);
-    maskGraphics.fillRect(0, this.listViewTop, gameW(), this.listViewHeight);
+    maskGraphics.fillRect(0, this.listViewTop, GAME_W, this.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
     const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
     this.maxScroll = Math.max(0, totalHeight - this.listViewHeight);
 
     const back = this.add
-      .text(gameW() / 2, gameH() - 55, '← back to menu', {
+      .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
         ...FONT_DIALOGUE_SM,
         color: COLOR_TEXT_MUTED_STR,
       })
@@ -196,8 +196,8 @@ export class TestMenuScene extends Phaser.Scene {
       : '<menuUp> <menuDown>: select   <confirm>: play   wheel: scroll   <back>: back';
     makePrompt(
       this,
-      gameW() / 2,
-      gameH() - 25,
+      GAME_W / 2,
+      GAME_H - 25,
       hintTemplate,
       { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' },
       { align: 'center' },

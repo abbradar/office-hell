@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { gameW } from '../config';
+import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { FONT_DIALOGUE_SM } from './fonts';
 import { COLOR_BUBBLE, COLOR_TEXT_INVERSE_STR } from './palette';
@@ -81,7 +81,7 @@ export class BubbleManager {
   }
 
   private reposition(b: Bubble): void {
-    const cx = Phaser.Math.Clamp(b.target.x, b.width / 2 + SCREEN_PAD, gameW() - b.width / 2 - SCREEN_PAD);
+    const cx = Phaser.Math.Clamp(b.target.x, b.width / 2 + SCREEN_PAD, GAME_W - b.width / 2 - SCREEN_PAD);
     let cy = b.target.y - OFFSET_Y - b.height / 2;
     let tailUp = false;
     if (cy - b.height / 2 - TAIL_HEIGHT < SCREEN_PAD) {

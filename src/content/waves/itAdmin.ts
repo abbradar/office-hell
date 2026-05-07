@@ -1,5 +1,5 @@
 import { shoot } from '../../audio/sfx/events';
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -127,7 +127,7 @@ export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> 
   const admin1Speech: SpeechSchedule = ['Change your email password. Now.', null, null, '"Password1!" does not count.'];
   const admin2Speech: SpeechSchedule = [null, 'Your last reset was 91 days ago.', null, null];
 
-  self.spawn(itAdmin, gameW() * 0.4, -30, 0, 0, { script: makeITAdminScript(admin1Speech) });
+  self.spawn(itAdmin, GAME_W * 0.4, -30, 0, 0, { script: makeITAdminScript(admin1Speech) });
   yield ADMIN_STAGGER;
-  self.spawn(itAdmin, gameW() * 0.6, -30, 0, 0, { script: makeITAdminScript(admin2Speech) });
+  self.spawn(itAdmin, GAME_W * 0.6, -30, 0, 0, { script: makeITAdminScript(admin2Speech) });
 }

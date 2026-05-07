@@ -1,5 +1,5 @@
 import { shoot } from '../../audio/sfx/events';
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { checkStageOnce, markWave } from '../../script/stage';
@@ -87,5 +87,5 @@ export const oversleeper = new EntityKind({
 // biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
 export function* oversleeperWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'oversleeper');
-  self.spawn(oversleeper, gameW() * 0.5, -30, 0, 0);
+  self.spawn(oversleeper, GAME_W * 0.5, -30, 0, 0);
 }

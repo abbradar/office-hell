@@ -1,4 +1,4 @@
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, cluster, ring } from '../../script/patterns';
 import { checkStageOnce, markWave } from '../../script/stage';
@@ -76,9 +76,9 @@ export const checkEmailCoworker = new EntityKind({
 // the pattern, then a paired follow-up so the rings overlap.
 export function* checkEmailWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'check email');
-  self.spawn(checkEmailCoworker, gameW() * 0.3, -30, 0, 0);
+  self.spawn(checkEmailCoworker, GAME_W * 0.3, -30, 0, 0);
   yield 110;
-  self.spawn(checkEmailCoworker, gameW() * 0.7, -30, 0, 0);
+  self.spawn(checkEmailCoworker, GAME_W * 0.7, -30, 0, 0);
   yield 220;
-  self.spawn(checkEmailCoworker, gameW() * 0.5, -30, 0, 0);
+  self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0);
 }

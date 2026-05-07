@@ -1,5 +1,5 @@
 import { shoot } from '../../audio/sfx/events';
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -19,7 +19,7 @@ import { drinkBullet } from './drinkBullet';
 
 const ENTRY_SPEED = 100;
 
-const MANAGER_X = gameW() * 0.5;
+const MANAGER_X = GAME_W * 0.5;
 const MANAGER_Y = 70;
 
 const MANAGER_HP = 60;
@@ -129,11 +129,11 @@ const MEMBERS: readonly MemberSpec[] = [
   { x: 35, y: 145, fireOffset: 0 },
   { x: 95, y: 145, fireOffset: 50 },
   { x: 155, y: 145, fireOffset: 100 },
-  { x: gameW() - 60, y: 95, fireOffset: 60 },
-  { x: gameW() - 120, y: 95, fireOffset: 110 },
-  { x: gameW() - 35, y: 145, fireOffset: 20 },
-  { x: gameW() - 95, y: 145, fireOffset: 70 },
-  { x: gameW() - 155, y: 145, fireOffset: 120 },
+  { x: GAME_W - 60, y: 95, fireOffset: 60 },
+  { x: GAME_W - 120, y: 95, fireOffset: 110 },
+  { x: GAME_W - 35, y: 145, fireOffset: 20 },
+  { x: GAME_W - 95, y: 145, fireOffset: 70 },
+  { x: GAME_W - 155, y: 145, fireOffset: 120 },
 ];
 
 // biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional

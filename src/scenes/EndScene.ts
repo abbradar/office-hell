@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { stopMusicLoop } from '../audio/music/loop';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -36,21 +36,21 @@ export class EndScene extends Phaser.Scene {
     const subtitle = this.won ? 'you survived office hell' : 'office hell consumed you';
 
     this.add
-      .text(gameW() / 2, gameH() * 0.32, title, {
+      .text(GAME_W / 2, GAME_H * 0.32, title, {
         ...FONT_TITLE,
         color: titleColor,
       })
       .setOrigin(0.5);
 
     this.add
-      .text(gameW() / 2, gameH() * 0.32 + 56, subtitle, {
+      .text(GAME_W / 2, GAME_H * 0.32 + 56, subtitle, {
         ...FONT_DIALOGUE_SM,
         color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5);
 
     const restartTemplate = isTouchDevice ? '▶ TAP TO RESTART' : '▶ <confirm>  RESTART';
-    const restart = makePrompt(this, gameW() / 2, gameH() * 0.6, restartTemplate, {
+    const restart = makePrompt(this, GAME_W / 2, GAME_H * 0.6, restartTemplate, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });

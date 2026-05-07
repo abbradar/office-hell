@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { hit } from '../audio/sfx/events';
-import { playerHitboxRadius } from '../config';
+import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import { EntityKind } from '../script/types';
 import type { CharacterDef } from './characters';
@@ -30,7 +30,7 @@ export class PlayerKind extends EntityKind {
   constructor(opts: PlayerKindOpts) {
     super({
       sprite: opts.character.sprite,
-      hitboxRadius: playerHitboxRadius(),
+      hitboxRadius: PLAYER_HITBOX_RADIUS,
       hp: PLAYER_HP,
       damageClass: [],
       damagedByClass: ['player'],

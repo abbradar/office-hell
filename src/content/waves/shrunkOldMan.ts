@@ -1,4 +1,4 @@
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
@@ -130,7 +130,7 @@ export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, vo
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(shrunkOldMan, gameW() / 2, -30, 0, 0, {
+  const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
     damagedByClass: [],
   });
   yield { until: boss };

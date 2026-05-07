@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { onceMusicComplete } from '../audio/music/loop';
-import { cullMargin, ENTITY_POOL_SIZE, gameH, gameW } from '../config';
+import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
@@ -566,9 +566,9 @@ export class StageManager {
 
       e.updateAnim();
 
-      const inX = e.x >= -cullMargin() && e.x <= gameW() + cullMargin();
-      const inY = e.y >= -cullMargin() && e.y <= gameH() + cullMargin();
-      const onScreen = e.x >= 0 && e.x <= gameW() && e.y >= 0 && e.y <= gameH();
+      const inX = e.x >= -CULL_MARGIN && e.x <= GAME_W + CULL_MARGIN;
+      const inY = e.y >= -CULL_MARGIN && e.y <= GAME_H + CULL_MARGIN;
+      const onScreen = e.x >= 0 && e.x <= GAME_W && e.y >= 0 && e.y <= GAME_H;
       if (onScreen) e.hasEnteredScreen = true;
       if ((!inX || !inY) && e.hasEnteredScreen) {
         this.release(e, i);

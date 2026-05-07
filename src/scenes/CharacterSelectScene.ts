@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
 import { addElevatorBackdrop, ELEVATOR_CLOSE_ANIM, ELEVATOR_FRAME_OPEN } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
@@ -28,7 +28,7 @@ export type CharacterSelectData = {
 const CARD_W = 180;
 const CARD_H = 320;
 const CARD_GAP = 24;
-const CARD_Y = gameH() * 0.42;
+const CARD_Y = GAME_H * 0.42;
 const PORTRAIT_SCALE = 4;
 const ACTIVE_BORDER = COLOR_ACCENT_GOLD;
 const INACTIVE_BORDER = COLOR_PANEL_BORDER;
@@ -97,14 +97,14 @@ export class CharacterSelectScene extends Phaser.Scene {
     };
 
     this.add
-      .text(gameW() / 2, 70, 'CHOOSE A SHIFT WORKER', {
+      .text(GAME_W / 2, 70, 'CHOOSE A SHIFT WORKER', {
         ...FONT_MENU,
         color: COLOR_ACCENT_GOLD_STR,
       })
       .setOrigin(0.5);
 
     const totalW = CARD_W * CHARACTERS.length + CARD_GAP * (CHARACTERS.length - 1);
-    const startX = (gameW() - totalW) / 2;
+    const startX = (GAME_W - totalW) / 2;
 
     for (let i = 0; i < CHARACTERS.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by CHARACTERS.length
@@ -116,19 +116,19 @@ export class CharacterSelectScene extends Phaser.Scene {
     // Keyboard hint: three column-stacked prompts (icon on top, label below)
     // laid out side-by-side. makePrompt is line-based, so a single template
     // can't column-align an icon row above a text row — render each pair as
-    // its own prompt, then re-center the group around gameW() / 2.
-    const HINT_Y = gameH() - 130;
+    // its own prompt, then re-center the group around GAME_W / 2.
+    const HINT_Y = GAME_H - 130;
     const HINT_GAP = 60;
     const hintStyle = { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' };
     if (isTouchDevice) {
-      makePrompt(this, gameW() / 2, HINT_Y, 'tap a card to select   •   tap "back" to return', hintStyle, {
+      makePrompt(this, GAME_W / 2, HINT_Y, 'tap a card to select   •   tap "back" to return', hintStyle, {
         align: 'center',
       });
     } else {
       const cols = ['<moveHorizontal>\nswitch', '<confirm>\nselect', '<back>\nback'];
       const prompts = cols.map((t) => makePrompt(this, 0, HINT_Y, t, hintStyle, { align: 'center' }));
       const groupW = prompts.reduce((sum, p) => sum + p.width, 0) + HINT_GAP * (prompts.length - 1);
-      let cx = gameW() / 2 - groupW / 2;
+      let cx = GAME_W / 2 - groupW / 2;
       for (const p of prompts) {
         p.x = Math.round(cx + p.width / 2);
         cx += p.width + HINT_GAP;
@@ -136,7 +136,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     }
 
     const back = this.add
-      .text(gameW() / 2, gameH() - 56, '← back', {
+      .text(GAME_W / 2, GAME_H - 56, '← back', {
         ...FONT_DIALOGUE_SM,
         color: COLOR_TEXT_MUTED_STR,
       })

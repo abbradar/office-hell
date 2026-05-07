@@ -2,17 +2,12 @@ import Phaser from 'phaser';
 import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
-import {
-  COLOR_ACCENT_GOLD_STR,
-  COLOR_ACCENT_RED_STR,
-  COLOR_TEXT_PRIMARY_STR,
-  COLOR_WALL_STR,
-} from '../ui/palette';
+import { COLOR_ACCENT_GOLD_STR, COLOR_ACCENT_RED_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -49,21 +44,21 @@ export class MenuScene extends Phaser.Scene {
     this.scheduleRumble(elevator);
 
     this.add
-      .text(gameW() / 2, gameH() * 0.28, 'OFFICE HELL', {
+      .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {
         ...FONT_TITLE,
         color: COLOR_ACCENT_RED_STR,
       })
       .setOrigin(0.5);
 
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
-    const startText = makePrompt(this, gameW() / 2, gameH() * 0.5, startTemplate, {
+    const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
     // Fat-finger pad: tap area extends well past the rendered text so a
     // thumb tap doesn't have to be precise. Hit area is in container
     // local coords (origin at the centre of the prompt).
-    setLargeHit(startText, gameW() * 0.7, 110);
+    setLargeHit(startText, GAME_W * 0.7, 110);
 
     const startTween = this.tweens.add({
       targets: startText,
@@ -74,11 +69,11 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
-    const practiceText = makePrompt(this, gameW() / 2, gameH() * 0.62, practiceTemplate, {
+    const practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
       ...FONT_DIALOGUE_LG,
       color: COLOR_ACCENT_GOLD_STR,
     });
-    setLargeHit(practiceText, gameW() * 0.6, 80);
+    setLargeHit(practiceText, GAME_W * 0.6, 80);
 
     const start = (): void => {
       if (this.starting) return;
@@ -115,10 +110,7 @@ export class MenuScene extends Phaser.Scene {
       // The scene may have been torn down between scheduling and firing
       // (e.g. quick START press). Bail if we're no longer the active menu.
       if (!this.scene.isActive() || this.starting) return;
-      // Compute the rest position lazily — gameH() can change at runtime
-      // when the viewport reshapes (fullscreen / orientation), and we want
-      // each tween to read the live value.
-      const baseY = gameH() / 2;
+      const baseY = GAME_H / 2;
       this.tweens.add({
         targets: target,
         y: baseY - RUMBLE_PIXELS,

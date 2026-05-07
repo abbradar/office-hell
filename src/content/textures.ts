@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import floorPatternUrl from '../assets/sprites/floor_pattern.png';
-import { bulletRadius } from '../config';
+import { BULLET_RADIUS } from '../config';
 import {
   COLOR_BULLET_DEFAULT,
   COLOR_DRINK_FOAM,
@@ -38,7 +38,7 @@ export function preloadFloorPattern(scene: Phaser.Scene): void {
 
 export function generateBulletTexture(scene: Phaser.Scene): void {
   const g = scene.add.graphics();
-  const r = bulletRadius();
+  const r = BULLET_RADIUS;
   const d = r * 2;
   g.fillStyle(COLOR_BULLET_DEFAULT, 1);
   g.fillCircle(r, r, r);

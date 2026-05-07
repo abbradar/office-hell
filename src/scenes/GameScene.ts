@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { buttonBandH, canvasW, gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { stageKaedalus } from '../content/kaedalusStage';
 import { stageMonsterRpg } from '../content/monsterRpgStage';
@@ -13,11 +13,11 @@ import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import {
-  bombButtonRadius,
-  bombButtonX,
+  BOMB_BUTTON_RADIUS,
+  BOMB_BUTTON_X,
   bombButtonY,
   clearBombPress,
-  touchButtonRadius,
+  TOUCH_BUTTON_RADIUS,
   touchButtonY,
 } from '../input/touch';
 import { StageManager } from '../script/StageManager';
@@ -98,30 +98,40 @@ export class GameScene extends Phaser.Scene {
     // scrolling vertically as the corridor advances. Spans the full
     // playfield; wall rects cover the gutters on top.
     this.bg = this.add
-      .tileSprite(gameW() / 2, gameH() / 2, gameW(), gameH(), FLOOR_PATTERN_KEY)
+      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, FLOOR_PATTERN_KEY)
       .setDepth(-10)
       .setTileScale(0.1, 0.1);
 
     // Walls: static cream strips on each side. They don't scroll — the
     // architecture is fixed, motion reads off the moving floor underneath.
-    this.add.rectangle(0, 0, WALL_W, gameH(), COLOR_WALL).setOrigin(0, 0).setDepth(-9);
-    this.add.rectangle(gameW() - WALL_W, 0, WALL_W, gameH(), COLOR_WALL).setOrigin(0, 0).setDepth(-9);
+    this.add.rectangle(0, 0, WALL_W, GAME_H, COLOR_WALL).setOrigin(0, 0).setDepth(-9);
+    this.add
+      .rectangle(GAME_W - WALL_W, 0, WALL_W, GAME_H, COLOR_WALL)
+      .setOrigin(0, 0)
+      .setDepth(-9);
     // Wall/floor seam — a thin border line on each inner edge.
-    this.add.rectangle(WALL_W - 2, 0, 2, gameH(), COLOR_WALL_BORDER).setOrigin(0, 0).setDepth(-8);
-    this.add.rectangle(gameW() - WALL_W, 0, 2, gameH(), COLOR_WALL_BORDER).setOrigin(0, 0).setDepth(-8);
+    this.add
+      .rectangle(WALL_W - 2, 0, 2, GAME_H, COLOR_WALL_BORDER)
+      .setOrigin(0, 0)
+      .setDepth(-8);
+    this.add
+      .rectangle(GAME_W - WALL_W, 0, 2, GAME_H, COLOR_WALL_BORDER)
+      .setOrigin(0, 0)
+      .setDepth(-8);
 
     // Mask the touch-control band so bullets that drift below the playfield
-    // (within cullMargin() before being culled) don't peek through behind the
+    // (within CULL_MARGIN before being culled) don't peek through behind the
     // buttons. Depth 50 sits above entities (default 0) and below HUD (99+).
-    if (buttonBandH() > 0) {
-      this.add.rectangle(0, gameH(), canvasW(), buttonBandH(), COLOR_WALL).setOrigin(0, 0).setDepth(50);
+    const bandH = this.scale.height - GAME_H;
+    if (bandH > 0) {
+      this.add.rectangle(0, GAME_H, GAME_W, bandH, COLOR_WALL).setOrigin(0, 0).setDepth(50);
     }
 
     this.stage = new StageManager(this);
 
-    this.add.rectangle(0, 0, gameW(), HEADER_H, COLOR_PANEL, 0.92).setOrigin(0, 0).setDepth(99);
+    this.add.rectangle(0, 0, GAME_W, HEADER_H, COLOR_PANEL, 0.92).setOrigin(0, 0).setDepth(99);
     this.add
-      .rectangle(0, HEADER_H - 1, gameW(), 1, COLOR_PANEL_BORDER, 0.6)
+      .rectangle(0, HEADER_H - 1, GAME_W, 1, COLOR_PANEL_BORDER, 0.6)
       .setOrigin(0, 0)
       .setDepth(99);
 
@@ -136,7 +146,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(100);
     this.bossNameText = this.add
-      .text(gameW() / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: COLOR_TEXT_PRIMARY_STR })
+      .text(GAME_W / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: COLOR_TEXT_PRIMARY_STR })
       .setOrigin(0.5)
       .setDepth(100);
 
@@ -185,21 +195,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isTouchDevice) {
+      const moveY = touchButtonY(this.game);
+      const bombY = bombButtonY(this.game);
       this.add
-        .circle(0, touchButtonY(), touchButtonRadius(), COLOR_PANEL_BORDER, 0.18)
+        .circle(0, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
         .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
         .setDepth(100);
       this.add
-        .circle(gameW(), touchButtonY(), touchButtonRadius(), COLOR_PANEL_BORDER, 0.18)
+        .circle(GAME_W, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
         .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
         .setDepth(100);
       this.add
-        .text(28, touchButtonY(), '◀', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
+        .text(28, moveY, '◀', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
         .setOrigin(0.5)
         .setAlpha(0.65)
         .setDepth(101);
       this.add
-        .text(gameW() - 28, touchButtonY(), '▶', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
+        .text(GAME_W - 28, moveY, '▶', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
         .setOrigin(0.5)
         .setAlpha(0.65)
         .setDepth(101);
@@ -208,11 +220,11 @@ export class GameScene extends Phaser.Scene {
       // separate label. Centred between the two corner-clipped move pads
       // so neither thumb sits in front of it during normal play.
       this.add
-        .circle(bombButtonX(), bombButtonY(), bombButtonRadius(), COLOR_ACCENT_GOLD, 0.2)
+        .circle(BOMB_BUTTON_X, bombY, BOMB_BUTTON_RADIUS, COLOR_ACCENT_GOLD, 0.2)
         .setStrokeStyle(2, COLOR_ACCENT_GOLD, 0.6)
         .setDepth(100);
       this.add
-        .text(bombButtonX(), bombButtonY(), '✱', { color: COLOR_ACCENT_GOLD_STR, fontSize: '30px' })
+        .text(BOMB_BUTTON_X, bombY, '✱', { color: COLOR_ACCENT_GOLD_STR, fontSize: '30px' })
         .setOrigin(0.5)
         .setAlpha(0.95)
         .setDepth(101);
@@ -280,13 +292,13 @@ export class GameScene extends Phaser.Scene {
   private showPauseOverlay(): void {
     if (this.pauseOverlay) return;
     const c = this.add.container(0, 0).setDepth(200);
-    const dim = this.add.rectangle(gameW() / 2, gameH() / 2, gameW(), gameH(), COLOR_PANEL, 0.85);
+    const dim = this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, COLOR_PANEL, 0.85);
     c.add(dim);
     const title = this.add
-      .text(gameW() / 2, gameH() * 0.4, 'PAUSED', { ...FONT_TITLE, color: COLOR_ACCENT_GOLD_STR })
+      .text(GAME_W / 2, GAME_H * 0.4, 'PAUSED', { ...FONT_TITLE, color: COLOR_ACCENT_GOLD_STR })
       .setOrigin(0.5);
     c.add(title);
-    const hint = makePrompt(this, gameW() / 2, gameH() * 0.55, '<fire>  RESUME\n<back>  MENU', {
+    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<fire>  RESUME\n<back>  MENU', {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
       align: 'center',

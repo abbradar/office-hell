@@ -1,14 +1,8 @@
-import { gameW } from '../config';
+import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
-import {
-  COLOR_BOMB_CORE,
-  COLOR_BOMB_GLOW,
-  COLOR_BOMB_HIGHLIGHT,
-  COLOR_BOMB_HOT,
-  COLOR_BOMB_RING,
-} from '../ui/palette';
+import { COLOR_BOMB_CORE, COLOR_BOMB_GLOW, COLOR_BOMB_HIGHLIGHT, COLOR_BOMB_HOT, COLOR_BOMB_RING } from '../ui/palette';
 
 // Three-phase bomb: brief freeze (the player visibly snaps), an
 // expanding shockwave that consumes anything it touches, and a flicker-
@@ -29,7 +23,7 @@ export const BOMB_DURATION_MS = BOMB_FREEZE_MS + BOMB_EXPLODE_MS + BOMB_LINGER_M
 // fired with the player hugging one edge still reaches projectiles at the
 // centre line. The intro tutorial relies on this: the email approaches
 // centred while the player has dodged to a side.
-const BOMB_RADIUS = gameW() / 2;
+const BOMB_RADIUS = GAME_W / 2;
 
 // Passive-aggressive office-speak the player snaps out as they "get angry"
 // and nuke the field. One picked at random per bomb — keeps repeated bombing

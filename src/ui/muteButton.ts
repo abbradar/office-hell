@@ -11,7 +11,7 @@
 import Phaser from 'phaser';
 import audioOffUrl from '../assets/icons/ui/audioOff.png';
 import audioOnUrl from '../assets/icons/ui/audioOn.png';
-import { gameW } from '../config';
+import { GAME_W } from '../config';
 
 export const MUTE_ON_TEXTURE = 'icon_audio_on';
 export const MUTE_OFF_TEXTURE = 'icon_audio_off';
@@ -33,7 +33,7 @@ export function preloadMuteIcons(scene: Phaser.Scene): void {
 export function addMuteButton(scene: Phaser.Scene): Phaser.GameObjects.Image {
   const muted = scene.sound.mute;
   const btn = scene.add
-    .image(gameW() - MARGIN_PX, MARGIN_PX, muted ? MUTE_OFF_TEXTURE : MUTE_ON_TEXTURE)
+    .image(GAME_W - MARGIN_PX, MARGIN_PX, muted ? MUTE_OFF_TEXTURE : MUTE_ON_TEXTURE)
     .setOrigin(1, 0)
     .setDepth(200)
     .setScrollFactor(0)

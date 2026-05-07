@@ -1,4 +1,4 @@
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo, ring } from '../../script/patterns';
 import { markWave } from '../../script/stage';
@@ -18,8 +18,8 @@ import { reportBullet } from './reportBullet';
 const ENTRY_SPEED = 60;
 const ENTRY_Y = 40;
 
-const SALES_X = gameW() * 0.3;
-const CLIENT_X = gameW() * 0.7;
+const SALES_X = GAME_W * 0.3;
+const CLIENT_X = GAME_W * 0.7;
 
 const HOLD_AFTER_TALK = 60;
 

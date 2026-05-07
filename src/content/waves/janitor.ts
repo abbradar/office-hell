@@ -1,4 +1,4 @@
-import { gameW } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
 import { checkStageOnce, markWave } from '../../script/stage';
@@ -44,7 +44,7 @@ function* janitorScript(self: Entity) {
 
   // Pin the sweep direction once — both passes go the same way, like a real
   // mop stroke pair, instead of randomly flipping mid-encounter.
-  const leftToRight = self.x < gameW() / 2;
+  const leftToRight = self.x < GAME_W / 2;
 
   yield* sweep(self, leftToRight);
 
@@ -72,7 +72,7 @@ export const janitor = new EntityKind({
 // second's mop strokes.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'janitor');
-  self.spawn(janitor, gameW() * 0.3, -30, 0, 0);
+  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
   yield 180;
-  self.spawn(janitor, gameW() * 0.7, -30, 0, 0);
+  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
 }

@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import elevatorUrl from '../assets/sprites/elevator_doors.png';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 
 // 7-frame doors strip: frame 0 = fully closed, frame 6 = fully open. The
 // sheet is 224×48; per-frame is 32×48. Used as a full-screen backdrop on
@@ -51,7 +51,7 @@ export function registerElevatorAnims(scene: Phaser.Scene): void {
 // animation to CharacterSelect without a visual jump.
 export function addElevatorBackdrop(scene: Phaser.Scene, frame: number): Phaser.GameObjects.Sprite {
   return scene.add
-    .sprite(gameW() / 2, gameH() / 2, ELEVATOR_DOORS_KEY, frame)
-    .setDisplaySize(gameW() + ELEVATOR_BACKDROP_OVERFLOW, gameH() + ELEVATOR_BACKDROP_OVERFLOW)
+    .sprite(GAME_W / 2, GAME_H / 2, ELEVATOR_DOORS_KEY, frame)
+    .setDisplaySize(GAME_W + ELEVATOR_BACKDROP_OVERFLOW, GAME_H + ELEVATOR_BACKDROP_OVERFLOW)
     .setDepth(-10);
 }

@@ -1,14 +1,17 @@
-import { buttonBandH, canvasH, gameH, gameW } from '../config';
+import type Phaser from 'phaser';
+import { GAME_H, GAME_W } from '../config';
 
-export function touchButtonRadius(): number {
-  return 90;
-}
+export const TOUCH_BUTTON_RADIUS = 90;
+export const BOMB_BUTTON_RADIUS = 50;
+export const BOMB_BUTTON_X = GAME_W / 2;
+
 // On touch devices with a control band, the move button hugs the canvas
 // bottom (its lower half clips off-screen, same as before — the corner
 // position works well for a thumb at the edge). Without a band (desktop)
 // it falls back to the original in-playfield position.
-export function touchButtonY(): number {
-  return buttonBandH() > 0 ? canvasH() - 60 : gameH() - 60;
+export function touchButtonY(game: Phaser.Game): number {
+  const h = game.scale.height;
+  return h > GAME_H ? h - 60 : GAME_H - 60;
 }
 
 // Single bomb button centred horizontally between the two corner-clipped
@@ -17,58 +20,14 @@ export function touchButtonY(): number {
 // so the bomb ring is fully visible without overlapping the move pads.
 // Without a band (desktop), falls back to the original layout where it
 // was tucked above the move pad inside the playfield.
-export function bombButtonRadius(): number {
-  return 50;
-}
-export function bombButtonX(): number {
-  return gameW() / 2;
-}
-export function bombButtonY(): number {
-  return buttonBandH() > 0 ? canvasH() - 60 : gameH() - 220;
+export function bombButtonY(game: Phaser.Game): number {
+  const h = game.scale.height;
+  return h > GAME_H ? h - 60 : GAME_H - 220;
 }
 
 type Pointer = { x: number; y: number };
 
 const pointers = new Map<number, Pointer>();
-let canvasEl: HTMLCanvasElement | null = null;
-
-function getCanvas(): HTMLCanvasElement | null {
-  if (!canvasEl) canvasEl = document.querySelector<HTMLCanvasElement>('#game canvas');
-  return canvasEl;
-}
-
-function toGameCoords(clientX: number, clientY: number): Pointer {
-  const c = getCanvas();
-  if (!c) return { x: clientX, y: clientY };
-  const rect = c.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return { x: clientX, y: clientY };
-  return {
-    x: (clientX - rect.left) * (gameW() / rect.width),
-    y: (clientY - rect.top) * (canvasH() / rect.height),
-  };
-}
-
-function inLeftButton(p: Pointer): boolean {
-  const dx = p.x;
-  const dy = p.y - touchButtonY();
-  const r = touchButtonRadius();
-  return dx * dx + dy * dy <= r * r;
-}
-
-function inRightButton(p: Pointer): boolean {
-  const dx = p.x - gameW();
-  const dy = p.y - touchButtonY();
-  const r = touchButtonRadius();
-  return dx * dx + dy * dy <= r * r;
-}
-
-function inBombButton(p: Pointer): boolean {
-  const dx = p.x - bombButtonX();
-  const dy = p.y - bombButtonY();
-  const r = bombButtonRadius();
-  return dx * dx + dy * dy <= r * r;
-}
-
 // Edge-triggered bomb input. A fresh pointerdown landing inside the
 // bomb circle queues one press, consumed by Player.controlUpdate to
 // match keyboard JustDown(X) semantics. Tracking the press at
@@ -76,28 +35,61 @@ function inBombButton(p: Pointer): boolean {
 // move button into the bomb region won't accidentally burn a bomb.
 let bombPending = false;
 
-window.addEventListener('pointerdown', (e) => {
-  const p = toGameCoords(e.clientX, e.clientY);
-  pointers.set(e.pointerId, p);
-  if (inBombButton(p)) bombPending = true;
-});
-window.addEventListener('pointermove', (e) => {
-  if (!pointers.has(e.pointerId)) return;
-  pointers.set(e.pointerId, toGameCoords(e.clientX, e.clientY));
-});
-const release = (e: PointerEvent): void => {
-  pointers.delete(e.pointerId);
-};
-window.addEventListener('pointerup', release);
-window.addEventListener('pointercancel', release);
+// Wires up the window-level pointer listeners with the Phaser.Game in
+// closure scope. Called once from main.ts after game construction so
+// every coordinate conversion + bomb-zone hit-test reads live scale
+// values without going through a global.
+export function initTouch(game: Phaser.Game): void {
+  const canvas = game.canvas;
 
-export function isLeftHeld(): boolean {
-  for (const p of pointers.values()) if (inLeftButton(p)) return true;
+  const toGameCoords = (clientX: number, clientY: number): Pointer => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return { x: clientX, y: clientY };
+    return {
+      x: (clientX - rect.left) * (game.scale.width / rect.width),
+      y: (clientY - rect.top) * (game.scale.height / rect.height),
+    };
+  };
+
+  const inBombButton = (p: Pointer): boolean => {
+    const dx = p.x - BOMB_BUTTON_X;
+    const dy = p.y - bombButtonY(game);
+    return dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
+  };
+
+  window.addEventListener('pointerdown', (e) => {
+    const p = toGameCoords(e.clientX, e.clientY);
+    pointers.set(e.pointerId, p);
+    if (inBombButton(p)) bombPending = true;
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, toGameCoords(e.clientX, e.clientY));
+  });
+  const release = (e: PointerEvent): void => {
+    pointers.delete(e.pointerId);
+  };
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
+}
+
+export function isLeftHeld(game: Phaser.Game): boolean {
+  const yc = touchButtonY(game);
+  for (const p of pointers.values()) {
+    const dx = p.x;
+    const dy = p.y - yc;
+    if (dx * dx + dy * dy <= TOUCH_BUTTON_RADIUS * TOUCH_BUTTON_RADIUS) return true;
+  }
   return false;
 }
 
-export function isRightHeld(): boolean {
-  for (const p of pointers.values()) if (inRightButton(p)) return true;
+export function isRightHeld(game: Phaser.Game): boolean {
+  const yc = touchButtonY(game);
+  for (const p of pointers.values()) {
+    const dx = p.x - GAME_W;
+    const dy = p.y - yc;
+    if (dx * dx + dy * dy <= TOUCH_BUTTON_RADIUS * TOUCH_BUTTON_RADIUS) return true;
+  }
   return false;
 }
 

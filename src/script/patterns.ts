@@ -1,5 +1,5 @@
 import { shoot } from '../audio/sfx/events';
-import { gameH, gameW } from '../config';
+import { GAME_H, GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { EntityKind, ScriptYield } from './types';
 
@@ -12,7 +12,7 @@ const SCRIPT_FPS = 60;
 // half hidden. Suppress firing in that case so off-screen exits don't keep
 // dropping bullets from below the play field.
 function offScreen(self: Entity): boolean {
-  return self.x < 0 || self.x > gameW() || self.y < 0 || self.y > gameH();
+  return self.x < 0 || self.x > GAME_W || self.y < 0 || self.y > GAME_H;
 }
 
 function shootAt(self: Entity, kind: EntityKind, angle: number, speed: number): void {

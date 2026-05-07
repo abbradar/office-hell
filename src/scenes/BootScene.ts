@@ -4,19 +4,15 @@ import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { configureVoiceCaps, preloadAudio } from '../audio/preload';
 import { setSoundManager } from '../audio/sfx/pool';
-import { canvasH, gameH, gameW, recomputeSizes } from '../config';
+import { computeCanvasH } from '../canvasSize';
+import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import { generateTextures, preloadFloorPattern, recolorFloorPattern } from '../content/textures';
 import { isTouchDevice } from '../input/device';
-import {
-  COLOR_ACCENT_GOLD,
-  COLOR_PANEL_BORDER,
-  COLOR_TEXT_DIM_STR,
-  COLOR_WALL_STR,
-} from '../ui/palette';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
+import { COLOR_ACCENT_GOLD, COLOR_PANEL_BORDER, COLOR_TEXT_DIM_STR, COLOR_WALL_STR } from '../ui/palette';
 
 export class BootScene extends Phaser.Scene {
   // Set in showLoadingUI() during preload(). Phaser guarantees preload runs
@@ -155,22 +151,21 @@ export class BootScene extends Phaser.Scene {
       // the browser has settled the new layout — body/parent bounds are
       // still stale at that point.
       //
-      // Guard: only call resize when canvasH() actually changes, otherwise
+      // Guard: only call resize when the height actually changes, otherwise
       // our resize() triggers another RESIZE → infinite loop.
       this.scale.on(Phaser.Scale.Events.RESIZE, () => {
         const pw = this.scale.parentSize.width;
         const ph = this.scale.parentSize.height;
         if (!pw || !ph) return;
-        const before = canvasH();
-        recomputeSizes(pw, ph);
-        if (canvasH() !== before) {
+        const next = computeCanvasH(pw, ph);
+        if (next !== this.scale.height) {
           // setGameSize, not resize: resize() is documented for the NONE
           // scale mode and doesn't refresh the FIT aspect ratio, so display
           // size ends up computed against the *previous* aspect (canvas
           // letterboxes inside the parent). setGameSize calls
           // displaySize.setAspectRatio() before refresh(), giving us a
           // proper aspect-correct fit.
-          this.scale.setGameSize(gameW(), canvasH());
+          this.scale.setGameSize(GAME_W, next);
         }
       });
     });
@@ -179,8 +174,8 @@ export class BootScene extends Phaser.Scene {
   private showLoadingUI(): void {
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
-    const cx = gameW() / 2;
-    const cy = gameH() / 2;
+    const cx = GAME_W / 2;
+    const cy = GAME_H / 2;
     const barW = 320;
     const barH = 14;
     const barX = cx - barW / 2;
