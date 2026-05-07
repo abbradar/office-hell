@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
-import { markWave } from '../../script/stage';
+import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -100,6 +100,8 @@ export const wellnessCoach = new EntityKind({
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
-  const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0);
-  yield { until: coach };
+  yield* suspendRunning(self, function* () {
+    const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0);
+    yield { until: coach };
+  });
 }

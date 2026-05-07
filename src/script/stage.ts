@@ -164,6 +164,23 @@ export function* timeWave(
   killEnemies(self);
 }
 
+// Bracket a "fight" section inside a wave: plants the MC + stops the
+// floor (`stage.running = false`), runs `body`, waits for the field to
+// clear of enemies, then hands the corridor back. Use this *inside* a
+// wave script around the section that actually spawns and resolves
+// monsters — the wave's setup or trailing sleeps stay in the running
+// state. Body is a generator factory rather than a generator so callers
+// can inline it without an IIFE.
+export function* suspendRunning(
+  self: Entity,
+  body: () => Generator<ScriptYield, void, void>,
+): Generator<ScriptYield, void, void> {
+  self.stage.running = false;
+  yield* body();
+  yield* waitEnemiesClear(self);
+  self.stage.running = true;
+}
+
 // --- audio-clock waits ----------------------------------------------------
 
 // Yield until the current track's clock reaches `t` (seconds, from the

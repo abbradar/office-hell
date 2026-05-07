@@ -12,6 +12,7 @@ import {
   markWave,
   startMusicLoop,
   startMusicWithIntro,
+  suspendRunning,
   timeWave,
   waitEnemiesClear,
   waitScreenClear,
@@ -59,10 +60,12 @@ function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-    damagedByClass: [],
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
+      damagedByClass: [],
+    });
+    yield { until: boss };
   });
-  yield { until: boss };
 }
 
 export type WaveDef = {

@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
-import { markWave } from '../../script/stage';
+import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { missedCallBullet } from './missedCallBullet';
 
@@ -51,18 +51,20 @@ export const colleague = new EntityKind({
 // them across the screen.
 export function* colleaguesWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'colleagues');
-  self.spawn(colleague, -30, 220, 0, 0);
-  yield 80;
-  self.spawn(colleague, GAME_W + 30, 280, 0, 0);
-  yield 100;
-  self.spawn(colleague, -30, 200, 0, 0);
-  self.spawn(colleague, GAME_W + 30, 340, 0, 0);
-  yield 120;
-  self.spawn(colleague, -30, 260, 0, 0);
-  yield 70;
-  self.spawn(colleague, GAME_W + 30, 180, 0, 0);
-  self.spawn(colleague, -30, 360, 0, 0);
-  yield 110;
-  self.spawn(colleague, GAME_W + 30, 240, 0, 0);
-  self.spawn(colleague, -30, 320, 0, 0);
+  yield* suspendRunning(self, function* () {
+    self.spawn(colleague, -30, 220, 0, 0);
+    yield 80;
+    self.spawn(colleague, GAME_W + 30, 280, 0, 0);
+    yield 100;
+    self.spawn(colleague, -30, 200, 0, 0);
+    self.spawn(colleague, GAME_W + 30, 340, 0, 0);
+    yield 120;
+    self.spawn(colleague, -30, 260, 0, 0);
+    yield 70;
+    self.spawn(colleague, GAME_W + 30, 180, 0, 0);
+    self.spawn(colleague, -30, 360, 0, 0);
+    yield 110;
+    self.spawn(colleague, GAME_W + 30, 240, 0, 0);
+    self.spawn(colleague, -30, 320, 0, 0);
+  });
 }

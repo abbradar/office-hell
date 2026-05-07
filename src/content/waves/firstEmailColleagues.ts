@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed } from '../../script/patterns';
-import { markWave } from '../../script/stage';
+import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { emailBullet } from './checkEmail';
 
@@ -52,44 +52,45 @@ export const firstEmailColleague = new EntityKind({
 // 3. Thrice the count: 3 left + 3 right.
 export function* firstEmailColleagues(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'first email colleagues');
+  yield* suspendRunning(self, function* () {
+    const SPACING = 70;
+    const SIDE_GAP = 110;
+    const ACT_GAP = 200;
 
-  const SPACING = 70;
-  const SIDE_GAP = 110;
-  const ACT_GAP = 200;
+    // Act 1 (x1) — original opener: two from the left.
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 210, 0, 0);
+    yield 130;
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 290, 0, 0);
 
-  // Act 1 (x1) — original opener: two from the left.
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 210, 0, 0);
-  yield 130;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 290, 0, 0);
+    yield ACT_GAP;
 
-  yield ACT_GAP;
+    // Act 2 (x2) — two from the left, two from the right.
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 220, 0, 0);
+    yield SPACING;
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 290, 0, 0);
+    yield SIDE_GAP;
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 220, 0, 0, { script: rightScript });
+    yield SPACING;
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 290, 0, 0, { script: rightScript });
 
-  // Act 2 (x2) — two from the left, two from the right.
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 220, 0, 0);
-  yield SPACING;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 290, 0, 0);
-  yield SIDE_GAP;
-  self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 220, 0, 0, { script: rightScript });
-  yield SPACING;
-  self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 290, 0, 0, { script: rightScript });
+    yield ACT_GAP;
 
-  yield ACT_GAP;
-
-  // Act 3 (x3) — three pinch pairs: each pair has a left and a right
-  // spawn arriving within a few frames of each other, so the player has
-  // to commit to a vertical lane between two converging volleys. Pairs
-  // are spaced further apart than the in-pair beat.
-  const PAIR_BEAT = 12;
-  const BETWEEN_PAIRS = 90;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 200, 0, 0);
-  yield PAIR_BEAT;
-  self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 200, 0, 0, { script: rightScript });
-  yield BETWEEN_PAIRS;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
-  yield PAIR_BEAT;
-  self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 250, 0, 0, { script: rightScript });
-  yield BETWEEN_PAIRS;
-  self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
-  yield PAIR_BEAT;
-  self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 300, 0, 0, { script: rightScript });
+    // Act 3 (x3) — three pinch pairs: each pair has a left and a right
+    // spawn arriving within a few frames of each other, so the player has
+    // to commit to a vertical lane between two converging volleys. Pairs
+    // are spaced further apart than the in-pair beat.
+    const PAIR_BEAT = 12;
+    const BETWEEN_PAIRS = 90;
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 200, 0, 0);
+    yield PAIR_BEAT;
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 200, 0, 0, { script: rightScript });
+    yield BETWEEN_PAIRS;
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
+    yield PAIR_BEAT;
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 250, 0, 0, { script: rightScript });
+    yield BETWEEN_PAIRS;
+    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
+    yield PAIR_BEAT;
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 300, 0, 0, { script: rightScript });
+  });
 }

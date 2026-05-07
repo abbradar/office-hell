@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo, ring } from '../../script/patterns';
-import { markWave } from '../../script/stage';
+import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
@@ -122,7 +122,9 @@ export const importantClient = new EntityKind({
 // before the client appears to be confirmed.
 export function* salesClientWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'sales & client');
-  self.spawn(sales, SALES_X, -30, 0, 0);
-  yield 30;
-  self.spawn(importantClient, CLIENT_X, -30, 0, 0);
+  yield* suspendRunning(self, function* () {
+    self.spawn(sales, SALES_X, -30, 0, 0);
+    yield 30;
+    self.spawn(importantClient, CLIENT_X, -30, 0, 0);
+  });
 }

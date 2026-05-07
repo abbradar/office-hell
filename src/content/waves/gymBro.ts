@@ -3,7 +3,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, race, waitEnemiesClear } from '../../script/stage';
+import { clearBullets, markWave, race, suspendRunning, waitEnemiesClear } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { clearScreen } from '../stage';
@@ -321,8 +321,10 @@ export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {
-    damagedByClass: [],
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {
+      damagedByClass: [],
+    });
+    yield { until: boss };
   });
-  yield { until: boss };
 }

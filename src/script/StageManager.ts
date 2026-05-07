@@ -149,6 +149,12 @@ export class StageManager {
   // Yields whose `describeYield` returns null (e.g. the race form) leave
   // this field unchanged — the previous reason stays visible.
   lastYieldReason: string | null = null;
+  // Whether the corridor is "between encounters" — the MC runs forward and
+  // the floor scrolls past. False during a wave: the MC plants (or moves
+  // sideways under input) and the floor holds still. Stage scripts flip
+  // this around every wave (false at start, true after the field is
+  // clear); the player anim + bg scroll read it directly.
+  running = true;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];

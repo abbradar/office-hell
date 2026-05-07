@@ -146,18 +146,34 @@ export class Player extends Entity {
     }
   }
 
-  // The corridor scrolls forward continuously, so the MC is always running.
-  // Direction comes purely from horizontal input: stationary → up, holding
-  // left/right → run sideways. No enemy check, no idle frames — sliding
-  // sideways while the sprite faces up reads as a hop, so the rule stays
-  // tied to vx alone.
+  // Picks the player anim by context:
+  //  - physics paused (dialogue / tutorial bubble / ESC pause) → freeze the
+  //    current anim on its current frame. Running / idling visibly against
+  //    a locked world reads as a glitch. Read the world flag rather than
+  //    `stage.paused` — tutorial prompts in intro.ts pause physics directly
+  //    (so the script polling for input keeps ticking) without flipping
+  //    `stage.paused`, and we want those frozen too.
+  //  - `stage.running` true (between encounters, the corridor is scrolling)
+  //    → run forward. "Stationary" still reads as running away from the
+  //    camera.
+  //  - `stage.running` false (in a wave) → mirror movement. The MC plants
+  //    when there's something to deal with; running forward would
+  //    overshoot the encounter.
+  //
+  // Direction otherwise comes from horizontal input: stationary → up,
+  // holding left/right → sideways.
   override updateAnim(): void {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
+    if (this.scene.physics.world.isPaused) {
+      if (this.anims.isPlaying) this.anims.pause();
+      return;
+    }
+    if (this.anims.isPaused) this.anims.resume();
     const vx = this.body.velocity.x;
-    const action: Action = 'run';
     const dir: Direction = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
     this.facing = dir;
+    const action: Action = this.stage.running ? 'run' : vx !== 0 ? 'run' : 'idle';
     const key = characterAnimKey(sheet, action, dir);
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }

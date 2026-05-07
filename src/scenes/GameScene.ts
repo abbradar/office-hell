@@ -396,7 +396,13 @@ export class GameScene extends Phaser.Scene {
     // view as physics integrates.
     this.stage.update(time, delta);
     if (!this.stage.paused) {
-      this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+      // Floor only scrolls between encounters — `stage.running` is the
+      // single source of truth, flipped around each wave by the stage
+      // script. The player anim follows the same flag (see
+      // Player.updateAnim), so MC + floor stay in sync.
+      if (this.stage.running) {
+        this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+      }
 
       this.player.controlUpdate();
     } else {

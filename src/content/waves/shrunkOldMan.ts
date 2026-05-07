@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { markWave, waitEnemiesClear } from '../../script/stage';
+import { markWave, suspendRunning, waitEnemiesClear } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 // Circular import: stage.ts also imports shrunkOldManWave from this file. ES
@@ -130,8 +130,10 @@ export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, vo
   yield* waitEnemiesClear(self);
   clearScreen(self);
   yield 30;
-  const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
-    damagedByClass: [],
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
+      damagedByClass: [],
+    });
+    yield { until: boss };
   });
-  yield { until: boss };
 }

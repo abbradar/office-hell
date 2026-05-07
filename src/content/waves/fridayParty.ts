@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
-import { markWave } from '../../script/stage';
+import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { drinkBullet } from './drinkBullet';
@@ -136,13 +136,15 @@ const MEMBERS: readonly MemberSpec[] = [
   { x: GAME_W - 155, y: 145, fireOffset: 120 },
 ];
 
-// biome-ignore lint/correctness/useYield: spawn-only wave; yield-less generator is intentional
 export function* fridayPartyWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'friday party');
-  self.spawn(normieManager, MANAGER_X, -30, 0, 0);
-  for (const m of MEMBERS) {
-    self.spawn(partyMember, m.x, -30, 0, 0, {
-      script: makePartyMemberScript(m.y, m.fireOffset),
-    });
-  }
+  // biome-ignore lint/correctness/useYield: spawn-only body; suspendRunning supplies the yield*
+  yield* suspendRunning(self, function* () {
+    self.spawn(normieManager, MANAGER_X, -30, 0, 0);
+    for (const m of MEMBERS) {
+      self.spawn(partyMember, m.x, -30, 0, 0, {
+        script: makePartyMemberScript(m.y, m.fireOffset),
+      });
+    }
+  });
 }
