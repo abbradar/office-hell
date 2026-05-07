@@ -329,15 +329,13 @@ export class GameScene extends Phaser.Scene {
 
   private pauseGame(): void {
     this.userPaused = true;
-    this.stage.paused = true;
-    this.physics.pause();
+    this.stage.freeze();
     this.showPauseOverlay();
   }
 
   private unpauseGame(): void {
     this.userPaused = false;
-    this.stage.paused = false;
-    this.physics.resume();
+    this.stage.unfreeze();
     this.hidePauseOverlay();
   }
 
@@ -429,8 +427,7 @@ export class GameScene extends Phaser.Scene {
   // self-completes without needing update() ticks.
   private startDeathSequence(): void {
     this.deathStarted = true;
-    this.stage.paused = true;
-    this.physics.pause();
+    this.stage.freeze();
 
     playerDeath();
 

@@ -130,7 +130,9 @@ playback modes: `playMusicLoop(key)` and `playMusicWithIntro(intro, loop)`.
 
 ## Pause semantics
 
-Set by `StageManager.beginDialogue` ([`src/script/StageManager.ts`](../script/StageManager.ts)):
+`StageManager.freeze()` / `unfreeze()` ([`src/script/StageManager.ts`](../script/StageManager.ts))
+bundle the two flags any cutscene-style hard pause needs. Used by
+`beginDialogue`, the ESC menu, and the death sequence:
 
 - `stage.paused = true` (short-circuits `stage.update` so scripts and entity
   AI freeze)

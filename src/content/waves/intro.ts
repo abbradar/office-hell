@@ -38,12 +38,19 @@ type TutorialKind = 'arrows' | 'bomb' | 'fire';
 // also stop the script we're polling from, so instead we pause physics
 // directly (bullets / the email freeze in place) and read input through
 // `key.isDown` / the touch helpers each frame. Player.controlUpdate keeps
-// running, which is fine: a held arrow during the freeze just sets the
-// body's velocity, then physics integrates it the moment we resume.
+// running on the arrows prompt, which is fine: a held arrow during the
+// freeze just sets the body's velocity, then physics integrates it the
+// moment we resume. For bomb / fire prompts we lock controls and zero
+// velocity so left/right doesn't flip the run-anim direction while the
+// player is supposed to be standing still.
 function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Generator<ScriptYield, void, void> {
   const scene = self.scene;
+  const player = self.stage.player;
   scene.physics.pause();
   const dismiss = showTutorialBubble(scene, template);
+
+  const lockMovement = kind !== 'arrows';
+  if (lockMovement) player.lockControls();
 
   const kb = scene.input.keyboard;
   if (!kb) throw new Error('keyboard input plugin missing');
@@ -68,6 +75,7 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
     while (!fireKey.isDown) yield 1;
   }
 
+  if (lockMovement) player.unlockControls();
   dismiss();
   scene.physics.resume();
 }
@@ -79,7 +87,7 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
   // first wave plays normally.
   const p = self.stage.player;
   const ch = p.character;
-  p.controlsEnabled = false;
+  p.lockControls();
   // Shooting stays off through the dodge window too — the player can move
   // to evade the email but can't fire back until the bomb tutorial has
   // unlocked their kit. Re-enabled together with bombs at the end.
@@ -136,7 +144,7 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
   // player already in command — pressing arrow during the prompt sets
   // their velocity (controlUpdate keeps running) and physics integrates
   // it the instant the prompt's wait resolves.
-  p.controlsEnabled = true;
+  p.unlockControls();
   yield* tutorialPrompt(self, ARROW_TEMPLATE, 'arrows');
 
   // Stop the email *just* before it would hit — moveTo halts and snaps

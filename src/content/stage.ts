@@ -100,7 +100,7 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
   const p = self.stage.player;
   // Take the wheel: stop accepting input and let the player float past the top
   // edge unbothered by the world-bounds clamp the live controls relied on.
-  p.controlsEnabled = false;
+  p.lockControls();
   p.body.setCollideWorldBounds(false);
 
   yield* moveTo(p, p.x, PLAYER_OUTRO_PAUSE_Y, PLAYER_OUTRO_SPEED);
@@ -125,7 +125,7 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
   markWave(self, 'intro');
-  self.stage.player.controlsEnabled = false;
+  self.stage.player.lockControls();
   yield 30;
   yield* introMonologue(self);
   yield 30;

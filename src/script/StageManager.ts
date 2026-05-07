@@ -129,7 +129,8 @@ export class StageManager {
   player!: Player;
   // True while a dialog/cutscene wants scripts to freeze. update consults
   // this to short-circuit script ticks; GameScene gates physics + player
-  // input on the same flag.
+  // input on the same flag. Mutate via `freeze()` / `unfreeze()` so the
+  // physics pause stays in lockstep.
   paused = false;
   // Name shown in the HUD header during a boss fight. Set and cleared by
   // the boss's own script — the manager/HUD don't infer it from entity
@@ -468,18 +469,27 @@ export class StageManager {
     }
   }
 
-  private beginDialogue(opts: DialogueOpts, script: SceneScript): void {
-    // Hard pause: scripts freeze (paused = true short-circuits update)
-    // and Phaser physics is paused globally so all bodies — including
-    // the player — sit still. GameScene also gates player input on
-    // stage.paused so held keys don't accumulate during the cutscene.
+  // Hard pause: scripts freeze (paused = true short-circuits update) and
+  // Phaser physics is paused globally so all bodies — including the player
+  // — sit still. GameScene also gates player input on stage.paused so held
+  // keys don't accumulate during the cutscene. Use this from any code path
+  // that wants the same dialogue/cutscene-style freeze (ESC pause, death
+  // sequence, dialogue) so the two flags never drift.
+  freeze(): void {
     this.paused = true;
     this.scene.physics.pause();
+  }
 
+  unfreeze(): void {
+    this.paused = false;
+    this.scene.physics.resume();
+  }
+
+  private beginDialogue(opts: DialogueOpts, script: SceneScript): void {
+    this.freeze();
     const scheduledGen = script.generation;
     this.dialogue.start(opts, () => {
-      this.paused = false;
-      this.scene.physics.resume();
+      this.unfreeze();
       if (script.generation === scheduledGen) this.scheduleIter(script, 1);
     });
   }

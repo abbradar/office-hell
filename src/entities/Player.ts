@@ -25,7 +25,9 @@ export class Player extends Entity {
   // and the post-boss outro) so the live input/auto-fire loop stops running
   // while the script puppets the player. controlUpdate is invoked late in the
   // frame (after stage.update), so a script that sets this earlier in the same
-  // frame is honoured before any input or firing happens.
+  // frame is honoured before any input or firing happens. Mutate via
+  // `lockControls()` / `unlockControls()` so a held arrow doesn't leak
+  // through as a non-zero vx that updateAnim would render as a run.
   controlsEnabled = true;
   // Fine-grained gate for the auto-fire stream: true means firing the bullet
   // stream is allowed (when controls are also on); false suppresses it
@@ -103,6 +105,19 @@ export class Player extends Entity {
   // call sites the `kind.render(this)` indirection.
   render(): void {
     this.kind.render(this);
+  }
+
+  // Disable input *and* zero horizontal velocity. Zeroing matters because
+  // controlUpdate may have set vx from a held arrow on a previous frame
+  // — without it, updateAnim keeps rendering the run-direction frame
+  // until the player happens to release the key.
+  lockControls(): void {
+    this.controlsEnabled = false;
+    this.setVelocityX(0);
+  }
+
+  unlockControls(): void {
+    this.controlsEnabled = true;
   }
 
   override die(): void {
