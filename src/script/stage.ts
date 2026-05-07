@@ -165,12 +165,17 @@ export function* timeWave(
 }
 
 // Bracket a "fight" section inside a wave: plants the MC + stops the
-// floor (`stage.running = false`), runs `body`, waits for the field to
-// clear of enemies, then hands the corridor back. Use this *inside* a
-// wave script around the section that actually spawns and resolves
-// monsters — the wave's setup or trailing sleeps stay in the running
-// state. Body is a generator factory rather than a generator so callers
-// can inline it without an IIFE.
+// floor (`stage.running = false`), runs `body`, then waits for the
+// field to clear of enemies. Body is a generator factory rather than a
+// generator so callers can inline it without an IIFE.
+//
+// Does *not* reset `running` on the way out — that's `separateWave`'s
+// job. Every wave is wrapped with `self.stage.separateWave(...)`,
+// whose `finally` is the single source of truth for restoring the
+// canonical inter-wave state (running / controls / firing / paused /
+// collideWorldBounds). Doing it here too would mean two cleanup paths
+// to keep in sync, and the inner one would be skipped on a mid-flight
+// cancellation (e.g. losing a `timeWave` race) anyway.
 export function* suspendRunning(
   self: Entity,
   body: () => Generator<ScriptYield, void, void>,
@@ -178,7 +183,6 @@ export function* suspendRunning(
   self.stage.running = false;
   yield* body();
   yield* waitEnemiesClear(self);
-  self.stage.running = true;
 }
 
 // --- audio-clock waits ----------------------------------------------------

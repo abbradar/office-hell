@@ -46,16 +46,16 @@ export const firstEmailColleague = new EntityKind({
   defaultScript: leftScript,
 });
 
-// Three-act escalation: x1, x2, x3.
+// Two-act escalation: x1, x2. (Act 3 — three pinch pairs from both sides —
+// is currently commented out below as too hard for this slot.)
 // 1. Two left-side colleagues at staggered heights — the original opener.
 // 2. Twice the count: 2 left + 2 right.
-// 3. Thrice the count: 3 left + 3 right.
 export function* firstEmailColleagues(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'first email colleagues');
   yield* suspendRunning(self, function* () {
     const SPACING = 70;
     const SIDE_GAP = 110;
-    const ACT_GAP = 200;
+    const ACT_GAP = 60;
 
     // Act 1 (x1) — original opener: two from the left.
     self.spawn(firstEmailColleague, SPAWN_LEFT_X, 210, 0, 0);
@@ -69,28 +69,39 @@ export function* firstEmailColleagues(self: Entity): Generator<ScriptYield, void
     yield SPACING;
     self.spawn(firstEmailColleague, SPAWN_LEFT_X, 290, 0, 0);
     yield SIDE_GAP;
-    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 220, 0, 0, { script: rightScript });
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 220, 0, 0, {
+      script: rightScript,
+    });
     yield SPACING;
-    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 290, 0, 0, { script: rightScript });
+    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 290, 0, 0, {
+      script: rightScript,
+    });
 
-    yield ACT_GAP;
-
-    // Act 3 (x3) — three pinch pairs: each pair has a left and a right
-    // spawn arriving within a few frames of each other, so the player has
-    // to commit to a vertical lane between two converging volleys. Pairs
-    // are spaced further apart than the in-pair beat.
-    const PAIR_BEAT = 12;
-    const BETWEEN_PAIRS = 90;
-    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 200, 0, 0);
-    yield PAIR_BEAT;
-    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 200, 0, 0, { script: rightScript });
-    yield BETWEEN_PAIRS;
-    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
-    yield PAIR_BEAT;
-    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 250, 0, 0, { script: rightScript });
-    yield BETWEEN_PAIRS;
-    self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
-    yield PAIR_BEAT;
-    self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 300, 0, 0, { script: rightScript });
+    // yield ACT_GAP;
+    //
+    // // Act 3 (x3) — three pinch pairs: each pair has a left and a right
+    // // spawn arriving within a few frames of each other, so the player has
+    // // to commit to a vertical lane between two converging volleys. Pairs
+    // // are spaced further apart than the in-pair beat. Disabled: too hard
+    // // for this point in the stage.
+    // const PAIR_BEAT = 12;
+    // const BETWEEN_PAIRS = 90;
+    // self.spawn(firstEmailColleague, SPAWN_LEFT_X, 200, 0, 0);
+    // yield PAIR_BEAT;
+    // self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 200, 0, 0, {
+    //   script: rightScript,
+    // });
+    // yield BETWEEN_PAIRS;
+    // self.spawn(firstEmailColleague, SPAWN_LEFT_X, 250, 0, 0);
+    // yield PAIR_BEAT;
+    // self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 250, 0, 0, {
+    //   script: rightScript,
+    // });
+    // yield BETWEEN_PAIRS;
+    // self.spawn(firstEmailColleague, SPAWN_LEFT_X, 300, 0, 0);
+    // yield PAIR_BEAT;
+    // self.spawn(firstEmailColleague, SPAWN_RIGHT_X, 300, 0, 0, {
+    //   script: rightScript,
+    // });
   });
 }

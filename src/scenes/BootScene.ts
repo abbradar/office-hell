@@ -37,6 +37,18 @@ export class BootScene extends Phaser.Scene {
     setMusicManager(this.sound);
     configureVoiceCaps();
 
+    // Take over Phaser's blur/focus audio handling. The default
+    // (pauseOnBlur = true) suspends the AudioContext on blur and resumes
+    // it on focus — but `WebAudioSoundManager.update` also calls
+    // `context.resume()` every frame whenever the game has focus, which
+    // means any code that suspends the context loses to Phaser the next
+    // tick. iOS additionally fails to auto-resume reliably when the user
+    // returns to the tab. Owning the response ourselves lets the
+    // GameScene route blur to its pause overlay (which already calls
+    // `pauseMusic()`), so blur-pause and ESC-pause go through the same
+    // path and behave consistently across desktop and iOS.
+    this.sound.pauseOnBlur = false;
+
     // Queue the heavy stuff (character sheets + gameplay audio) and kick the
     // loader. Phaser is happy to run a second pass after preload — the
     // existing PROGRESS handler refills the bar for this batch.

@@ -282,6 +282,15 @@ export class StageManager {
   // completions) see a non-matching generation on fire and silently
   // drop. Recurses into `raceChildren` and `waitingChildren` so a
   // nested race / all tree is taken down in one pass.
+  //
+  // After marking dead, calls `iter.return()` on the generator so any
+  // active `try/finally` blocks unwind. The generation flip happens
+  // first so a finally that schedules more work (or wakes a parent)
+  // sees a null generation and is silently ignored. Race / all children
+  // are dropped before the parent's finally runs so their cleanup
+  // observes a coherent torn-down tree. A yield emitted from inside a
+  // finally is ignored — drop semantics are "this script is gone", no
+  // further scheduling.
   private drop(script: SceneScript): void {
     script.generation = null;
     const racers = script.raceChildren;
@@ -293,6 +302,33 @@ export class StageManager {
     if (allChildren !== undefined) {
       script.waitingChildren = undefined;
       for (const c of allChildren) this.drop(c);
+    }
+    try {
+      script.iter.return();
+    } catch (err) {
+      // A throw from a finally block is a script bug, but it shouldn't
+      // bring down the engine — log and keep going.
+      console.error('script finally threw during drop', err);
+    }
+  }
+
+  // Higher-order generator: run `inner` and, on exit by any path
+  // (normal completion, throw, or `iter.return()` from `drop`), restore
+  // the canonical inter-wave state. Wrap every wave body with this so
+  // a wave cut mid-flight (e.g. lost a `timeWave` race) doesn't leak
+  // its temporary "no movement / no controls / no firing / paused"
+  // state into the next slot. This is the single source of truth for
+  // the reset — individual wave bodies don't (and shouldn't) clean up
+  // their own flags at the end.
+  *separateWave(inner: ScriptIter): ScriptIter {
+    try {
+      yield* inner;
+    } finally {
+      this.running = true;
+      this.player.unlockControls();
+      this.player.firingEnabled = true;
+      this.player.body.setCollideWorldBounds(true);
+      this.unfreeze();
     }
   }
 

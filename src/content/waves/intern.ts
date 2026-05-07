@@ -5,21 +5,20 @@ import { markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
-// Stage-globals key gating the intern report-phrase line. Set as soon as one
-// intern is dispatched to speak it, so every other intern in this stage's
-// lifetime stays silent.
+// Stage-globals key gating the intern report-phrase line. The first intern
+// to actually reach the say point claims the flag, so any earlier intern
+// that died before getting there leaves the line open for the next one.
 const INTERN_REPORT_SAID = 'internReportSaid';
 
 // Intern: a low-stakes opener enemy. Walks in from the top, drifts toward the
 // side of the screen, lobs a couple of report bullets, and is one-shot.
 //
 // `side` is the horizontal exit direction: -1 = left, +1 = right.
-// `sayReport` opts the intern in to the "Can you help with this report?" line —
-// the spawner gates this so only the very first intern in the stage speaks.
-function makeInternScript(side: -1 | 1, sayReport: boolean): EntityScript {
+function makeInternScript(side: -1 | 1): EntityScript {
   return function* (self: Entity) {
     self.setVelocity(0, 110);
-    if (sayReport) {
+    if (!self.stage.globals[INTERN_REPORT_SAID]) {
+      self.stage.globals[INTERN_REPORT_SAID] = true;
       self.say('Can you help\nwith this report?', 90);
     }
     yield 50;
@@ -41,8 +40,8 @@ export const intern = new EntityKind({
 });
 
 // A line of interns trickling in from the top, all aimed at the same exit
-// side. Only the very first intern dispatched in this stage speaks the
-// report phrase — the flag flips the moment that one is queued.
+// side. The script itself gates the report-phrase line via stage globals,
+// so the first intern that survives to speak claims it.
 export function* internLine(
   self: Entity,
   startX: number,
@@ -51,11 +50,9 @@ export function* internLine(
   spacingFrames = 28,
 ): Generator<ScriptYield, void, void> {
   for (let i = 0; i < count; i++) {
-    const sayReport = !self.stage.globals[INTERN_REPORT_SAID];
     self.spawn(intern, startX, -30, 0, 0, {
-      script: makeInternScript(side, sayReport),
+      script: makeInternScript(side),
     });
-    if (sayReport) self.stage.globals[INTERN_REPORT_SAID] = true;
     if (i < count - 1) yield spacingFrames;
   }
 }

@@ -16,6 +16,7 @@ import {
   timeWave,
   waitEnemiesClear,
   waitScreenClear,
+  waitSeconds,
   waitTrackEnded,
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
@@ -40,6 +41,13 @@ import { wellnessCoachWave } from './waves/wellnessCoach';
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
 const PLAYER_OUTRO_EXIT_Y = -60;
+
+// Audio-time gap after a wave clears before the next one starts. With
+// `stage.running` already true between waves, this is the breath where
+// the MC actually runs forward through an empty corridor — without it
+// the next wave spawns the moment the previous one was swept and the
+// "I'm advancing" beat reads as a hard cut.
+const INTER_WAVE_GAP = 3;
 
 // Kill every non-player entity outright. die() only flips the alive flag and
 // fires onDeath; group cleanup happens later in stage.update, so we can iterate
@@ -81,13 +89,25 @@ export type WaveDef = {
 // cut / not-yet-placed content.
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
-  { id: 'r-first-email-colleagues', name: 'First Email Colleagues', script: firstEmailColleagues },
+  {
+    id: 'r-first-email-colleagues',
+    name: 'First Email Colleagues',
+    script: firstEmailColleagues,
+  },
   { id: 'r-interns', name: 'Interns', script: internsWave },
   { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
   { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
   { id: 'r-gym-bro', name: 'First Boss — Brad', script: gymBroWave },
-  { id: 'r-vacation-photos', name: 'Vacation Photos', script: vacationPhotosWave },
-  { id: 'r-shrunk-old-man', name: 'Stage Boss — Mr. Hodges', script: shrunkOldManWave },
+  {
+    id: 'r-vacation-photos',
+    name: 'Vacation Photos',
+    script: vacationPhotosWave,
+  },
+  {
+    id: 'r-shrunk-old-man',
+    name: 'Stage Boss — Mr. Hodges',
+    script: shrunkOldManWave,
+  },
   { id: 'boss', name: 'Boss — The Boss', script: bossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
   { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
@@ -127,11 +147,12 @@ function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
 // isn't meaningful.
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // Intro: lock controls, half-second pause, monologue, half-second pause.
-  markWave(self, 'intro');
-  self.stage.player.lockControls();
-  yield 30;
-  yield* introMonologue(self);
-  yield 30;
+  // FIXME: disable for quicker debugging.
+  // markWave(self, 'intro');
+  // self.stage.player.lockControls();
+  // yield 30;
+  // yield* introMonologue(self);
+  // yield 30;
 
   // Retro opening fanfare → retro 01 loop. `startMusicWithIntro` yields
   // until the track is actually ticking, so the wave below sees music up.
@@ -144,13 +165,19 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   // timeWave caps long spawn sequences, pads short ones, and sweeps
   // surviving enemies at the slot's end so the schedule doesn't drift
   // with how the player is doing. Bullets in flight carry over so the
-  // seam isn't a hard reset. Total ≈59s, sized to fit under the retro
-  // 01 loop's 60s body; `waitTrackEnded` below snaps the music switch
-  // to the natural loop boundary regardless of where the waves land.
-  yield* timeWave(self, 18, firstEmailColleagues(self));
-  yield* timeWave(self, 11, internsWave(self));
-  yield* timeWave(self, 17, checkEmailWave(self));
-  yield* timeWave(self, 13, colleaguesWave(self));
+  // seam isn't a hard reset. `waitSeconds(INTER_WAVE_GAP)` between
+  // slots gives the corridor a breath where the MC runs forward with
+  // no enemies on screen. Total = 59s (4 waves: 11+11+13+15 = 50s, plus
+  // 3 × 3s gaps), sized to fit under the retro 01 loop's 60s body;
+  // any leftover budget is absorbed by `waitTrackEnded` snapping to
+  // the next natural loop boundary regardless of where the waves land.
+  yield* timeWave(self, 11, self.stage.separateWave(internsWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 11, self.stage.separateWave(firstEmailColleagues(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 13, self.stage.separateWave(colleaguesWave(self)));
+  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 15, self.stage.separateWave(checkEmailWave(self)));
 
   // Halfway pivot — snap the music switch to the next loop boundary so
   // the cut lands on a musical seam rather than mid-bar.
@@ -160,28 +187,30 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 
   // First boss — Brad. Drops in right at the music seam so the new
   // track's first measures are his entrance.
-  yield* gymBroWave(self);
+  yield* self.stage.separateWave(gymBroWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
 
-  yield* vacationPhotosWave(self);
+  yield* self.stage.separateWave(vacationPhotosWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
 
   // Stage boss — internal script waits for field to clear, then plays
   // its own dialogue + attack loop. The metal music switch below gates
   // on his death via waitEnemiesClear.
-  yield* shrunkOldManWave(self);
+  yield* self.stage.separateWave(shrunkOldManWave(self));
 
   markWave(self, 'music: metal');
   yield* waitEnemiesClear(self);
   yield* waitTrackEnded();
   yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
 
-  yield* bossWave(self);
+  yield* self.stage.separateWave(bossWave(self));
 
   // Outro: brief pause, sweep stragglers, brief pause, player exits.
   markWave(self, 'outro');
   yield 30;
   clearScreen(self);
   yield 30;
-  yield* playerOutro(self);
+  yield* self.stage.separateWave(playerOutro(self));
 
   markWave(self, 'end');
   self.scene.scene.start('End', { won: true });
@@ -199,7 +228,7 @@ export const stage = new EntityKind({
 export function makeWaveStage(wave: WaveDef): EntityKind {
   function* waveStageScript(self: Entity) {
     yield 30;
-    yield* wave.script(self);
+    yield* self.stage.separateWave(wave.script(self));
     // Wait until everything non-player has cleared the field naturally before
     // handing back to the menu.
     yield* waitScreenClear(self);

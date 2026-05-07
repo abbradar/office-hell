@@ -60,6 +60,13 @@ let current: LoopState | null = null;
 // the clock keeps advancing across the loop boundary.
 let trackStartCtxTime: number | null = null;
 
+// Pause-menu state. `pauseMusic` snapshots the audio-context clock here so
+// `resumeMusic` can shift `trackStartCtxTime` forward by the pause duration
+// — `getMusicTime()` is computed against the (un-suspendable) AudioContext
+// clock, so without the shift it would advance during the pause and waits
+// gated on audio time would skip ahead on resume.
+let pausedAtCtxTime: number | null = null;
+
 const DEFAULT_VOL = 0.5;
 
 export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {}): void {
@@ -283,6 +290,32 @@ export function stopMusicLoop(): void {
   current.onComplete = [];
   current = null;
   trackStartCtxTime = null;
+  pausedAtCtxTime = null;
+}
+
+// Pause the active music in place. Used by the ESC pause menu so the score
+// stops while the overlay is up. Calls Phaser's per-sound `pause()` on the
+// active intro / loop sounds; the AudioContext keeps advancing (Phaser's
+// sound-manager update calls `context.resume()` every frame, so suspending
+// the context wouldn't stick), so on resume we shift `trackStartCtxTime`
+// forward by the pause duration to keep `getMusicTime()` aligned with the
+// actual music position.
+export function pauseMusic(): void {
+  if (!current || !musicBus) return;
+  if (pausedAtCtxTime !== null) return;
+  pausedAtCtxTime = musicBus.context.currentTime;
+  if (current.intro) current.intro.pause();
+  for (const s of current.sounds) s.pause();
+}
+
+export function resumeMusic(): void {
+  if (!current || !musicBus) return;
+  if (pausedAtCtxTime === null) return;
+  const pauseDuration = musicBus.context.currentTime - pausedAtCtxTime;
+  pausedAtCtxTime = null;
+  if (trackStartCtxTime !== null) trackStartCtxTime += pauseDuration;
+  if (current.intro) current.intro.resume();
+  for (const s of current.sounds) s.resume();
 }
 
 // Seconds since the currently-playing track began. Returns null both when no

@@ -181,9 +181,72 @@ Resolution paths:
   in-flight wakeups stale.
 
 There is no result channel: the parent resumes whenever one branch
-wins and infers outcome from world state. Inner's `finally` blocks
-don't run on cancellation; if you need cleanup, do it explicitly
-before yielding.
+wins and infers outcome from world state. The loser is dropped via
+`StageManager.drop`, which calls `iter.return()` on the cancelled
+generator — so any `try/finally` inside the loser unwinds and runs
+its cleanup. The generation flip happens before the `return()` so a
+finally that schedules more work (or wakes a parent) sees a null
+generation and is silently ignored. Race / all children are dropped
+before the parent's own finally runs, so nested cancellation is
+inside-out.
+
+## Wave cleanup — `separateWave`
+
+Waves can leave the world in non-default state: `stage.running =
+false`, `player.controlsEnabled = false`, `player.firingEnabled =
+false`, physics paused (via `freeze()` or a tutorial bubble's direct
+`physics.pause()`), `player.body.setCollideWorldBounds(false)`. If a
+wave is *cancelled* mid-flight — most commonly because a `timeWave`
+slot's timeout wins the race — those flags would otherwise leak into
+the next slot.
+
+`StageManager.separateWave(inner)` is the higher-order generator that
+prevents the leak. It runs `inner` and, in a `finally`, restores the
+canonical inter-wave state:
+
+```ts
+*separateWave(inner: ScriptIter): ScriptIter {
+  try {
+    yield* inner;
+  } finally {
+    this.running = true;
+    this.player.unlockControls();
+    this.player.firingEnabled = true;
+    this.player.body.setCollideWorldBounds(true);
+    this.unfreeze();
+  }
+}
+```
+
+Combined with the `iter.return()`-on-drop behaviour above, this fires
+on every exit path: normal completion, a thrown error, or a
+mid-flight drop from losing a race. Wrap **every** wave call with it:
+
+```ts
+yield* self.stage.separateWave(gymBroWave(self));
+yield* timeWave(self, 18, self.stage.separateWave(firstEmailColleagues(self)));
+```
+
+### Convention: don't clean up inside a wave
+
+When you write a wave body, **do whatever needs to be done, but do
+not clean up at the end** — don't reset `stage.running` to `true`,
+don't re-enable firing, don't unlock controls. `separateWave`'s
+`finally` is the **single source of truth** for restoring the
+canonical state, and it's the only path that fires on a mid-flight
+cancellation. A second cleanup path inside the wave body would be
+silently skipped on cancellation and would have to be kept in sync
+with `separateWave` by hand.
+
+This applies to `suspendRunning` too: it sets `running = false` and
+waits for the field to clear, but does *not* reset `running` on the
+way out — `separateWave` handles that.
+
+The only state mutations a wave should leave behind are *intentional
+permanent changes* — e.g. the intro setting `player.kind.bombs =
+PLAYER_BOMBS` to unlock bombs, or a boss script setting
+`stage.bossName` (which is cleared by the boss's `onDeath` callback
+on either natural defeat or forced release).
 
 ## Currently shipped stages
 

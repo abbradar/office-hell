@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
+import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
@@ -301,7 +301,27 @@ export class GameScene extends Phaser.Scene {
     kb.on('keydown-ESC', this.handleEscape, this);
     kb.on('keydown-Z', this.handleResume, this);
 
+    // Auto-pause when the player tabs away or hides the page. We own
+    // this because BootScene set `sound.pauseOnBlur = false` to take
+    // over from Phaser's per-frame onFocus contention. Both events fire
+    // because no single one is reliable across platforms — desktop
+    // browsers fire window blur, iOS Safari only fires visibilitychange
+    // when the tab actually hides. Resume is intentionally manual: the
+    // pause overlay stays up after focus returns so the player chooses
+    // when to drop back into bullets.
+    const onLoseFocus = (): void => {
+      if (this.userPaused || this.stage.paused) return;
+      this.pauseGame();
+    };
+    this.game.events.on(Phaser.Core.Events.BLUR, onLoseFocus);
+    const onVisibility = (): void => {
+      if (document.hidden) onLoseFocus();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(Phaser.Core.Events.BLUR, onLoseFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (this.practiceWave) {
         this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.practiceWave.id, this.playerKind.hits);
       }
@@ -330,12 +350,14 @@ export class GameScene extends Phaser.Scene {
   private pauseGame(): void {
     this.userPaused = true;
     this.stage.freeze();
+    pauseMusic();
     this.showPauseOverlay();
   }
 
   private unpauseGame(): void {
     this.userPaused = false;
     this.stage.unfreeze();
+    resumeMusic();
     this.hidePauseOverlay();
   }
 
