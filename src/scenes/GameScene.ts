@@ -12,14 +12,6 @@ import { FLOOR_PATTERN_KEY } from '../content/textures';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
-import {
-  BOMB_BUTTON_RADIUS,
-  BOMB_BUTTON_X,
-  bombButtonY,
-  clearBombPress,
-  TOUCH_BUTTON_RADIUS,
-  touchButtonY,
-} from '../input/touch';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -41,6 +33,37 @@ const CORRIDOR_SCROLL_PX_PER_MS = 0.8;
 const WALL_W = 40;
 
 const HEADER_H = 28;
+
+const TOUCH_BUTTON_RADIUS = 90;
+const BOMB_BUTTON_RADIUS = 50;
+const BOMB_BUTTON_X = GAME_W / 2;
+
+// On touch devices with a control band, the move pads hug the canvas
+// bottom (lower half clips off-screen — the corner position works well
+// for a thumb at the edge). Without a band (desktop), they fall back to
+// the original in-playfield position.
+function touchButtonY(scale: Phaser.Scale.ScaleManager): number {
+  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 60;
+}
+
+// With a control band, the bomb button sits at the canvas bottom (same y
+// as the move pads) — the centre column (x ≈ 90..310) is clear of either
+// move circle so the bomb ring is fully visible without overlapping.
+// Without a band (desktop), it tucks above the move pad inside the playfield.
+function bombButtonY(scale: Phaser.Scale.ScaleManager): number {
+  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 220;
+}
+
+function anyHeldInCircle(pointers: Phaser.Input.Pointer[], cx: number, cy: number, r: number): boolean {
+  const r2 = r * r;
+  for (const p of pointers) {
+    if (!p.isDown) continue;
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    if (dx * dx + dy * dy <= r2) return true;
+  }
+  return false;
+}
 
 export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
 
@@ -80,6 +103,12 @@ export class GameScene extends Phaser.Scene {
   // game-over transition. Idempotent: keeps update() from re-firing the
   // sequence on every subsequent frame while the animation plays out.
   private deathStarted = false;
+  // Edge-triggered touch bomb input — matches keyboard JustDown(X)
+  // semantics. Set on a pointerdown inside the bomb circle and drained
+  // by consumeBombPress. Tracking only pointerdown (not pointermove)
+  // means a finger sliding off the move pad into the bomb region won't
+  // accidentally burn a bomb.
+  private bombPending = false;
 
   constructor() {
     super('Game');
@@ -91,8 +120,31 @@ export class GameScene extends Phaser.Scene {
     this.musicMode = data?.music ?? null;
   }
 
+  consumeBombPress(): boolean {
+    const pending = this.bombPending;
+    this.bombPending = false;
+    return pending;
+  }
+
+  isLeftHeld(): boolean {
+    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
+  }
+
+  isRightHeld(): boolean {
+    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
+  }
+
   create(): void {
     stopMusicLoop();
+
+    // Scene-level pointer listener auto-cleans on shutdown. Pointer
+    // coords are already in game space (Phaser's scale manager handles
+    // the canvas-fit transform), so a plain distance check is enough.
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const dx = pointer.x - BOMB_BUTTON_X;
+      const dy = pointer.y - bombButtonY(this.scale);
+      if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
+    });
 
     // Floor: tiled diamond pattern (recolored to two warm greys at boot)
     // scrolling vertically as the corridor advances. Spans the full
@@ -195,8 +247,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isTouchDevice) {
-      const moveY = touchButtonY(this.game);
-      const bombY = bombButtonY(this.game);
+      const moveY = touchButtonY(this.scale);
+      const bombY = bombButtonY(this.scale);
       this.add
         .circle(0, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
         .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
@@ -353,7 +405,7 @@ export class GameScene extends Phaser.Scene {
       // Drop any queued bomb tap while paused — every pointerdown
       // advances dialogue, so a tap that happened to land in a bomb
       // circle would otherwise fire a bomb the moment play resumes.
-      clearBombPress();
+      this.consumeBombPress();
     }
     // Player isn't part of stage.active, so its anim doesn't get the per-tick
     // refresh that pooled entities get inside stage.update — drive it here. Run

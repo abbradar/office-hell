@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { characterAnimKey, type Direction, directionFromVelocity } from '../content/animations';
+import type { GameScene } from '../scenes/GameScene';
 import type { SceneScript, StageManager } from '../script/StageManager';
 import { type DamageClass, type EntityKind, INERT_KIND, type ScriptYield, type SpawnOpts } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
@@ -16,6 +17,11 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // destroyed for the lifetime of the entity, so we can narrow it here and
   // skip the `as Phaser.Physics.Arcade.Body` cast at every call site.
   declare body: Phaser.Physics.Arcade.Body;
+  // Every entity in this codebase is constructed inside GameScene (StageManager
+  // is created there and is the only `spawn` caller), so narrow the inherited
+  // Phaser.Scene typing to GameScene — call sites can reach scene-specific
+  // methods (consumeBombPress) without casts.
+  declare scene: GameScene;
 
   stage!: StageManager;
   kind: EntityKind = INERT_KIND;

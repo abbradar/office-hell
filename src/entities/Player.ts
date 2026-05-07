@@ -7,7 +7,6 @@ import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import { isTouchDevice } from '../input/device';
-import { consumeBombPress, isLeftHeld, isRightHeld } from '../input/touch';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
@@ -155,8 +154,8 @@ export class Player extends Entity {
     if (!this.alive || !this.controlsEnabled) return;
 
     let dir = 0;
-    if (this.leftKey.isDown || isLeftHeld(this.scene.game)) dir -= 1;
-    if (this.rightKey.isDown || isRightHeld(this.scene.game)) dir += 1;
+    if (this.leftKey.isDown || this.scene.isLeftHeld()) dir -= 1;
+    if (this.rightKey.isDown || this.scene.isRightHeld()) dir += 1;
 
     const half = this.width / 2;
     if (dir < 0 && this.x <= half) dir = 0;
@@ -187,7 +186,7 @@ export class Player extends Entity {
     // run every frame, the script polls every other frame, so half the
     // taps got eaten here before the tutorial saw them).
     const bombJustDown = Phaser.Input.Keyboard.JustDown(this.bombKey);
-    if (this.kind.bombs > 0 && (bombJustDown || consumeBombPress())) {
+    if (this.kind.bombs > 0 && (bombJustDown || this.scene.consumeBombPress())) {
       this.kind.consumeBomb(this);
       activateBomb(this, this.stage);
     }

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { computeCanvasH } from './canvasSize';
 import { GAME_W } from './config';
-import { initTouch } from './input/touch';
 import { BootScene } from './scenes/BootScene';
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
@@ -36,10 +35,12 @@ const game = new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
+  // Grow the touch-pointer pool past Phaser's default of 1 so two-thumb
+  // multi-touch (a finger on a move pad plus another on the bomb pad)
+  // is tracked simultaneously.
+  input: { activePointers: 8 },
   scene: [BootScene],
 });
-
-initTouch(game);
 
 // Expose the game for in-browser debugging + automated tests (the
 // playwright stress test reads `__game.loop.actualFps` and pokes into
