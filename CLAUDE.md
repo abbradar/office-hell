@@ -109,11 +109,11 @@ support gap (Safari) is acknowledged; a fallback path can be added later.
 `StageManager.beginDialogue` sets `stage.paused = true` AND
 `scene.physics.pause()`. While paused: no script ticks, no body
 integration, no player input (`GameScene.update` gates `controlUpdate`
-on `!stage.paused`). Music is also paused (via `pauseMusic()` inside
-`StageManager.freeze()`) so audio-time waits parked on the script-frame
-queue can't drift behind a music clock that's still advancing during a
-freeze. A previous Touhou-style soft-pause experiment (player could move
-during dialogs) was reverted.
+on `!stage.paused`). Music is **not** paused — audio-time waits use the
+`untilMusicTime` yield, which schedules off `scene.time.delayedCall`
+(wall-clock based, not gated by either pause flag) so it stays in step
+with the still-running music. A previous Touhou-style soft-pause
+experiment (player could move during dialogs) was reverted.
 
 ### Fonts
 

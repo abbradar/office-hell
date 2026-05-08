@@ -31,6 +31,17 @@ export type ObjectScriptYield =
   // and should not yield this — use `waitTrackEnded` which routes loops
   // through a polling boundary computation instead.
   | { untilMusicEnds: true }
+  // Wait until the active track's clock reaches `untilMusicTime` (seconds,
+  // measured from the track's start). Scheduled via
+  // `scene.time.delayedCall` against the current music-clock delta — the
+  // wakeup is wall-clock based, not gated by either pause flag, so it
+  // stays in step with the music through dialogue / freeze (music keeps
+  // playing through those). The fire callback re-reads the music clock
+  // and reschedules if the music drifted behind (e.g. ESC pause shifted
+  // its clock backwards mid-wait); typical case fires once. Resolves
+  // immediately when no track is playing — callers that need to wait for
+  // music to come up should gate on `awaitMusicTicking` first.
+  | { untilMusicTime: number }
   // Race several sub-generators in parallel; the first one to finish
   // wins, the rest are cancelled via the engine's drop mechanism, and
   // the parent resumes. An empty array resolves on the next frame.

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { onceMusicComplete, pauseMusic, resumeMusic } from '../audio/music/loop';
+import { getMusicTime, onceMusicComplete } from '../audio/music/loop';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
@@ -29,6 +29,7 @@ function describeYield(v: ScriptYield): string | null {
   if ('dialogue' in v) return 'dialogue';
   if ('until' in v) return `until ${v.until.kind.sprite ?? 'entity'} dies`;
   if ('untilMusicEnds' in v) return 'music ends';
+  if ('untilMusicTime' in v) return `music time ${v.untilMusicTime.toFixed(2)}s`;
   return null;
 }
 
@@ -367,6 +368,45 @@ export class StageManager {
     this.physicsWaiting.push({ framesLeft, script, scheduledGeneration: script.generation! });
   }
 
+  // Wake the script when the active music track's clock crosses `target`
+  // seconds. Single-shot timer against the current music-clock delta —
+  // no per-frame polling. Runs on `scene.time.delayedCall`, which keeps
+  // ticking through `freeze()` (we only freeze the script + physics
+  // queues, not the scene), so a wait parked across a dialogue still
+  // fires in step with the still-playing music.
+  //
+  // The fire callback re-reads the music clock and reschedules if the
+  // music drifted behind the wall clock since the timer was set — only
+  // possible when something paused the music (ESC pause / blur), since
+  // `getMusicTime` accounts for `pauseMusic` by shifting the track
+  // start. Typical case fires once.
+  private scheduleMusicTimeWait(script: SceneScript, target: number): void {
+    const scheduledGen = script.generation;
+    const fire = (): void => {
+      if (script.generation !== scheduledGen) return;
+      const m = getMusicTime();
+      // Track stopped or already past target → wake the script. The
+      // 1-frame round-trip mirrors how `untilMusicEnds` wakes via the
+      // script-frame queue.
+      if (m === null || m.time >= target) {
+        this.scheduleScriptWait(script, 1);
+        return;
+      }
+      // Music drifted behind (paused mid-wait) — reschedule for the
+      // remaining gap. While music stays paused this loops at the
+      // (constant) gap interval, which is wasteful but correct; an ESC
+      // pause that traps a music-time wait simply re-checks every
+      // `target - m.time` seconds until the player unpauses.
+      this.scene.time.delayedCall((target - m.time) * 1000, fire);
+    };
+    const m = getMusicTime();
+    if (m === null || m.time >= target) {
+      this.scheduleScriptWait(script, 1);
+      return;
+    }
+    this.scene.time.delayedCall((target - m.time) * 1000, fire);
+  }
+
   // Start a script on an already-spawned entity. If the entity already
   // has a script running, drop it first so its parked wakeups silently
   // expire — the entity is now driven by the new script. The first body
@@ -559,6 +599,8 @@ export class StageManager {
       onceMusicComplete(() => {
         if (script.generation === scheduledGen) this.scheduleScriptWait(script, 1);
       });
+    } else if ('untilMusicTime' in v) {
+      this.scheduleMusicTimeWait(script, v.untilMusicTime);
     } else if ('race' in v) {
       this.beginRace(v.race, script);
     } else if ('all' in v) {
@@ -643,30 +685,27 @@ export class StageManager {
     }
   }
 
-  // Hard pause: scripts freeze (paused = true short-circuits update),
+  // Hard pause: scripts freeze (paused = true short-circuits update) and
   // Phaser physics is paused globally so all bodies — including the player
-  // — sit still, and the active music track is paused so its clock doesn't
-  // race ahead of the (now-stalled) script-frame queue. GameScene also
-  // gates player input on stage.paused so held keys don't accumulate
-  // during the cutscene. Use this from any code path that wants the same
-  // dialogue/cutscene-style freeze (ESC pause, death sequence, dialogue)
-  // so the flags never drift.
+  // — sit still. GameScene also gates player input on stage.paused so held
+  // keys don't accumulate during the cutscene. Use this from any code path
+  // that wants the same dialogue/cutscene-style freeze (ESC pause, death
+  // sequence, dialogue) so the two flags never drift.
   //
-  // Pausing music here keeps `waitAudioTimeAtLeast` / `waitTrackEnded` /
-  // `waitSeconds` aligned with the music: each yields a script-frame wait
-  // computed from the music clock at call time, and that queue stops
-  // ticking on freeze. If the music kept playing through the freeze, the
-  // wait would resume `pauseDuration` of music time too late.
+  // Music is intentionally left running through dialogue freezes. Audio-
+  // time waits (`waitAudioTimeAtLeast`, `waitTrackEnded`) yield
+  // `untilMusicTime`, which schedules off the wall-clock via
+  // `scene.time.delayedCall` and isn't gated by either pause flag — so
+  // the music + the wait both keep advancing through the freeze and
+  // arrive at the seam together.
   freeze(): void {
     this.paused = true;
     this.scene.physics.pause();
-    pauseMusic();
   }
 
   unfreeze(): void {
     this.paused = false;
     this.scene.physics.resume();
-    resumeMusic();
   }
 
   private beginDialogue(opts: DialogueOpts, script: SceneScript): void {

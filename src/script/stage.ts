@@ -177,19 +177,14 @@ export function* suspendRunning(
 
 // Yield until the current track's clock reaches `t` (seconds, from the
 // track's start). Blocks until music is ticking — a wait following a
-// music switch naturally pauses through the load gap. Once we have a
-// reading, compute the remaining frames once and yield in a single shot:
-// the script-frame queue runs at SCRIPT_FPS so re-polling in a loop adds
-// nothing. Yields script frames so the wait keeps tracking the music
-// clock through dialogue / freeze (music doesn't pause with physics).
+// music switch naturally pauses through the load gap. The actual wait
+// rides on `untilMusicTime`, which schedules a single `delayedCall`
+// against the music clock and keeps ticking through dialogue freezes
+// (music plays through them too), so a freeze parked over the seam
+// doesn't shift the wakeup.
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
   yield* awaitMusicTicking();
-  const m = getMusicTime();
-  // awaitMusicTicking only returns once getMusicTime is non-null.
-  if (m === null) return;
-  const frames = framesForSeconds(t - m.time);
-  if (frames <= 0) return;
-  yield { scriptFrames: frames, yieldReason: `audio time ${t}s reached` };
+  yield { untilMusicTime: t, yieldReason: `audio time ${t}s reached` };
 }
 
 // Yield until the active one-shot track's natural completion. Loops
@@ -235,9 +230,7 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
     const iterations = Math.floor(elapsedInLoop / info.loopDuration) + 1;
     nextBoundary = info.introDuration + iterations * info.loopDuration;
   }
-  const frames = framesForSeconds(nextBoundary - start);
-  if (frames <= 0) return;
-  yield { scriptFrames: frames, yieldReason: 'loop ended' };
+  yield { untilMusicTime: nextBoundary, yieldReason: 'loop ended' };
 }
 
 // --- world-state waits ----------------------------------------------------
