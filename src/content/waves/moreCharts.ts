@@ -111,7 +111,7 @@ const PIE_FILL_LAYERS = [
   { r: 20, offsets: [-Math.PI / 12, 0, Math.PI / 12] },
   { r: 28, offsets: [-Math.PI / 10, 0, Math.PI / 10] },
 ] as const;
-const PIE_FLY_SPEED = 260;
+const PIE_FLY_SPEED = 380;
 // Three pies spawn around the colleague: one centre, one left, one right.
 // 90px lateral offset is wider than a pie's diameter (2 × PIE_RIM_R = 72)
 // so the discs read as separate charts rather than overlapping blobs.
@@ -190,7 +190,7 @@ function* firePieBarrage(self: Entity): Generator<ScriptYield, void, void> {
 const COLUMN_HEIGHTS = [4, 7, 5, 8, 6, 4, 7, 5, 8, 6, 5] as const;
 const COLUMN_COUNT = COLUMN_HEIGHTS.length;
 const COLUMN_STRIDE = 36;
-const COLUMN_FLY_SPEED = 110;
+const COLUMN_FLY_SPEED = 170;
 const COLUMN_VOLLEYS = 4;
 
 // Bullet grid that composes one column block. BLOCK_BULLET_PITCH is the
@@ -274,7 +274,7 @@ function* pieColleagueScript(self: Entity): Generator<ScriptYield, void, void> {
   // Run the chart sequence and the side-ring stream in parallel. The
   // race ends the moment the chart sequence finishes, dropping the side
   // stream so it doesn't keep firing while the colleague pivots to exit.
-  yield { race: [pieFireSequence(self), fireSideRings(self)] };
+  yield { race: [pieFireSequence(self), fireSideRings(self, PIE_SIDE_RING_INTERVAL)] };
 
   self.setVelocity(0, EXIT_SPEED);
 }
@@ -295,20 +295,24 @@ function nextGapIndex(previous: number | null): number {
   return skip < previous ? skip : skip + 1;
 }
 
-// Background pressure during a chart fight: every SIDE_RING_INTERVAL
-// frames the colleague spits out a small ring of plain bullets at a
-// random base angle. Fired in parallel with the main chart sequence so
-// the player has to weave the random bullets at the same time as the
-// pies / maze. Cancelled (by the surrounding `race`) the moment the
-// chart sequence completes.
+// Background pressure during a chart fight: every `interval` frames the
+// colleague spits out a small ring of plain bullets at a random base
+// angle. Fired in parallel with the main chart sequence so the player
+// has to weave the random bullets at the same time as the pies / maze.
+// Cancelled (by the surrounding `race`) the moment the chart sequence
+// completes. The pie phase passes a 5× tighter interval so the random
+// stream is dense enough to demand active dodging on top of reading
+// the pie spread; the bar phase keeps the original cadence so the
+// maze itself stays the dominant pressure.
 const SIDE_RING_COUNT = 4;
 const SIDE_RING_SPEED = 90;
-const SIDE_RING_INTERVAL = 50;
+const BAR_SIDE_RING_INTERVAL = 50;
+const PIE_SIDE_RING_INTERVAL = 10;
 
-function* fireSideRings(self: Entity): Generator<ScriptYield, void, void> {
+function* fireSideRings(self: Entity, interval: number): Generator<ScriptYield, void, void> {
   while (true) {
     if (self.alive) ring(self, SIDE_RING_COUNT, bullet, SIDE_RING_SPEED, Math.random() * Math.PI * 2);
-    yield SIDE_RING_INTERVAL;
+    yield interval;
   }
 }
 
@@ -328,7 +332,7 @@ function* columnColleagueScript(self: Entity): Generator<ScriptYield, void, void
   self.say('...for tomorrow!', SAY_FRAMES);
   yield 24;
 
-  yield { race: [barFireSequence(self), fireSideRings(self)] };
+  yield { race: [barFireSequence(self), fireSideRings(self, BAR_SIDE_RING_INTERVAL)] };
 
   self.setVelocity(0, EXIT_SPEED);
 }

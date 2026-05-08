@@ -316,7 +316,15 @@ export class StageManager {
       for (const c of allChildren) this.drop(c);
     }
     try {
-      script.iter.return();
+      const r = script.iter.return();
+      // A `yield` from inside a finally during unwinding leaves the
+      // generator un-finished — `return()` reports `done: false` with the
+      // yielded value. Drop semantics are "this script is gone", so the
+      // yield isn't scheduled; log it so the offending finally is visible
+      // instead of silently swallowed.
+      if (!r.done) {
+        console.error('script yielded from finally during drop', r.value);
+      }
     } catch (err) {
       // A throw from a finally block is a script bug, but it shouldn't
       // bring down the engine — log and keep going.
