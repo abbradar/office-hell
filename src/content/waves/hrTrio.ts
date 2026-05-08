@@ -1,4 +1,4 @@
-import { GAME_W } from '../../config';
+import { GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { markWave, suspendRunning } from '../../script/stage';
@@ -19,11 +19,12 @@ import { reportBullet } from './reportBullet';
 
 const ENTRY_SPEED = 90;
 const ENTRY_Y = 95;
+const SPAWN_Y = -30;
 
-// Frames moveTo takes to walk an HR from spawn (y=-30) to ENTRY_Y at ENTRY_SPEED.
+// Frames moveTo takes to walk an HR from SPAWN_Y to ENTRY_Y at ENTRY_SPEED.
 // Used by the wave script to schedule follower spawns relative to HR-0's intro
 // and by HR-0's own script to wait out the followers' walk-in.
-const ENTRY_FRAMES = Math.round(((ENTRY_Y + 30) / ENTRY_SPEED) * 60);
+const ENTRY_FRAMES = Math.round(((ENTRY_Y - SPAWN_Y) / ENTRY_SPEED) * SCRIPT_FPS);
 
 // Lead HR (role 0): two-line solo intro before the others arrive. Buffed HP so
 // the player can't melt them in the ~6s they're alone on screen.
@@ -143,14 +144,14 @@ export function* hrTrioWave(self: Entity): Generator<ScriptYield, void, void> {
     // Lead HR enters alone with a CV stack and the room's attention. Buffed HP
     // so the player can't kill them before the followers arrive to make this an
     // actual trio.
-    self.spawn(hr, GAME_W * 0.2, -30, 0, 0, {
+    self.spawn(hr, GAME_W * 0.2, SPAWN_Y, 0, 0, {
       script: makeHrScript(0),
       hp: LEAD_HP,
     });
     // Wait for HR-0 to walk in and deliver both intro lines before the others
     // crash the meeting.
     yield ENTRY_FRAMES + LEAD_LINE_1_SLOT + LEAD_LINE_2_SLOT;
-    self.spawn(hr, GAME_W * 0.5, -30, 0, 0, { script: makeHrScript(1) });
-    self.spawn(hr, GAME_W * 0.8, -30, 0, 0, { script: makeHrScript(2) });
+    self.spawn(hr, GAME_W * 0.5, SPAWN_Y, 0, 0, { script: makeHrScript(1) });
+    self.spawn(hr, GAME_W * 0.8, SPAWN_Y, 0, 0, { script: makeHrScript(2) });
   });
 }

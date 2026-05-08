@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { arc, moveTo } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -53,7 +53,8 @@ function makeVacationScript(role: Role): EntityScript {
     const lines = LINES_BY_ROLE[role];
     for (let i = 0; i < BARRAGES; i++) {
       if (!self.alive) return;
-      self.say(lines[i] ?? 'Look look!', SAY_FRAMES);
+      const intro = checkStageOnce(self, 'vacationPhotos:intro');
+      self.say(intro ? 'Look — vacation photos!' : (lines[i] ?? 'Look look!'), SAY_FRAMES);
       yield PRE_FIRE_GAP;
       arc(self, PHOTO_COUNT, reportBullet, PHOTO_SPEED, PHOTO_ARC_FROM, PHOTO_ARC_TO);
       yield POST_FIRE_GAP;

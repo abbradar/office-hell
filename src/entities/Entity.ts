@@ -146,6 +146,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
     if (!this.scene.anims.exists(characterAnimKey(sheet, 'idle', 'down'))) return;
+    // Anim freeze is driven by StageManager's physics PAUSE/RESUME hooks; bail
+    // here so a switch to a new key (run↔idle) during pause doesn't `play()`
+    // and unpause the sprite.
+    if (this.scene.physics.world.isPaused) return;
     const v = this.body.velocity;
     const moving = Math.hypot(v.x, v.y) > ANIM_MOVE_THRESHOLD;
     if (moving) this.facing = directionFromVelocity(v.x, v.y);

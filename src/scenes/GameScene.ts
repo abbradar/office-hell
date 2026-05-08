@@ -94,9 +94,9 @@ export class GameScene extends Phaser.Scene {
   private playerKind!: PlayerKind;
   // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
   // we share the same physics/script freeze (set stage.paused + physics.pause)
-  // but track this flag so the second ESC routes to "exit to menu" instead of
-  // "toggle off". Only entered when no dialogue is active, so the two pause
-  // owners never overlap.
+  // but track this flag so X can route to "exit to menu" only while the
+  // pause overlay owns the freeze. Only entered when no dialogue is active,
+  // so the two pause owners never overlap.
   private userPaused = false;
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
   // Set once when the player has died and we've kicked off the flicker /
@@ -298,8 +298,8 @@ export class GameScene extends Phaser.Scene {
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
-    kb.on('keydown-ESC', this.handleEscape, this);
-    kb.on('keydown-Z', this.handleResume, this);
+    kb.on('keydown-ESC', this.handleResume, this);
+    kb.on('keydown-X', this.handleExitToMenu, this);
 
     // Auto-pause when the player tabs away or hides the page. We own
     // this because BootScene set `sound.pauseOnBlur = false` to take
@@ -328,10 +328,10 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private handleEscape(event: KeyboardEvent): void {
+  private handleResume(event: KeyboardEvent): void {
     if (event.repeat) return;
     if (this.userPaused) {
-      this.scene.start('Menu');
+      this.unpauseGame();
       return;
     }
     // Only own the freeze when nobody else does — dialogue holds the same
@@ -341,10 +341,10 @@ export class GameScene extends Phaser.Scene {
     this.pauseGame();
   }
 
-  private handleResume(event: KeyboardEvent): void {
+  private handleExitToMenu(event: KeyboardEvent): void {
     if (event.repeat) return;
     if (!this.userPaused) return;
-    this.unpauseGame();
+    this.scene.start('Menu');
   }
 
   private pauseGame(): void {
@@ -370,7 +370,7 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_W / 2, GAME_H * 0.4, 'PAUSED', { ...FONT_TITLE, color: COLOR_ACCENT_GOLD_STR })
       .setOrigin(0.5);
     c.add(title);
-    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<fire>  RESUME\n<back>  MENU', {
+    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<back>  RESUME\n<bomb>  MENU', {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
       align: 'center',

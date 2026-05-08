@@ -1,5 +1,5 @@
 import { shoot } from '../../audio/sfx/events';
-import { GAME_W, PLAYER_SPEED } from '../../config';
+import { GAME_W, PLAYER_SPEED, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
@@ -38,7 +38,7 @@ const EXIT_SPEED = 350;
 // bullets out into a chart shape" rather than the chart popping into
 // existence, short enough that the player isn't waiting to be shot at.
 const FORMATION_FRAMES = 18;
-const FORMATION_SECONDS = FORMATION_FRAMES / 60;
+const FORMATION_SECONDS = FORMATION_FRAMES / SCRIPT_FPS;
 // Beat between volleys — covers the say-bubble and lets the previous
 // formation descend out of the firer's spawn area before the next one
 // builds in the same spot.
@@ -111,7 +111,7 @@ const PIE_FILL_LAYERS = [
   { r: 20, offsets: [-Math.PI / 12, 0, Math.PI / 12] },
   { r: 28, offsets: [-Math.PI / 10, 0, Math.PI / 10] },
 ] as const;
-const PIE_FLY_SPEED = 380;
+const PIE_FLY_SPEED = 342;
 // Three pies spawn around the colleague: one centre, one left, one right.
 // 90px lateral offset is wider than a pie's diameter (2 × PIE_RIM_R = 72)
 // so the discs read as separate charts rather than overlapping blobs.
@@ -207,7 +207,7 @@ const BLOCK_BULLETS_WIDE = 4;
 // original beam's 8h px so the bar-chart silhouette is preserved.
 
 // Cap how many slots the gap can move between consecutive volleys. The
-// player has VOLLEY_GAP_FRAMES / 60 seconds between volley arrivals at
+// player has VOLLEY_GAP_FRAMES / SCRIPT_FPS seconds between volley arrivals at
 // their row to traverse `delta * COLUMN_STRIDE` pixels at PLAYER_SPEED;
 // this constant is computed so the worst-case shift is reachable with
 // a 25%-ish reaction-time margin, rounded down so the bound is a clean
@@ -215,7 +215,7 @@ const BLOCK_BULLETS_WIDE = 4;
 const PLAYER_DODGE_REACTION_FACTOR = 0.75;
 const MAX_GAP_MOVEMENT = Math.max(
   1,
-  Math.floor((PLAYER_SPEED * (VOLLEY_GAP_FRAMES / 60) * PLAYER_DODGE_REACTION_FACTOR) / COLUMN_STRIDE),
+  Math.floor((PLAYER_SPEED * (VOLLEY_GAP_FRAMES / SCRIPT_FPS) * PLAYER_DODGE_REACTION_FACTOR) / COLUMN_STRIDE),
 );
 
 // Fill one column's bullet grid into the shared FormingBullet[]. Each

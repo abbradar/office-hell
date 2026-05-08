@@ -147,12 +147,13 @@ export class Player extends Entity {
   }
 
   // Picks the player anim by context:
-  //  - physics paused (dialogue / tutorial bubble / ESC pause) → freeze the
-  //    current anim on its current frame. Running / idling visibly against
-  //    a locked world reads as a glitch. Read the world flag rather than
-  //    `stage.paused` — tutorial prompts in intro.ts pause physics directly
-  //    (so the script polling for input keeps ticking) without flipping
-  //    `stage.paused`, and we want those frozen too.
+  //  - physics paused (dialogue / tutorial bubble / ESC pause) → bail. The
+  //    actual anim freeze is driven by StageManager's physics PAUSE/RESUME
+  //    hooks; we just have to avoid calling `play(key)` while paused, which
+  //    would unpause the sprite. Reading the world flag (rather than
+  //    `stage.paused`) lines up with what the hooks gate on, so tutorial
+  //    prompts in intro.ts that pause physics without flipping `stage.paused`
+  //    are covered too.
   //  - `stage.running` true (between encounters, the corridor is scrolling)
   //    → run forward. "Stationary" still reads as running away from the
   //    camera.
@@ -165,11 +166,7 @@ export class Player extends Entity {
   override updateAnim(): void {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
-    if (this.scene.physics.world.isPaused) {
-      if (this.anims.isPlaying) this.anims.pause();
-      return;
-    }
-    if (this.anims.isPaused) this.anims.resume();
+    if (this.scene.physics.world.isPaused) return;
     const vx = this.body.velocity.x;
     const dir: Direction = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
     this.facing = dir;

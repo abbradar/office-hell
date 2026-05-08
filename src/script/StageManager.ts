@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { onceMusicComplete } from '../audio/music/loop';
-import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
+import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
@@ -193,7 +193,7 @@ export class StageManager {
   // Catastrophic delta spikes (tab unfocus, GC stop) are filtered upstream
   // by Phaser's TimeStep.smoothDelta before they reach the scene.
   private tickElapsed = 0;
-  private static readonly TICK_MS = 1000 / 60;
+  private static readonly TICK_MS = 1000 / SCRIPT_FPS;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -223,10 +223,31 @@ export class StageManager {
     // fire when world.isPaused or bodies.size === 0 — the latter never
     // trips in practice because the player is a permanent body.
     scene.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.onWorldStep, this);
+    // Freeze sprite anims while arcade physics is paused so a running enemy
+    // doesn't keep cycling its run animation against a stilled body. Covers
+    // every pause path uniformly — freeze() / dialogue / ESC pause as well as
+    // the intro's `physics.pause()`-only tutorial prompts. Spawn handles the
+    // mid-pause spawn case directly (see `spawn`).
+    scene.physics.world.on(Phaser.Physics.Arcade.Events.PAUSE, this.onPhysicsPause, this);
+    scene.physics.world.on(Phaser.Physics.Arcade.Events.RESUME, this.onPhysicsResume, this);
   }
 
   private onWorldStep(): void {
     this.tickQueue(this.physicsWaiting);
+  }
+
+  private onPhysicsPause(): void {
+    if (this.player?.anims.isPlaying) this.player.anims.pause();
+    for (const e of this.active) {
+      if (e.anims.isPlaying) e.anims.pause();
+    }
+  }
+
+  private onPhysicsResume(): void {
+    if (this.player?.anims.isPaused) this.player.anims.resume();
+    for (const e of this.active) {
+      if (e.anims.isPaused) e.anims.resume();
+    }
   }
 
   private makeEntity(): Entity {
@@ -298,6 +319,11 @@ export class StageManager {
     // character sheet (bullets, etc.).
     e.facing = directionFromVelocity(vx, vy);
     e.updateAnim();
+    // If we spawned during a physics-pause window (script-frame yields keep
+    // running through a `physics.pause()`-only freeze, so a script can spawn
+    // here), the PAUSE event has already fired and won't re-fire — pause the
+    // fresh anim now so it sits still alongside the rest of the world.
+    if (this.scene.physics.world.isPaused && e.anims.isPlaying) e.anims.pause();
 
     // Push to active before running the first body so the script sees
     // the same world state any later tick would (e.g. countActive of its
@@ -491,11 +517,32 @@ export class StageManager {
       if (desc !== null) this.lastYieldReason = desc;
     }
     if (typeof v === 'number') {
-      this.schedulePhysicsWait(script, Math.max(0, v | 0) + 1);
+      if (v <= 0 && !this.scene.physics.world.isPaused) {
+        // Non-positive frame count + the relevant queue isn't paused →
+        // re-advance the script in this same tick. Used by audio-time
+        // waits that round to zero right at the target boundary; saves
+        // a frame of round-trip latency. Recursive — a script that
+        // yields 0 in a tight loop will grow the JS stack until it
+        // crashes, but no real script does that. When the queue *is*
+        // paused, fall through and schedule with a possibly-non-positive
+        // framesLeft; the queue drain treats `framesLeft <= 0 → fire`
+        // so the entry pops on the first tick after resume.
+        this.callIter(script);
+      } else {
+        this.schedulePhysicsWait(script, v | 0);
+      }
     } else if ('physicsFrames' in v) {
-      this.schedulePhysicsWait(script, Math.max(0, v.physicsFrames | 0) + 1);
+      if (v.physicsFrames <= 0 && !this.scene.physics.world.isPaused) {
+        this.callIter(script);
+      } else {
+        this.schedulePhysicsWait(script, v.physicsFrames | 0);
+      }
     } else if ('scriptFrames' in v) {
-      this.scheduleScriptWait(script, Math.max(0, v.scriptFrames | 0) + 1);
+      if (v.scriptFrames <= 0 && !this.paused) {
+        this.callIter(script);
+      } else {
+        this.scheduleScriptWait(script, v.scriptFrames | 0);
+      }
     } else if ('dialogue' in v) {
       this.beginDialogue(v.dialogue, script);
     } else if ('until' in v) {

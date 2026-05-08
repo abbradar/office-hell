@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { computeCanvasH } from './canvasSize';
-import { GAME_W } from './config';
+import { GAME_W, SCRIPT_FPS } from './config';
 import { BootScene } from './scenes/BootScene';
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
@@ -44,7 +44,7 @@ const game = new Phaser.Game({
   // simulated ticks; a slow render frame drives both physics and scripts
   // through catch-up ticks together. `target: 60` is a hint for Phaser's
   // own bookkeeping (and physics' `_frameTimeMS`) — it does NOT cap render.
-  fps: { target: 60 },
+  fps: { target: SCRIPT_FPS },
   // Grow the touch-pointer pool past Phaser's default of 1 so two-thumb
   // multi-touch (a finger on a move pad plus another on the bomb pad)
   // is tracked simultaneously.

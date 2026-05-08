@@ -225,9 +225,9 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
     yield* parabolicJump(self, landX, landY, JUMP_HOME_X, JUMP_FRAMES);
     playThump();
     self.say('Pant... pant...', 120);
-    yield 20;
+    yield 35;
     ring(self, REST_RING_BULLETS, bullet, REST_RING_SPEED, Math.random() * Math.PI * 2);
-    yield 90;
+    yield 99;
   }
 }
 

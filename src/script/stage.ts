@@ -13,6 +13,7 @@ import {
   playMusicLoop,
   playMusicWithIntro,
 } from '../audio/music/loop';
+import { SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { ScriptYield } from './types';
 
@@ -90,16 +91,13 @@ function* awaitMusicTicking(): Generator<ScriptYield, void, void> {
 
 // --- generic generator helpers --------------------------------------------
 
-// Adaptive polling step toward an absolute audio-time `target`. Returns
-// the number of frames to yield before re-checking: coarsely sleeps the
-// bulk of the remaining duration, then refines to 1-frame polling on
-// the final approach. The 2-frame safety margin keeps a slow frame from
-// overshooting; rAF is locked at 60Hz so frames-per-second never
-// exceeds the 60 we scale by, only undershoots.
+// Frames to yield before re-polling an absolute audio-time `target`. Round
+// the remaining seconds to physics ticks; right at the boundary this can
+// be 0 (or negative if the round trips), which the runner treats as
+// "advance again immediately" so the outer loop's target check fires the
+// same tick.
 function framesUntilAudioTime(curTime: number, target: number): number {
-  const remaining = target - curTime;
-  if (remaining <= 0.05) return 1;
-  return Math.max(1, Math.round(remaining * 60) - 2);
+  return Math.round((target - curTime) * SCRIPT_FPS);
 }
 
 // Wait `seconds` of audio time from now. Captures the current music
@@ -114,7 +112,7 @@ function* waitSecondsBody(seconds: number): Generator<ScriptYield, void, void> {
   if (seconds <= 0) return;
   const m = getMusicTime();
   if (m === null) {
-    yield Math.max(1, Math.round(seconds * 60));
+    yield Math.round(seconds * SCRIPT_FPS);
     return;
   }
   const target = m.time + seconds;

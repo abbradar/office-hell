@@ -1,15 +1,7 @@
 import { shoot } from '../audio/sfx/events';
-import { GAME_H, GAME_W } from '../config';
+import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { EntityKind, ScriptYield } from './types';
-
-// Both physics and script ticks run at a fixed 60Hz simulation rate
-// (Phaser arcade's `fixedStep` accumulator + StageManager's matching one,
-// both fed the same scene `delta`). So "frames to traverse D at S" =
-// D / (S / 60) holds regardless of render rate — a 144Hz monitor renders
-// 2.4 frames per simulated tick; a slow render frame catches up by firing
-// extra ticks for both clocks together.
-const SCRIPT_FPS = 60;
 
 // True once the entity's center is past any screen edge — i.e. it's at least
 // half hidden. Suppress firing in that case so off-screen exits don't keep
@@ -109,6 +101,11 @@ export function* moveTo(self: Entity, tx: number, ty: number, speed: number): Ge
     return;
   }
   self.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+  // Floor at one tick: a tiny-but-positive distance still spends a frame
+  // moving rather than snapping via the immediate-restart path. Keeps
+  // visual continuity (the body's velocity is observed for at least one
+  // physics step) and matches the original semantics of "moveTo waits at
+  // least a frame".
   yield Math.max(1, Math.round((dist / speed) * SCRIPT_FPS));
   self.setVelocity(0, 0);
   self.x = tx;
