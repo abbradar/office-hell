@@ -44,9 +44,9 @@ export class BootScene extends Phaser.Scene {
     // means any code that suspends the context loses to Phaser the next
     // tick. iOS additionally fails to auto-resume reliably when the user
     // returns to the tab. Owning the response ourselves lets the
-    // GameScene route blur to its pause overlay (which already calls
-    // `pauseMusic()`), so blur-pause and ESC-pause go through the same
-    // path and behave consistently across desktop and iOS.
+    // GameScene route blur to its pause overlay (which freezes the stage
+    // and pauses the music in one go), so blur-pause and ESC-pause go
+    // through the same path and behave consistently across desktop and iOS.
     this.sound.pauseOnBlur = false;
 
     // Queue the heavy stuff (character sheets + gameplay audio) and kick the

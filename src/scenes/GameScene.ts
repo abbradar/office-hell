@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
+import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
@@ -350,14 +350,12 @@ export class GameScene extends Phaser.Scene {
   private pauseGame(): void {
     this.userPaused = true;
     this.stage.freeze();
-    pauseMusic();
     this.showPauseOverlay();
   }
 
   private unpauseGame(): void {
     this.userPaused = false;
     this.stage.unfreeze();
-    resumeMusic();
     this.hidePauseOverlay();
   }
 

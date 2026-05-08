@@ -99,13 +99,13 @@ function framesForSeconds(seconds: number): number {
 }
 
 // Wait `seconds` of game time. Frame-based — doesn't poll the music
-// clock. Yields a single physics-frame wait, so the timer pauses with
-// arcade physics (dialogue / freeze).
+// clock. Yields a single script-frame wait, so the timer keeps ticking
+// through dialogue / freeze (same as the music clock it stands in for).
 export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void> {
   if (seconds <= 0) return;
   const frames = framesForSeconds(seconds);
   if (frames <= 0) return;
-  yield { physicsFrames: frames, yieldReason: `${seconds}s elapsed` };
+  yield { scriptFrames: frames, yieldReason: `${seconds}s elapsed` };
 }
 
 // --- race / timeout -------------------------------------------------------
@@ -179,7 +179,9 @@ export function* suspendRunning(
 // track's start). Blocks until music is ticking — a wait following a
 // music switch naturally pauses through the load gap. Once we have a
 // reading, compute the remaining frames once and yield in a single shot:
-// physics runs at SCRIPT_FPS so re-polling in a loop adds nothing.
+// the script-frame queue runs at SCRIPT_FPS so re-polling in a loop adds
+// nothing. Yields script frames so the wait keeps tracking the music
+// clock through dialogue / freeze (music doesn't pause with physics).
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
   yield* awaitMusicTicking();
   const m = getMusicTime();
@@ -187,7 +189,7 @@ export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, v
   if (m === null) return;
   const frames = framesForSeconds(t - m.time);
   if (frames <= 0) return;
-  yield { physicsFrames: frames, yieldReason: `audio time ${t}s reached` };
+  yield { scriptFrames: frames, yieldReason: `audio time ${t}s reached` };
 }
 
 // Yield until the active one-shot track's natural completion. Loops
@@ -235,7 +237,7 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
   }
   const frames = framesForSeconds(nextBoundary - start);
   if (frames <= 0) return;
-  yield { physicsFrames: frames, yieldReason: 'loop ended' };
+  yield { scriptFrames: frames, yieldReason: 'loop ended' };
 }
 
 // --- world-state waits ----------------------------------------------------

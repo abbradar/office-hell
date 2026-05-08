@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { onceMusicComplete } from '../audio/music/loop';
+import { onceMusicComplete, pauseMusic, resumeMusic } from '../audio/music/loop';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
@@ -643,20 +643,30 @@ export class StageManager {
     }
   }
 
-  // Hard pause: scripts freeze (paused = true short-circuits update) and
+  // Hard pause: scripts freeze (paused = true short-circuits update),
   // Phaser physics is paused globally so all bodies — including the player
-  // — sit still. GameScene also gates player input on stage.paused so held
-  // keys don't accumulate during the cutscene. Use this from any code path
-  // that wants the same dialogue/cutscene-style freeze (ESC pause, death
-  // sequence, dialogue) so the two flags never drift.
+  // — sit still, and the active music track is paused so its clock doesn't
+  // race ahead of the (now-stalled) script-frame queue. GameScene also
+  // gates player input on stage.paused so held keys don't accumulate
+  // during the cutscene. Use this from any code path that wants the same
+  // dialogue/cutscene-style freeze (ESC pause, death sequence, dialogue)
+  // so the flags never drift.
+  //
+  // Pausing music here keeps `waitAudioTimeAtLeast` / `waitTrackEnded` /
+  // `waitSeconds` aligned with the music: each yields a script-frame wait
+  // computed from the music clock at call time, and that queue stops
+  // ticking on freeze. If the music kept playing through the freeze, the
+  // wait would resume `pauseDuration` of music time too late.
   freeze(): void {
     this.paused = true;
     this.scene.physics.pause();
+    pauseMusic();
   }
 
   unfreeze(): void {
     this.paused = false;
     this.scene.physics.resume();
+    resumeMusic();
   }
 
   private beginDialogue(opts: DialogueOpts, script: SceneScript): void {

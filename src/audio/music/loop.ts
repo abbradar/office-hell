@@ -293,13 +293,17 @@ export function stopMusicLoop(): void {
   pausedAtCtxTime = null;
 }
 
-// Pause the active music in place. Used by the ESC pause menu so the score
-// stops while the overlay is up. Calls Phaser's per-sound `pause()` on the
-// active intro / loop sounds; the AudioContext keeps advancing (Phaser's
-// sound-manager update calls `context.resume()` every frame, so suspending
-// the context wouldn't stick), so on resume we shift `trackStartCtxTime`
-// forward by the pause duration to keep `getMusicTime()` aligned with the
-// actual music position.
+// Pause the active music in place. Called by `StageManager.freeze()` so
+// every cutscene-style pause path (ESC pause, dialogue, death sequence)
+// stops the music alongside the script-frame queue — otherwise the music
+// clock would race ahead of audio-time waits parked on a frame counter.
+// Calls Phaser's per-sound `pause()` on the active intro / loop sounds;
+// the AudioContext keeps advancing (Phaser's sound-manager update calls
+// `context.resume()` every frame, so suspending the context wouldn't
+// stick), so on resume we shift `trackStartCtxTime` forward by the pause
+// duration to keep `getMusicTime()` aligned with the actual music
+// position. Idempotent on re-entry — a second `pauseMusic` while already
+// paused is a no-op.
 export function pauseMusic(): void {
   if (!current || !musicBus) return;
   if (pausedAtCtxTime !== null) return;
