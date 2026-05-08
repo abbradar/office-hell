@@ -41,7 +41,7 @@ function* checkEmailScript(self: Entity) {
   self.setVelocity(0, ENTRY_SPEED);
   yield Math.round(((ENTRY_Y + 30) / ENTRY_SPEED) * 60);
   self.setVelocity(0, 0);
-  if (checkStageOnce(self, 'checkEmailShown')) {
+  if (checkStageOnce(self, 'checkEmail:shown')) {
     self.say('Could you check\nthis email?', HOLD_FRAMES);
   }
   yield HOLD_FRAMES;

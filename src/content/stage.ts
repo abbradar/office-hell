@@ -26,7 +26,7 @@ import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
 import { colleaguesWave } from './waves/colleague';
-import { emailColleagues1, emailColleagues2, emailColleagues3 } from './waves/emailColleagues';
+import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
@@ -97,21 +97,21 @@ export type WaveDef = {
 // menu in stage progression order.
 
 // Stage 1, part 1 — retro-01 → retro-02 across the music seam, ending
-// with Brad. Five timed openers under the upbeat theme then a music
-// switch into Brad's entrance: 9+6+8+11+13 = 47s of waves + 4 × 3s
+// with Brad. Four timed openers under the upbeat theme then a music
+// switch into Brad's entrance: 9+17+11+13 = 50s of waves + 3 × 3s
 // gaps + the music switch (waitTrackEnded snaps to the loop boundary
 // so the cut lands on a musical seam rather than mid-bar) + Brad
-// himself. Sized to fit under the retro-01 loop's 60s body so the
-// switch lands at the next natural seam.
+// himself. The 17s email-colleagues slot absorbs what used to be two
+// separate 6s+8s waves with a gap — now a single merged opener that
+// runs both passes back-to-back. Sized to fit under the retro-01
+// loop's 60s body so the switch lands at the next natural seam.
 export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'music: retro 01');
   yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
 
   yield* timeWave(self, 9, self.stage.separateWave(internsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 6, self.stage.separateWave(emailColleagues1(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues2(self)));
+  yield* timeWave(self, 17, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* timeWave(self, 11, self.stage.separateWave(colleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
@@ -227,8 +227,7 @@ export const WAVES: WaveDef[] = [
   { id: 's-stage-2-part-1', name: 'Stage 2 — Part 1', script: stage2Part1 },
   { id: 's-stage-2-part-2', name: 'Stage 2 — Part 2', script: stage2Part2 },
   { id: 'r-interns', name: 'Interns', script: internsWave },
-  { id: 'r-email-colleagues-1', name: 'Email Colleagues 1', script: emailColleagues1 },
-  { id: 'r-email-colleagues-2', name: 'Email Colleagues 2', script: emailColleagues2 },
+  { id: 'r-email-colleagues', name: 'Email Colleagues', script: emailColleaguesWave },
   { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
   { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
   { id: 'r-gym-bro', name: 'Mid-Stage Boss — Brad', script: gymBroWave },

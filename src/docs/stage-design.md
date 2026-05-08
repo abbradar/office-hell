@@ -61,7 +61,14 @@ constructs a new pool, which is the reset.
 - `globals` backs `checkStageOnce(self, key)` and
   `checkStageCount(self, key, max)` — guards for "this only runs once
   per scene even if multiple entities of the same kind spawn". Used by
-  `oversleeper`, `janitor`, `checkEmail` waves.
+  `oversleeper`, `janitor`, `checkEmail`, `moreCharts` waves.
+
+  Keys share one flat namespace across the whole stage, so prefix them
+  with the wave (or owning system) name to avoid collisions:
+  `<wave>:<key>` — e.g. `'checkEmail:shown'`, `'oversleeper:introShown'`,
+  `'moreCharts:dataForTomorrow'`. The colon is a convention, not a
+  requirement; the store is `Record<string, unknown>`, so any key works,
+  but unprefixed keys make a future name clash a silent foot-gun.
 - `wave` is the human-readable string shown in the GameScene debug HUD.
   Set with `markWave(self, 'wave name')` from inside the wave generator,
   or from the stage body for non-wave segments (intro, music switches).

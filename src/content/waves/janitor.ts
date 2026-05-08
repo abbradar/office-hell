@@ -37,7 +37,7 @@ function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void
 
 function* janitorScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-  if (checkStageOnce(self, 'janitorWetFloorShown')) {
+  if (checkStageOnce(self, 'janitor:wetFloorShown')) {
     self.say('Watch the wet floor!', 110);
   }
   yield 80;

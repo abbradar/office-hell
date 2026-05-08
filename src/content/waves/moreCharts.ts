@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W, PLAYER_SPEED } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { CHART_TINTS } from '../../ui/palette';
 import { bullet } from '../kinds';
@@ -268,7 +268,11 @@ function* pieFireSequence(self: Entity): Generator<ScriptYield, void, void> {
 
 function* pieColleagueScript(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-  self.say('New data...', SAY_FRAMES);
+  // Globals lock so the line fires at most once per stage run — the bar
+  // colleague that follows enters silently regardless of order.
+  if (checkStageOnce(self, 'moreCharts:dataForTomorrow')) {
+    self.say('Data for tomorrow!', SAY_FRAMES);
+  }
   yield 24;
 
   // Run the chart sequence and the side-ring stream in parallel. The
@@ -329,7 +333,6 @@ function* barFireSequence(self: Entity): Generator<ScriptYield, void, void> {
 
 function* columnColleagueScript(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-  self.say('...for tomorrow!', SAY_FRAMES);
   yield 24;
 
   yield { race: [barFireSequence(self), fireSideRings(self, BAR_SIDE_RING_INTERVAL)] };

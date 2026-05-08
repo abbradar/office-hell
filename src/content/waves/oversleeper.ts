@@ -49,7 +49,7 @@ function* barrage(self: Entity): Generator<ScriptYield, void, void> {
 function* oversleeperScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
-  if (checkStageOnce(self, 'oversleeperIntroShown')) {
+  if (checkStageOnce(self, 'oversleeper:introShown')) {
     const ch = self.stage.player.character;
     yield self.dialogue({
       left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
