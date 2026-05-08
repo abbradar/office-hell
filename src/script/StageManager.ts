@@ -128,10 +128,15 @@ export class StageManager {
   // script runs (during manager.update from GameScene.update) this is
   // guaranteed to be set.
   player!: Player;
-  // True while a dialog/cutscene wants scripts to freeze. update consults
-  // this to short-circuit script ticks; GameScene gates physics + player
-  // input on the same flag. Mutate via `freeze()` / `unfreeze()` so the
-  // physics pause stays in lockstep.
+  // True while the script-frame queue is frozen — set by dialogues, the
+  // ESC pause overlay, and the death sequence. Gates the scriptWaiting
+  // accumulator in update(); the physics-frame queue is ungated and stops
+  // independently when arcade physics is paused (no WORLD_STEP fires).
+  // GameScene also reads this flag to gate player input. The `freeze()`
+  // helper sets this AND pauses arcade physics together so the common
+  // "halt everything" case stays one call; the two pauses are otherwise
+  // independent — see tutorialPrompt for the physics-only freeze that
+  // keeps script polling alive.
   paused = false;
   // Name shown in the HUD header during a boss fight. Set and cleared by
   // the boss's own script — the manager/HUD don't infer it from entity
@@ -181,14 +186,6 @@ export class StageManager {
   private readonly physicsWaiting: Wait[] = [];
   private readonly scriptWaiting: Wait[] = [];
 
-  // Counter of WORLD_STEP events that have fired since the last update()
-  // drain. We don't tick physicsWaiting inside the WORLD_STEP handler
-  // because that fires while Phaser is mid-iteration over the bodies set —
-  // a callIter spawn would mutate the set under Phaser's feet. Instead,
-  // count steps here and drain the queue from update(), after physics has
-  // finished all its sub-steps for the frame.
-  private pendingPhysicsTicks = 0;
-
   // Wall-clock millis pending against the next scriptWaiting tick. Each
   // update() call adds `delta` and drains TICK_MS-sized chunks. Uncapped:
   // Phaser arcade physics' own accumulator is also uncapped, and a cap
@@ -217,16 +214,19 @@ export class StageManager {
     for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
 
     // Subscribe to arcade physics' per-step event. Each emit corresponds
-    // to exactly one fixed simulation step run by World.update; counting
-    // them here gives us the natural "advance physicsWaiting by one tick"
-    // signal that auto-pauses with the world. The event doesn't fire
-    // when world.isPaused or bodies.size === 0 — the latter never trips
-    // in practice because the player is a permanent body.
+    // to exactly one fixed simulation step run by World.update / step,
+    // and the emit happens AFTER body integration and collider processing
+    // are finished for that step (World.js:999, 1058) — a quiescent point
+    // where it's safe to mutate the world (spawn bodies, set velocities,
+    // call die()) from a script body. Draining inline keeps script ticks
+    // interleaved with physics steps on catch-up frames. The event doesn't
+    // fire when world.isPaused or bodies.size === 0 — the latter never
+    // trips in practice because the player is a permanent body.
     scene.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.onWorldStep, this);
   }
 
   private onWorldStep(): void {
-    this.pendingPhysicsTicks++;
+    this.tickQueue(this.physicsWaiting);
   }
 
   private makeEntity(): Entity {
@@ -299,6 +299,12 @@ export class StageManager {
     e.facing = directionFromVelocity(vx, vy);
     e.updateAnim();
 
+    // Push to active before running the first body so the script sees
+    // the same world state any later tick would (e.g. countActive of its
+    // own kind). Mirrors beginAll / beginRace, which run children eagerly
+    // inside the parent's processYield.
+    this.active.push(e);
+
     // `??` would treat an explicit `null` as "missing" and fall back to
     // the kind's default; check for undefined so callers can opt out of
     // the default with `script: null`.
@@ -306,10 +312,9 @@ export class StageManager {
     if (script) {
       e.script = this.makeScript(script(e), e);
       if (opts.debugYieldReasons) e.script.debugYieldReasons = true;
-      this.scheduleScriptWait(e.script, 1);
+      this.callIter(e.script);
     }
 
-    this.active.push(e);
     return e;
   }
 
@@ -338,11 +343,12 @@ export class StageManager {
 
   // Start a script on an already-spawned entity. If the entity already
   // has a script running, drop it first so its parked wakeups silently
-  // expire — the entity is now driven by the new script.
+  // expire — the entity is now driven by the new script. The first body
+  // of the new script runs synchronously inside this call.
   runScript(e: Entity, script: EntityScript): void {
     if (e.script !== null) this.drop(e.script);
     e.script = this.makeScript(script(e), e);
-    this.scheduleScriptWait(e.script, 1);
+    this.callIter(e.script);
   }
 
   // Permanently disable a script and propagate down its race / all
@@ -658,33 +664,21 @@ export class StageManager {
     // already produced.
     this.dialogue.update(time);
     if (this.paused) {
-      // Drain both clocks on pause-entry so unpause doesn't burst-fire a
-      // backlog. freeze() also paused arcade physics, so its own _elapsed
-      // and our pendingPhysicsTicks stay at zero while paused (World.update
-      // early-returns before adding delta), but draining defensively is
-      // cheap and covers any code path that sets `paused` without the
-      // matching physics.pause().
+      // Drain the script accumulator on pause-entry so unpause doesn't
+      // burst-fire a backlog. The physics queue isn't our concern here —
+      // it ticks off WORLD_STEP, which the world's own pause flag gates.
       this.tickElapsed = 0;
-      this.pendingPhysicsTicks = 0;
       return;
     }
     this.bubbles.update();
-
-    // Drain the physics-frame queue: one tick per WORLD_STEP that fired
-    // since the last update(). When arcade physics is paused, no events
-    // fire and pendingPhysicsTicks stays 0, so this queue auto-pauses
-    // with the world.
-    while (this.pendingPhysicsTicks > 0) {
-      this.pendingPhysicsTicks--;
-      this.tickQueue(this.physicsWaiting);
-    }
 
     // Drive the script-frame queue at a fixed 60Hz against wall-clock
     // delta — same accumulator math as Phaser's physics, so over any
     // window the two queues fire the same number of ticks. The script
     // queue is independent of arcade's isPaused, so a tutorial prompt
     // that calls `physics.pause()` without setting `stage.paused` keeps
-    // its input-polling loop ticking.
+    // its input-polling loop ticking. The physics queue drains inline
+    // from the WORLD_STEP handler (see onWorldStep above).
     this.tickElapsed += delta;
     while (this.tickElapsed >= StageManager.TICK_MS) {
       this.tickElapsed -= StageManager.TICK_MS;
