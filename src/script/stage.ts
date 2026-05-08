@@ -91,37 +91,21 @@ function* awaitMusicTicking(): Generator<ScriptYield, void, void> {
 
 // --- generic generator helpers --------------------------------------------
 
-// Frames to yield before re-polling an absolute audio-time `target`. Round
-// the remaining seconds to physics ticks; right at the boundary this can
-// be 0 (or negative if the round trips), which the runner treats as
-// "advance again immediately" so the outer loop's target check fires the
-// same tick.
-function framesUntilAudioTime(curTime: number, target: number): number {
-  return Math.round((target - curTime) * SCRIPT_FPS);
+// Convert a duration in seconds to physics-tick frames. Physics runs at
+// SCRIPT_FPS, so one round-trip through Math.round is enough — no need
+// to poll, no need for a loop.
+function framesForSeconds(seconds: number): number {
+  return Math.round(seconds * SCRIPT_FPS);
 }
 
-// Wait `seconds` of audio time from now. Captures the current music
-// time once and yields until that target elapses. Falls back to a
-// frame-based yield (60fps) when no track is playing — important for
-// practice mode and for the pre-music pause beats.
+// Wait `seconds` of game time. Frame-based — doesn't poll the music
+// clock. Yields a single physics-frame wait, so the timer pauses with
+// arcade physics (dialogue / freeze).
 export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void> {
-  yield* withYieldReason(`${seconds}s elapsed`, waitSecondsBody(seconds));
-}
-
-function* waitSecondsBody(seconds: number): Generator<ScriptYield, void, void> {
   if (seconds <= 0) return;
-  const m = getMusicTime();
-  if (m === null) {
-    yield Math.round(seconds * SCRIPT_FPS);
-    return;
-  }
-  const target = m.time + seconds;
-  while (true) {
-    const cur = getMusicTime();
-    // If music stops/changes mid-wait, bail rather than block forever.
-    if (cur === null || cur.time >= target) return;
-    yield framesUntilAudioTime(cur.time, target);
-  }
+  const frames = framesForSeconds(seconds);
+  if (frames <= 0) return;
+  yield { physicsFrames: frames, yieldReason: `${seconds}s elapsed` };
 }
 
 // --- race / timeout -------------------------------------------------------
@@ -134,10 +118,10 @@ export function* race(...iters: Array<Generator<ScriptYield, void, void>>): Gene
   yield { race: iters };
 }
 
-// Run `inner` with a hard time budget. After `seconds` of audio time
-// (frame-fallback when no music is playing), whichever finishes first
-// wins; the other is cancelled. The waitSeconds racer holds the timeout
-// — if it wins, `inner` is dropped mid-flight.
+// Run `inner` with a hard time budget. After `seconds` of game time
+// (physics frames), whichever finishes first wins; the other is
+// cancelled. The waitSeconds racer holds the timeout — if it wins,
+// `inner` is dropped mid-flight.
 export function* withTimeout(
   seconds: number,
   inner: Generator<ScriptYield, void, void>,
@@ -145,17 +129,18 @@ export function* withTimeout(
   yield* race(inner, waitSeconds(seconds));
 }
 
-// Run `inner` for exactly `seconds` of audio time, then sweep any
+// Run `inner` for exactly `seconds` of game time, then sweep any
 // surviving enemies off the field. Inner is cancelled mid-flight if it
 // would run longer; if it finishes earlier, the slot is padded out via
-// `waitAudioTimeAtLeast` against the start-of-slot timestamp. Bullets
-// in flight are left alone — only `damagedBy.enemy` (the enemy entities
-// themselves) is cleared, so the next slot inherits a half-busy field
-// rather than a hard reset.
+// `waitAudioTimeAtLeast` against the start-of-slot music timestamp so
+// the slot still aligns to the music seam if a track is playing.
+// Bullets in flight are left alone — only `damagedBy.enemy` (the enemy
+// entities themselves) is cleared, so the next slot inherits a
+// half-busy field rather than a hard reset.
 //
-// Used by stage scripts to give each wave a fixed audio-time slot
-// independent of how fast the player kills enemies or whether spawned
-// enemies linger off-screen — completion gates only on the timer.
+// Used by stage scripts to give each wave a fixed time slot independent
+// of how fast the player kills enemies or whether spawned enemies
+// linger off-screen — completion gates only on the timer.
 export function* timeWave(
   self: Entity,
   seconds: number,
@@ -191,24 +176,18 @@ export function* suspendRunning(
 // --- audio-clock waits ----------------------------------------------------
 
 // Yield until the current track's clock reaches `t` (seconds, from the
-// track's start). Strict null check on music — never resolves while
-// `getMusicTime()` is null, even for `waitAudioTimeAtLeast(0)`. That's
-// how a wait following a music switch naturally blocks until the new
-// track has started ticking.
+// track's start). Blocks until music is ticking — a wait following a
+// music switch naturally pauses through the load gap. Once we have a
+// reading, compute the remaining frames once and yield in a single shot:
+// physics runs at SCRIPT_FPS so re-polling in a loop adds nothing.
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
-  yield* withYieldReason(`audio time ${t}s reached`, waitAudioTimeAtLeastBody(t));
-}
-
-function* waitAudioTimeAtLeastBody(t: number): Generator<ScriptYield, void, void> {
-  while (true) {
-    const m = getMusicTime();
-    if (m === null) {
-      yield 1;
-      continue;
-    }
-    if (m.time >= t) return;
-    yield framesUntilAudioTime(m.time, t);
-  }
+  yield* awaitMusicTicking();
+  const m = getMusicTime();
+  // awaitMusicTicking only returns once getMusicTime is non-null.
+  if (m === null) return;
+  const frames = framesForSeconds(t - m.time);
+  if (frames <= 0) return;
+  yield { physicsFrames: frames, yieldReason: `audio time ${t}s reached` };
 }
 
 // Yield until the active one-shot track's natural completion. Loops
@@ -232,10 +211,6 @@ function* waitMusicCompleteBody(): Generator<ScriptYield, void, void> {
 // not some earlier reference point). Resolves immediately when no
 // track is playing — safe before any music has started.
 export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
-  yield* withYieldReason('loop ended', waitTrackEndedBody());
-}
-
-function* waitTrackEndedBody(): Generator<ScriptYield, void, void> {
   const m = getMusicTime();
   if (m === null) return;
   if (isMusicFinished() === true) return;
@@ -258,11 +233,9 @@ function* waitTrackEndedBody(): Generator<ScriptYield, void, void> {
     const iterations = Math.floor(elapsedInLoop / info.loopDuration) + 1;
     nextBoundary = info.introDuration + iterations * info.loopDuration;
   }
-  while (true) {
-    const cur = getMusicTime();
-    if (cur === null || cur.time >= nextBoundary) return;
-    yield framesUntilAudioTime(cur.time, nextBoundary);
-  }
+  const frames = framesForSeconds(nextBoundary - start);
+  if (frames <= 0) return;
+  yield { physicsFrames: frames, yieldReason: 'loop ended' };
 }
 
 // --- world-state waits ----------------------------------------------------
