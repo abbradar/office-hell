@@ -3,9 +3,12 @@ import { GAME_H, GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { EntityKind, ScriptYield } from './types';
 
-// Phaser arcade physics integrates px/sec velocity against wall-clock delta;
-// scripts tick once per scene update. We assume the configured 60fps loop so
-// "frames to traverse D at S" = D / (S / 60).
+// Both physics and script ticks run at a fixed 60Hz simulation rate
+// (Phaser arcade's `fixedStep` accumulator + StageManager's matching one,
+// both fed the same scene `delta`). So "frames to traverse D at S" =
+// D / (S / 60) holds regardless of render rate — a 144Hz monitor renders
+// 2.4 frames per simulated tick; a slow render frame catches up by firing
+// extra ticks for both clocks together.
 const SCRIPT_FPS = 60;
 
 // True once the entity's center is past any screen edge — i.e. it's at least

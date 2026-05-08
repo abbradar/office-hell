@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { onceMusicComplete } from '../audio/music/loop';
 import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W } from '../config';
 import { directionFromVelocity } from '../content/animations';
@@ -24,7 +24,8 @@ function describeYield(v: ScriptYield): string | null {
   if ('race' in v) return null;
   if ('all' in v) return null;
   if (v.yieldReason !== undefined) return v.yieldReason;
-  if ('frames' in v) return `wait ${v.frames}f`;
+  if ('physicsFrames' in v) return `wait ${v.physicsFrames}f`;
+  if ('scriptFrames' in v) return `wait ${v.scriptFrames}sf`;
   if ('dialogue' in v) return 'dialogue';
   if ('until' in v) return `until ${v.until.kind.sprite ?? 'entity'} dies`;
   if ('untilMusicEnds' in v) return 'music ends';
@@ -158,11 +159,44 @@ export class StageManager {
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
-  // Unsorted: each tick we walk the whole list, decrement, fire entries
-  // that hit zero. An entity may have multiple entries simultaneously
-  // (e.g. a race carries the inner's wait and a separate trigger wait
-  // on the outer).
-  private readonly waiting: Wait[] = [];
+  // Two waiting queues, one per "clock":
+  //
+  //   physicsWaiting — drained one tick per Phaser WORLD_STEP. Auto-pauses
+  //     when arcade physics is paused (dialog/freeze, tutorial prompt's
+  //     direct `physics.pause()`). The default landing zone for a bare
+  //     `yield N` and for `{ physicsFrames: N }` — this is what most
+  //     game-logic timing wants.
+  //
+  //   scriptWaiting — drained from a 60Hz accumulator inside update().
+  //     Independent of arcade physics' isPaused flag — keeps ticking
+  //     during a `physics.pause()`-only freeze. Receives `{ scriptFrames: N }`
+  //     yields plus all internal continuations (spawn start, race/all
+  //     parent wakes, until/untilMusicEnds wakeups, dialogue dismiss),
+  //     since those are engine plumbing and shouldn't be gated by
+  //     physics-pause.
+  //
+  // Both queues are unsorted: each drain walks the whole list, decrements,
+  // fires entries that hit zero. An entity may have multiple entries
+  // across both queues simultaneously.
+  private readonly physicsWaiting: Wait[] = [];
+  private readonly scriptWaiting: Wait[] = [];
+
+  // Counter of WORLD_STEP events that have fired since the last update()
+  // drain. We don't tick physicsWaiting inside the WORLD_STEP handler
+  // because that fires while Phaser is mid-iteration over the bodies set —
+  // a callIter spawn would mutate the set under Phaser's feet. Instead,
+  // count steps here and drain the queue from update(), after physics has
+  // finished all its sub-steps for the frame.
+  private pendingPhysicsTicks = 0;
+
+  // Wall-clock millis pending against the next scriptWaiting tick. Each
+  // update() call adds `delta` and drains TICK_MS-sized chunks. Uncapped:
+  // Phaser arcade physics' own accumulator is also uncapped, and a cap
+  // here would let one queue out-pace the other on sustained slowdown.
+  // Catastrophic delta spikes (tab unfocus, GC stop) are filtered upstream
+  // by Phaser's TimeStep.smoothDelta before they reach the scene.
+  private tickElapsed = 0;
+  private static readonly TICK_MS = 1000 / 60;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -181,6 +215,18 @@ export class StageManager {
     this.dialogue = new DialogueManager(scene);
 
     for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
+
+    // Subscribe to arcade physics' per-step event. Each emit corresponds
+    // to exactly one fixed simulation step run by World.update; counting
+    // them here gives us the natural "advance physicsWaiting by one tick"
+    // signal that auto-pauses with the world. The event doesn't fire
+    // when world.isPaused or bodies.size === 0 — the latter never trips
+    // in practice because the player is a permanent body.
+    scene.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.onWorldStep, this);
+  }
+
+  private onWorldStep(): void {
+    this.pendingPhysicsTicks++;
   }
 
   private makeEntity(): Entity {
@@ -260,7 +306,7 @@ export class StageManager {
     if (script) {
       e.script = this.makeScript(script(e), e);
       if (opts.debugYieldReasons) e.script.debugYieldReasons = true;
-      this.scheduleIter(e.script, 1);
+      this.scheduleScriptWait(e.script, 1);
     }
 
     this.active.push(e);
@@ -271,12 +317,23 @@ export class StageManager {
     return { iter, entity, generation: 0 };
   }
 
-  private scheduleIter(script: SceneScript, framesLeft: number): void {
+  // Push onto the script-frame queue. Used for `{ scriptFrames: N }` waits
+  // and for all internal continuations (spawn start, runScript, race/all
+  // parent wakes, until/untilMusicEnds wakeups, dialogue dismiss). Engine
+  // plumbing — not gated by physics-pause.
+  private scheduleScriptWait(script: SceneScript, framesLeft: number): void {
     // Only live scripts (generation !== null) get scheduled; the few
     // call sites all run right after a callIter advance or a fresh
     // makeScript, so the snapshot is always a number.
     // biome-ignore lint/style/noNonNullAssertion: invariant — see comment above
-    this.waiting.push({ framesLeft, script, scheduledGeneration: script.generation! });
+    this.scriptWaiting.push({ framesLeft, script, scheduledGeneration: script.generation! });
+  }
+
+  // Push onto the physics-frame queue. Used for bare `yield N` and for
+  // `{ physicsFrames: N }` waits. Auto-pauses with arcade physics.
+  private schedulePhysicsWait(script: SceneScript, framesLeft: number): void {
+    // biome-ignore lint/style/noNonNullAssertion: same invariant as scheduleScriptWait
+    this.physicsWaiting.push({ framesLeft, script, scheduledGeneration: script.generation! });
   }
 
   // Start a script on an already-spawned entity. If the entity already
@@ -285,7 +342,7 @@ export class StageManager {
   runScript(e: Entity, script: EntityScript): void {
     if (e.script !== null) this.drop(e.script);
     e.script = this.makeScript(script(e), e);
-    this.scheduleIter(e.script, 1);
+    this.scheduleScriptWait(e.script, 1);
   }
 
   // Permanently disable a script and propagate down its race / all
@@ -428,24 +485,26 @@ export class StageManager {
       if (desc !== null) this.lastYieldReason = desc;
     }
     if (typeof v === 'number') {
-      this.scheduleIter(script, Math.max(0, v | 0) + 1);
-    } else if ('frames' in v) {
-      this.scheduleIter(script, Math.max(0, v.frames | 0) + 1);
+      this.schedulePhysicsWait(script, Math.max(0, v | 0) + 1);
+    } else if ('physicsFrames' in v) {
+      this.schedulePhysicsWait(script, Math.max(0, v.physicsFrames | 0) + 1);
+    } else if ('scriptFrames' in v) {
+      this.scheduleScriptWait(script, Math.max(0, v.scriptFrames | 0) + 1);
     } else if ('dialogue' in v) {
       this.beginDialogue(v.dialogue, script);
     } else if ('until' in v) {
       if (v.until.alive) {
         const scheduledGen = script.generation;
         v.until.onDeath(() => {
-          if (script.generation === scheduledGen) this.scheduleIter(script, 1);
+          if (script.generation === scheduledGen) this.scheduleScriptWait(script, 1);
         });
       } else {
-        this.scheduleIter(script, 1);
+        this.scheduleScriptWait(script, 1);
       }
     } else if ('untilMusicEnds' in v) {
       const scheduledGen = script.generation;
       onceMusicComplete(() => {
-        if (script.generation === scheduledGen) this.scheduleIter(script, 1);
+        if (script.generation === scheduledGen) this.scheduleScriptWait(script, 1);
       });
     } else if ('race' in v) {
       this.beginRace(v.race, script);
@@ -458,7 +517,7 @@ export class StageManager {
     if (iters.length === 0) {
       // Empty join → resume on the next frame, mirroring the 1-frame
       // round-trip a normal child completion would take.
-      this.scheduleIter(parent, 1);
+      this.scheduleScriptWait(parent, 1);
       return;
     }
     // Parent just yielded the all (callIter advanced it), so its
@@ -497,7 +556,7 @@ export class StageManager {
       // Empty race → resume on the next frame, mirroring the empty-all
       // behaviour and the 1-frame round-trip a normal child completion
       // would take.
-      this.scheduleIter(parent, 1);
+      this.scheduleScriptWait(parent, 1);
       return;
     }
     // Parent just yielded the race (callIter advanced it), so its
@@ -552,7 +611,7 @@ export class StageManager {
     const scheduledGen = script.generation;
     this.dialogue.start(opts, () => {
       this.unfreeze();
-      if (script.generation === scheduledGen) this.scheduleIter(script, 1);
+      if (script.generation === scheduledGen) this.scheduleScriptWait(script, 1);
     });
   }
 
@@ -592,40 +651,45 @@ export class StageManager {
     this.free.push(e);
   }
 
-  update(time: number, _delta: number): void {
+  update(time: number, delta: number): void {
+    // Render-rate work runs every call: dialog text reveal, bubble layout,
+    // sprite anim direction, off-screen culling. None of these advance
+    // simulation state — they just reflect what physics + scripts have
+    // already produced.
     this.dialogue.update(time);
-    if (this.paused) return;
+    if (this.paused) {
+      // Drain both clocks on pause-entry so unpause doesn't burst-fire a
+      // backlog. freeze() also paused arcade physics, so its own _elapsed
+      // and our pendingPhysicsTicks stay at zero while paused (World.update
+      // early-returns before adding delta), but draining defensively is
+      // cheap and covers any code path that sets `paused` without the
+      // matching physics.pause().
+      this.tickElapsed = 0;
+      this.pendingPhysicsTicks = 0;
+      return;
+    }
     this.bubbles.update();
 
-    // Walk waiting once: decrement, keep entries that aren't due yet,
-    // fire those that are. callIter() may push fresh entries onto
-    // waiting (yield N → reschedule, {until} → onDeath closure
-    // schedules later). Newly pushed entries land at indices >=
-    // originalLen, so the read loop won't visit them. After the read
-    // loop, compact the appended tail down to fill the gaps left by
-    // popped entries.
-    const originalLen = this.waiting.length;
-    let write = 0;
-    for (let read = 0; read < originalLen; read++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by originalLen
-      const w = this.waiting[read]!;
-      w.framesLeft--;
-      if (w.framesLeft > 0) {
-        this.waiting[write++] = w;
-      } else if (w.script.generation === w.scheduledGeneration) {
-        // Fire iff the script hasn't been advanced or dropped since we
-        // captured the snapshot at scheduling. Stale wakeups silently
-        // expire — that's the universal cancellation channel. A dropped
-        // script's generation is `null`, which never matches the
-        // captured number.
-        this.callIter(w.script);
-      }
+    // Drain the physics-frame queue: one tick per WORLD_STEP that fired
+    // since the last update(). When arcade physics is paused, no events
+    // fire and pendingPhysicsTicks stays 0, so this queue auto-pauses
+    // with the world.
+    while (this.pendingPhysicsTicks > 0) {
+      this.pendingPhysicsTicks--;
+      this.tickQueue(this.physicsWaiting);
     }
-    for (let read = originalLen; read < this.waiting.length; read++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by waiting.length
-      this.waiting[write++] = this.waiting[read]!;
+
+    // Drive the script-frame queue at a fixed 60Hz against wall-clock
+    // delta — same accumulator math as Phaser's physics, so over any
+    // window the two queues fire the same number of ticks. The script
+    // queue is independent of arcade's isPaused, so a tutorial prompt
+    // that calls `physics.pause()` without setting `stage.paused` keeps
+    // its input-polling loop ticking.
+    this.tickElapsed += delta;
+    while (this.tickElapsed >= StageManager.TICK_MS) {
+      this.tickElapsed -= StageManager.TICK_MS;
+      this.tickQueue(this.scriptWaiting);
     }
-    this.waiting.length = write;
 
     for (let i = this.active.length - 1; i >= 0; i--) {
       const e = this.active[i];
@@ -646,5 +710,36 @@ export class StageManager {
         this.release(e, i);
       }
     }
+  }
+
+  // Walk a wait queue once: decrement framesLeft, keep entries that aren't
+  // due yet, fire those that are. callIter() may push fresh entries onto
+  // either queue (yield N → reschedule, {until} → onDeath closure schedules
+  // later). Newly pushed entries land at indices >= originalLen, so the
+  // read loop won't visit them. After the read loop, compact the appended
+  // tail down to fill gaps left by popped entries.
+  private tickQueue(queue: Wait[]): void {
+    const originalLen = queue.length;
+    let write = 0;
+    for (let read = 0; read < originalLen; read++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by originalLen
+      const w = queue[read]!;
+      w.framesLeft--;
+      if (w.framesLeft > 0) {
+        queue[write++] = w;
+      } else if (w.script.generation === w.scheduledGeneration) {
+        // Fire iff the script hasn't been advanced or dropped since we
+        // captured the snapshot at scheduling. Stale wakeups silently
+        // expire — that's the universal cancellation channel. A dropped
+        // script's generation is `null`, which never matches the
+        // captured number.
+        this.callIter(w.script);
+      }
+    }
+    for (let read = originalLen; read < queue.length; read++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by queue.length
+      queue[write++] = queue[read]!;
+    }
+    queue.length = write;
   }
 }

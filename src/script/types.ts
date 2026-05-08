@@ -7,9 +7,22 @@ import type { DialogueOpts } from '../ui/dialogue';
 // is parked on this yield. Use `withYieldReason` to stamp every yield
 // emitted by a generator.
 export type ObjectScriptYield =
-  // Wait `frames` script frames. Equivalent to a bare number yield, but
-  // can carry a yieldReason — bare numbers have nowhere to hang one.
-  | { frames: number }
+  // Wait `physicsFrames` simulated physics ticks. Driven by Phaser's
+  // WORLD_STEP event, so it auto-pauses when arcade physics is paused —
+  // dialogue freezes, ESC pause, the intro tutorial's `physics.pause()`.
+  // This is the default for bare-number yields (`yield N`) because most
+  // game-logic timing — bullet cadence, enemy entry, hit-pause beats —
+  // wants to halt with the simulation. Carries an optional yieldReason
+  // that bare numbers can't.
+  | { physicsFrames: number }
+  // Wait `scriptFrames` scene-update ticks. Driven by StageManager's own
+  // 60Hz accumulator, independent of physics pause — use this when the
+  // wait is polling external state that keeps changing while physics is
+  // frozen. Two such cases today: tutorial prompts polling input keys
+  // during a `physics.pause()`-only freeze, and `awaitMusicTicking`
+  // polling the music loop's start time while a dialogue cutscene is
+  // up. Default yields should NOT use this — pick it deliberately.
+  | { scriptFrames: number }
   | { until: Entity }
   | { dialogue: DialogueOpts }
   // Wait for the currently-playing track's natural completion (one-shot

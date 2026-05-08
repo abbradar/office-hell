@@ -55,24 +55,27 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
   const kb = scene.input.keyboard;
   if (!kb) throw new Error('keyboard input plugin missing');
 
+  // Polling loops use script-frame yields so they keep ticking through
+  // the `physics.pause()` above — physics-frame yields would freeze
+  // alongside the world and the prompt would never see the keypress.
   if (kind === 'arrows') {
     const left = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     const right = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
-    while (!(left.isDown || right.isDown || scene.isLeftHeld() || scene.isRightHeld())) yield 1;
+    while (!(left.isDown || right.isDown || scene.isLeftHeld() || scene.isRightHeld())) yield { scriptFrames: 1 };
   } else if (kind === 'bomb') {
     const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     // consumeBombPress is edge-triggered (drains the bomb-tap queue), so
     // a touch tap registers exactly once; the keyboard side uses isDown
     // for held-key tolerance.
-    while (!(bombKey.isDown || scene.consumeBombPress())) yield 1;
+    while (!(bombKey.isDown || scene.consumeBombPress())) yield { scriptFrames: 1 };
   } else {
     const fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     // Z also dismisses dialogues, so the press that just closed the
     // preceding line typically arrives here still down. Wait for a
     // release before arming the wait — otherwise the prompt would
     // resolve on the same keypress and never visibly pause the player.
-    while (fireKey.isDown) yield 1;
-    while (!fireKey.isDown) yield 1;
+    while (fireKey.isDown) yield { scriptFrames: 1 };
+    while (!fireKey.isDown) yield { scriptFrames: 1 };
   }
 
   if (lockMovement) player.unlockControls();

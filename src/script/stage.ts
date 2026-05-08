@@ -33,7 +33,8 @@ export function markWave(self: Entity, name: string): void {
 // its own yields, which lets high-level helpers compose freely.
 //
 // Bare `number` yields can't carry a label, so they're rewritten as
-// `{ frames: n, yieldReason: reason }` — same scheduling, just labelled.
+// `{ physicsFrames: n, yieldReason: reason }` — matches the bare-number
+// default (physics-frame wait), just labelled.
 //
 // `race` and `all` yields are passed through untouched — each child
 // generator already labels its own leaves, so there's no useful place
@@ -47,7 +48,7 @@ export function* withYieldReason(
 }
 
 function stampReason(v: ScriptYield, reason: string): ScriptYield {
-  if (typeof v === 'number') return { frames: v, yieldReason: reason };
+  if (typeof v === 'number') return { physicsFrames: v, yieldReason: reason };
   if ('race' in v) return v;
   if ('all' in v) return v;
   if (v.yieldReason !== undefined) return v;
@@ -80,7 +81,11 @@ export function* startMusicWithIntro(
 }
 
 function* awaitMusicTicking(): Generator<ScriptYield, void, void> {
-  while (getMusicTime() === null) yield 1;
+  // Music load happens on the audio thread, asynchronously to physics —
+  // a cutscene that swaps tracks runs this poll while physics is paused
+  // by the dialog freeze. Use script-frame ticks so the loop keeps
+  // checking through the freeze; physics-frame ticks would hang.
+  while (getMusicTime() === null) yield { scriptFrames: 1 };
 }
 
 // --- generic generator helpers --------------------------------------------

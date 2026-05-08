@@ -35,16 +35,16 @@ const game = new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
-  // Lock the game loop at 60Hz. Script waits are denominated in frames
-  // (yield N) and patterns like moveTo compute frame counts from a 60Hz
-  // assumption, while physics integrates against real delta — letting the
-  // loop free-run at the display rate (e.g. 144Hz) decoupled the two and
-  // had bosses arrive at the dialogue beat still off-screen on
-  // high-refresh monitors. forceSetTimeOut drives the loop with
-  // setTimeout instead of RAF so the cap actually holds; on slower
-  // machines the loop just falls below 60 and the game slows down rather
-  // than skipping logic frames out from under physics.
-  fps: { target: 60, forceSetTimeOut: true },
+  // Render runs at the host display rate via RAF; simulation (physics +
+  // script ticks) is locked to a fixed 60Hz clock. Phaser arcade physics
+  // already does this via its `fixedStep` accumulator (see World.update),
+  // and StageManager carries a matching accumulator so `yield N` waits and
+  // `velocity * N/60` translations stay in lockstep regardless of render
+  // rate. A 144Hz monitor renders 144 frames per second over the same 60
+  // simulated ticks; a slow render frame drives both physics and scripts
+  // through catch-up ticks together. `target: 60` is a hint for Phaser's
+  // own bookkeeping (and physics' `_frameTimeMS`) — it does NOT cap render.
+  fps: { target: 60 },
   // Grow the touch-pointer pool past Phaser's default of 1 so two-thumb
   // multi-touch (a finger on a move pad plus another on the bomb pad)
   // is tracked simultaneously.
