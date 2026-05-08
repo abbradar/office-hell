@@ -98,10 +98,10 @@ export type WaveDef = {
 
 // Stage 1, part 1 — retro-01 → retro-02 across the music seam, ending
 // with Brad. Four timed openers under the upbeat theme then a music
-// switch into Brad's entrance: 9+17+11+13 = 50s of waves + 3 × 3s
+// switch into Brad's entrance: 9+15+11+15 = 50s of waves + 3 × 3s
 // gaps + the music switch (waitTrackEnded snaps to the loop boundary
 // so the cut lands on a musical seam rather than mid-bar) + Brad
-// himself. The 17s email-colleagues slot absorbs what used to be two
+// himself. The 15s email-colleagues slot absorbs what used to be two
 // separate 6s+8s waves with a gap — now a single merged opener that
 // runs both passes back-to-back. Sized to fit under the retro-01
 // loop's 60s body so the switch lands at the next natural seam.
@@ -111,11 +111,11 @@ export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* timeWave(self, 9, self.stage.separateWave(internsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 17, self.stage.separateWave(emailColleaguesWave(self)));
+  yield* timeWave(self, 15, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* timeWave(self, 11, self.stage.separateWave(colleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 13, self.stage.separateWave(checkEmailWave(self)));
+  yield* timeWave(self, 15, self.stage.separateWave(checkEmailWave(self)));
 
   markWave(self, 'music: retro 02');
   yield* waitTrackEnded();

@@ -17,7 +17,12 @@ import { bullet } from '../kinds';
 
 const PHASE_ONE_HP = 100;
 const ENTRY_SPEED = 110;
-const ENTRY_FRAMES = 80;
+// Spawn lands at y = -60 (off-screen above); ENTRY_Y is where he plants
+// for the dialogue. moveTo computes the travel time from this y + speed,
+// so the dialogue can't fire before he's actually arrived — the previous
+// frame-counted entry gave the wrong duration on high-refresh displays
+// and the dialogue bubbles popped while Brad was still off-screen.
+const ENTRY_Y = 87;
 const HOLD_BEFORE_TALK = 20;
 const POST_DIALOGUE_HOLD = 110;
 // Sprite is 48px wide; ±22px reads as a shoulder firing point without the
@@ -227,9 +232,7 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* gymBroScript(self: Entity) {
-  self.setVelocity(0, ENTRY_SPEED);
-  yield ENTRY_FRAMES;
-  self.setVelocity(0, 0);
+  yield* moveTo(self, JUMP_HOME_X, ENTRY_Y, ENTRY_SPEED);
   yield HOLD_BEFORE_TALK;
 
   const ch = self.stage.player.character;

@@ -35,6 +35,16 @@ const game = new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
+  // Lock the game loop at 60Hz. Script waits are denominated in frames
+  // (yield N) and patterns like moveTo compute frame counts from a 60Hz
+  // assumption, while physics integrates against real delta — letting the
+  // loop free-run at the display rate (e.g. 144Hz) decoupled the two and
+  // had bosses arrive at the dialogue beat still off-screen on
+  // high-refresh monitors. forceSetTimeOut drives the loop with
+  // setTimeout instead of RAF so the cap actually holds; on slower
+  // machines the loop just falls below 60 and the game slows down rather
+  // than skipping logic frames out from under physics.
+  fps: { target: 60, forceSetTimeOut: true },
   // Grow the touch-pointer pool past Phaser's default of 1 so two-thumb
   // multi-touch (a finger on a move pad plus another on the bomb pad)
   // is tracked simultaneously.

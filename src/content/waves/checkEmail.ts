@@ -1,6 +1,6 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { aimed, cluster, ring } from '../../script/patterns';
+import { aimed, cluster, moveTo, ring } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
@@ -38,9 +38,7 @@ const RING_SPEED = 130;
 const EXIT_SPEED = 220;
 
 function* checkEmailScript(self: Entity) {
-  self.setVelocity(0, ENTRY_SPEED);
-  yield Math.round(((ENTRY_Y + 30) / ENTRY_SPEED) * 60);
-  self.setVelocity(0, 0);
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
   if (checkStageOnce(self, 'checkEmail:shown')) {
     self.say('Could you check\nthis email?', HOLD_FRAMES);
   }
