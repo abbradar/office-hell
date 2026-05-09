@@ -15,7 +15,8 @@ export const SECTIONS: Section[] = [
     heading: 'TEAM',
     entries: [
       { name: 'abbradar', role: 'code, stage design' },
-      { name: 'vuvko', role: 'code, music design, pattern design' },
+      { name: 'vuvko', role: 'code, sound design, pattern design' },
+      { name: 'const', role: 'code, pattern design' },
       { name: 'nclbrt', role: 'art design, character design' },
     ],
   },
@@ -25,7 +26,7 @@ export const SECTIONS: Section[] = [
       { name: 'DOS-88 Music Library', url: 'dos88.itch.io/dos-88-music-library' },
       {
         name: 'Crack the Underground Base',
-        url: 'https://opengameart.org/content/crack-the-underground-base-action-chipmusicrock',
+        url: 'opengameart.org/content/crack-the-underground-base-action-chipmusicrock',
       },
       { name: 'nene', url: 'opengameart.org/users/nene' },
     ],
@@ -45,5 +46,9 @@ export const SECTIONS: Section[] = [
       'Other search engines and platform-specific ' +
       'searches were used that could have AI incorporated. No AI was ' +
       'used to generate any asset or text for the game.',
+  },
+  {
+    heading: 'SOURCE CODE',
+    body: 'github.com/abbradar/office-hell',
   },
 ];
