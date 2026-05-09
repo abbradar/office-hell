@@ -17,6 +17,11 @@ export const STAGE1_METAL_LOOP_KEY = 'stage1MetalLoop';
 export const STAGE2_METAL_OPENING_KEY = 'stage2MetalOpening';
 export const STAGE2_METAL_LOOP_KEY = 'stage2MetalLoop';
 
+// Ending — "Unchained Destiny". Plays under the post-stage-2 walk-home
+// scene with the credits roll fading over the corridor.
+export const ENDING_OPENING_KEY = 'endingOpening';
+export const ENDING_LOOP_KEY = 'endingLoop';
+
 // Kaedalus test stage — same arrangement at two lengths. Long version
 // loops as the regular stage music; short version loops under the boss
 // fight after a hand-off triggered mid-stage.

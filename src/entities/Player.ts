@@ -34,6 +34,11 @@ export class Player extends Entity {
   // independently of movement. Used by the intro to let the player dodge
   // without being able to shoot back before the bomb tutorial unlocks them.
   firingEnabled = true;
+  // Cutscene flag — when set together with `walkAnim`, updateAnim plays
+  // the walk animation in the current `facing` direction even though
+  // velocity is zero. Used by the ending scene where the player walks
+  // in place at the corridor edge while the floor scrolls past them.
+  walkInPlace = false;
 
   // Narrow the inherited Entity.kind: we always construct with a PlayerKind, and
   // scripts can then reach kind-specific config (like character) without a cast.
@@ -180,7 +185,9 @@ export class Player extends Entity {
       if (movingX) dir = vx > 0 ? 'right' : 'left';
       else if (movingY) dir = vy > 0 ? 'down' : 'up';
       else dir = this.facing;
-      action = movingX || movingY ? 'walk' : 'idle';
+      // walkInPlace forces walk anim with no velocity — used when the
+      // player is "walking" but the world scrolls under them instead.
+      action = movingX || movingY || this.walkInPlace ? 'walk' : 'idle';
     } else {
       // Normal in-stage mode. Direction comes from horizontal input
       // only — the player never moves vertically here, so vy isn't

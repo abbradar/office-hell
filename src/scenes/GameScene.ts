@@ -418,9 +418,11 @@ export class GameScene extends Phaser.Scene {
       // Floor only scrolls between encounters — `stage.running` is the
       // single source of truth, flipped around each wave by the stage
       // script. The player anim follows the same flag (see
-      // Player.updateAnim), so MC + floor stay in sync.
+      // Player.updateAnim), so MC + floor stay in sync. Scroll rate is
+      // additionally scaled by `scrollSpeedMultiplier` so cutscenes can
+      // dial it (e.g. the ending walks home at 0.5×).
       if (this.stage.running) {
-        this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS;
+        this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS * this.stage.scrollSpeedMultiplier;
       }
 
       this.player.controlUpdate();

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
+import { SECTIONS } from '../content/credits';
 import { isTouchDevice } from '../input/device';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -14,56 +15,6 @@ import {
 import { makePrompt } from '../ui/prompt';
 import { addScrollIndicators, type ScrollIndicators } from '../ui/scrollIndicator';
 import { onTap } from '../ui/tap';
-
-// Sections of the credits roll. Layout walks them top-to-bottom; each
-// section gets a gold heading + a stack of entries. URLs sit in a small
-// muted tier under the entry name (canvas text isn't clickable, but
-// printing the URL is the standard "give me credit" courtesy and
-// matches the LICENSE-* files in src/assets/icons/).
-type Entry = { name: string; url?: string; role?: string };
-// Section's content is either a list of `entries` (team / asset
-// credits) OR a free-form `body` paragraph (the AI disclosure). Each
-// section may set one or the other; both is unused but harmless.
-type Section = { heading: string; entries?: Entry[]; body?: string };
-
-const SECTIONS: Section[] = [
-  {
-    heading: 'TEAM',
-    entries: [
-      { name: 'abbradar', role: 'code, stage design' },
-      { name: 'vuvko', role: 'code, music design, pattern design' },
-      { name: 'nclbrt', role: 'art design, character design' },
-    ],
-  },
-  {
-    heading: 'MUSIC',
-    entries: [
-      { name: 'DOS-88 Music Library', url: 'dos88.itch.io/dos-88-music-library' },
-      // { name: '42 Monster RPG 2 Music Tracks', url: 'opengameart.org/content/42-monster-rpg-2-music-tracks' },
-      {
-        name: 'Crack the Underground Base',
-        url: 'https://opengameart.org/content/crack-the-underground-base-action-chipmusicrock',
-      },
-      { name: 'nene', url: 'opengameart.org/users/nene' },
-    ],
-  },
-  {
-    heading: 'ART & ICONS & SFX',
-    entries: [
-      { name: 'Kenney', url: 'opengameart.org/users/kenney' },
-      { name: 'Universal LPC Spritesheet Generator', url: 'github.com/LiberatedPixelCup' },
-      { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
-    ],
-  },
-  {
-    heading: 'AI USAGE DISCLOSURE',
-    body:
-      'Claude Code was used as an assisting tool for code and search. ' +
-      'Other search engines and platform-specific ' +
-      'searches were used that could have AI incorporated. No AI was ' +
-      'used to generate any asset or text for the game.',
-  },
-];
 
 // Layout knobs — title at 60, content viewport from ~98 down to
 // GAME_H - 75 (back-link sits at GAME_H - 55, hint at GAME_H - 25).

@@ -31,6 +31,7 @@ import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
 import { colleaguesWave } from './waves/colleague';
 import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
+import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
@@ -233,6 +234,7 @@ export const WAVES: WaveDef[] = [
   { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: interStageWaterCooler },
   { id: 's-stage-2-part-1', name: 'Stage 2 — Part 1', script: stage2Part1 },
   { id: 's-stage-2-part-2', name: 'Stage 2 — Part 2', script: stage2Part2 },
+  { id: 'i-ending', name: 'Ending — Walk Home', script: endingScene },
   { id: 'r-interns', name: 'Interns', script: internsWave },
   { id: 'r-email-colleagues', name: 'Email Colleagues', script: emailColleaguesWave },
   { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },

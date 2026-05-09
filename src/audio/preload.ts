@@ -1,5 +1,7 @@
 import type Phaser from 'phaser';
 import menuLoopUrl from '../assets/audio/loops/checking_manifest.ogg';
+import endingLoopUrl from '../assets/audio/loops/ending/unchained_destiny_loop.ogg';
+import endingOpeningUrl from '../assets/audio/loops/ending/unchained_destiny_opening.ogg';
 import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
 import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
 import monsterIntroUrl from '../assets/audio/loops/monster_rpg/12okt.ogg';
@@ -18,6 +20,8 @@ import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
 import {
   CLICK_SFX_KEY,
+  ENDING_LOOP_KEY,
+  ENDING_OPENING_KEY,
   HURT_SFX_KEY,
   KAEDALUS_LONG_KEY,
   KAEDALUS_SHORT_KEY,
@@ -49,6 +53,8 @@ const AUDIO_ASSETS: Record<string, string> = {
   [STAGE1_METAL_LOOP_KEY]: stage1MetalLoopUrl,
   [STAGE2_METAL_OPENING_KEY]: stage2MetalOpeningUrl,
   [STAGE2_METAL_LOOP_KEY]: stage2MetalLoopUrl,
+  [ENDING_OPENING_KEY]: endingOpeningUrl,
+  [ENDING_LOOP_KEY]: endingLoopUrl,
   [KAEDALUS_LONG_KEY]: kaedalusLongUrl,
   [KAEDALUS_SHORT_KEY]: kaedalusShortUrl,
   [MONSTER_INTRO_KEY]: monsterIntroUrl,

@@ -162,6 +162,13 @@ export class StageManager {
   // this around every wave (false at start, true after the field is
   // clear); the player anim + bg scroll read it directly.
   running = true;
+  // Multiplier on the corridor floor scroll speed (relative to the
+  // baseline rate in GameScene). Default 1 = full speed when running;
+  // 0.5 = the ending's slow-walk-home roll. Read by GameScene's update
+  // loop alongside `running`. Independent of `running` for symmetry —
+  // a future cutscene could keep `running=false` (player anim doesn't
+  // jog) but still scroll at a custom rate, or vice versa.
+  scrollSpeedMultiplier = 1;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
