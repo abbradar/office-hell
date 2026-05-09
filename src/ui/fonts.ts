@@ -63,7 +63,10 @@ export const FONT_DIALOGUE_SM: Style = { fontFamily: SMALL_FAMILY, fontSize: '16
 export const FONT_DEBUG: Style = { fontFamily: SMALL_FAMILY, fontSize: '16px', resolution: TEXT_RESOLUTION };
 
 async function registerFont(family: string, url: string, weight: number): Promise<void> {
-  const face = new FontFace(family, `url(${url})`, { weight: String(weight), display: 'block' });
+  // Family is parsed as the @font-face `font-family` descriptor (<string> |
+  // <custom-ident>+). "Press Start 2P" fails the ident form because "2P"
+  // starts with a digit, so quote it to force the <string> branch.
+  const face = new FontFace(`"${family}"`, `url(${url})`, { weight: String(weight), display: 'block' });
   await face.load();
   document.fonts.add(face);
 }
