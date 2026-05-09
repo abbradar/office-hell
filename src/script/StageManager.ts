@@ -169,6 +169,11 @@ export class StageManager {
   // a future cutscene could keep `running=false` (player anim doesn't
   // jog) but still scroll at a custom rate, or vice versa.
   scrollSpeedMultiplier = 1;
+  // Mirror of GameScene.bgScrollY — accumulated forward corridor scroll,
+  // in pixels. Updated by GameScene each frame and read by stage helpers
+  // (computeDoorYs, alignDoor) so they can pick spawn / exit y values
+  // through the same door panels the player sees.
+  bgScrollY = 0;
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -273,6 +278,10 @@ export class StageManager {
   spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts: SpawnOpts = {}): Entity {
     const e = this.free.pop() ?? this.makeEntity();
 
+    console.log(
+      `[spawn] kind=${kind.sprite} target=(${x.toFixed(1)},${y.toFixed(1)}) reusing prevKind=${e.kind.sprite} prevPos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) visible=${e.visible} alive=${e.alive}`,
+    );
+
     e.kind = kind;
     e.hp = opts.hp ?? kind.hp;
     e.alive = true;
@@ -295,6 +304,12 @@ export class StageManager {
     // the body's source size for the upcoming hitbox configuration below.
     e.setScale(1);
     e.setActive(true);
+    // Bullets sit between floor (-10) and walls (-9) so the wall texture
+    // occludes a stray bullet, and the doors' transparent middle still lets
+    // it show through an open doorway. Criterion is "deals damage, can't be
+    // hurt" — bullet kinds — and it must re-apply every spawn so a pooled
+    // entity reused for a different kind doesn't keep the previous depth.
+    e.setDepth(kind.hp === null && kind.damageClass.length > 0 ? -9.5 : 0);
 
     // Group.add() runs a createCallback that overwrites body properties
     // (velocity, drag, gravity, etc.) with the group's defaults, so we

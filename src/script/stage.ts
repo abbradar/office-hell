@@ -13,8 +13,10 @@ import {
   playMusicLoop,
   playMusicWithIntro,
 } from '../audio/music/loop';
-import { SCRIPT_FPS } from '../config';
+import { GAME_W, SCRIPT_FPS } from '../config';
+import { computeDoorYs, DOOR_H, isDoorVisible } from '../content/doors';
 import type { Entity } from '../entities/Entity';
+import { moveTo } from './patterns';
 import type { ScriptYield } from './types';
 
 // Set the HUD's current-wave label. Pure side-effect, not a generator —
@@ -365,4 +367,89 @@ export function firstLive(group: Phaser.Physics.Arcade.Group): Entity | null {
     if (e.alive) return e;
   }
   return null;
+}
+
+// --- door routing --------------------------------------------------------
+//
+// The corridor's three door slots are the only places enemies should
+// enter or leave the playfield via the side walls. Their y values cycle
+// with `stage.bgScrollY` (mirrored from GameScene each frame), so a
+// script can read them and either snap to whatever's available or, when
+// the corridor is still scrolling between waves, wait for one to slide
+// into a target band before pinning the corridor for the encounter.
+
+// Pick the centre y of the visible door whose centre is closest to
+// `idealY`. Returns null only if every door slot is fully off-canvas at
+// the moment — which can't happen with three slots on a 660px field but
+// the null path keeps callers honest. Door panels are 80px tall with
+// origin (0, 0); the centre is `topY + DOOR_H/2`.
+export function pickDoorCenterY(self: Entity, idealY: number): number | null {
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const top of computeDoorYs(self.stage.bgScrollY)) {
+    if (!isDoorVisible(top)) continue;
+    const center = top + DOOR_H / 2;
+    const d = Math.abs(center - idealY);
+    if (d < bestDist) {
+      bestDist = d;
+      best = center;
+    }
+  }
+  return best;
+}
+
+// Yield until a door's centre is within `tolerance` pixels of `targetY`.
+// The corridor must be scrolling for the doors to move, so this is meant
+// to be called BEFORE `suspendRunning` — once the wave plants, doors stay
+// where they are. Resolves immediately if a door is already in range.
+//
+// Use when a wave needs an entry door at a specific y; for waves that
+// can adapt to whatever doors are visible, just call `doorY` /
+// `pickDoorCenterY` directly without aligning first.
+//
+// Default tolerance of 32 keeps the worst-case wait under ~2s at the
+// 100 px/s baseline scroll rate (DOOR_SPACING ≈ 247, window = 2*tol =
+// 64 → max gap (247-64)/100 ≈ 1.83s). Tighter tolerances stretch the
+// wait quadratically; pass a smaller value only when the wave can
+// afford the extra dead air.
+export function* alignDoor(self: Entity, targetY: number, tolerance = 32): Generator<ScriptYield, void, void> {
+  yield* withYieldReason(`door at y≈${targetY}`, alignDoorBody(self, targetY, tolerance));
+}
+
+function* alignDoorBody(self: Entity, targetY: number, tolerance: number): Generator<ScriptYield, void, void> {
+  while (true) {
+    const y = pickDoorCenterY(self, targetY);
+    if (y !== null && Math.abs(y - targetY) <= tolerance) return;
+    yield 1;
+  }
+}
+
+// X coordinate just outside the side wall — the canonical entry / exit
+// point for an enemy stepping through a door. `side = -1` is the left
+// wall, `side = +1` is the right wall.
+export function sideSpawnX(side: -1 | 1): number {
+  return side < 0 ? -30 : GAME_W + 30;
+}
+
+// Pick the visible door centre closest to `idealY`, falling back to
+// `idealY` if no door is currently in range. Use this as the y for a
+// side-entry spawn so the enemy reads as walking out through a panel.
+// Pair with `alignDoor` before `suspendRunning` if a wave needs the
+// fallback to never trigger.
+export function doorY(self: Entity, idealY: number): number {
+  return pickDoorCenterY(self, idealY) ?? idealY;
+}
+
+// Walk to the door y closest to the entity's current y, then drift off
+// `side` (-1 left, +1 right) at `speed`. Falls back to a straight
+// horizontal exit at the current y if no door is visible — the pool
+// still culls the entity off the far edge. Use this for any enemy whose
+// final beat is a side-exit, so the visual reads as "they left through a
+// door" instead of clipping through the wall.
+export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
+  const exitY = pickDoorCenterY(self, self.y);
+  if (exitY !== null && Math.abs(exitY - self.y) > 1) {
+    yield* moveTo(self, self.x, exitY, speed);
+  }
+  self.setVelocity(side * speed, 0);
 }
