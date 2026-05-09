@@ -1,7 +1,16 @@
+import { STAGE1_RETRO_02_LOOP_KEY } from '../../audio/keys';
 import { playJump, playThump, shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable } from '../../script/boss';
+import {
+  BossKind,
+  becomeHittable,
+  bossShudder,
+  FLICKER_INTERVAL_FRAMES,
+  FLICKER_TOGGLES,
+  POST_FLICKER_HOLD_FRAMES,
+  pauseMusicForDefeat,
+} from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
@@ -58,24 +67,51 @@ const CONE_SPEED = 190;
 const REST_RING_BULLETS = 22;
 const REST_RING_SPEED = 90;
 
-// Boss-death flicker is FLICKER_TOGGLES * FLICKER_INTERVAL_FRAMES +
-// POST_FLICKER_HOLD_FRAMES = 56 frames; pad the bubble a touch beyond that so
-// the line stays readable right up until die() flips alive=false and the
-// bubble manager auto-clears it.
-const DEFEAT_LINE_FRAMES = 70;
+// Beat between Brad's bubble going up and the flicker starting, so the
+// line has time to read before he begins juddering.
+const DEFEAT_PRE_SHUDDER_FRAMES = 24;
+// Bubble lifetime: pre-shudder + the standard shudder window + a small
+// pad so the line stays readable right up until die() flips alive=false
+// and the bubble manager auto-clears it.
+const DEFEAT_BUBBLE_FRAMES =
+  DEFEAT_PRE_SHUDDER_FRAMES + FLICKER_TOGGLES * FLICKER_INTERVAL_FRAMES + POST_FLICKER_HOLD_FRAMES + 14;
+
+// Brad's lethal-hit script. Music halts for the dramatic beat, the
+// bubble goes up, then the standard shudder runs and retro-02 is
+// restarted from t=0 just before die() — so the next sub-stage's wave
+// block can be timed against a known music clock. The next sub-stage's
+// idempotent `startMusicLoop` call sees retro-02 already running and
+// is a no-op.
+function* gymBroDeath(self: Entity): Generator<ScriptYield, void, void> {
+  const m = pauseMusicForDefeat(STAGE1_RETRO_02_LOOP_KEY);
+  self.body.setVelocity(0, 0);
+  self.body.enable = false;
+  self.say('My muscles will soon shrink like a balloon...', DEFEAT_BUBBLE_FRAMES);
+  yield DEFEAT_PRE_SHUDDER_FRAMES;
+  yield* bossShudder(self);
+  m.restart();
+  self.die();
+}
 
 // Custom kind override so phase-1 damage gets pinned at zero instead of
-// killing the boss. The phase-1 race below polls `self.vars.phaseOneDown`
-// for the transition; phase-2 takeDamage falls through to BossKind, which
-// routes the lethal hit through the shared boss-death animation.
+// killing the boss, and phase-2's lethal hit is routed through the
+// custom death script above (rather than BossKind's bare flicker). The
+// phase-1 race below polls `self.vars.phaseOneDown` for the transition.
 class GymBroKind extends BossKind {
   override takeDamage(self: Entity, amount: number): void {
     if (self.hp === null) return;
     if (self.vars?.phaseTwo === true) {
-      if (self.hp - amount <= 0) {
-        self.say('My muscles will soon shrink like a balloon...', DEFEAT_LINE_FRAMES);
+      self.hp -= amount;
+      if (self.hp <= 0) {
+        // Lock damage off for the death window — same reason as
+        // BossKind's takeDamage: a stray bullet a frame later would
+        // otherwise re-trigger runScript and double-fire the boss-death
+        // sfx.
+        self.setDamagedByClasses([]);
+        self.stage.runScript(self, gymBroDeath);
+        return;
       }
-      super.takeDamage(self, amount);
+      self.flashDamage();
       return;
     }
     self.hp -= amount;

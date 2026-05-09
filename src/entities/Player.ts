@@ -77,6 +77,7 @@ export class Player extends Entity {
 
     for (const c of kind.damageClass) stage.damages[c].add(this);
     for (const c of kind.damagedByClass) stage.damagedBy[c].add(this);
+    this.activeDamagedBy = kind.damagedByClass.slice();
 
     // Initial pose so the very first rendered frame has a valid character anim;
     // subsequent frames are driven by updateAnim().

@@ -300,21 +300,61 @@ export function stopMusicLoop(): void {
   current = null;
   trackStartCtxTime = null;
   pausedAtCtxTime = null;
+  pausedSnaps = [];
   manualPaused = false;
   autoPaused = false;
 }
 
-// Calls Phaser's per-sound `pause()` on the active intro / loop sounds; the
-// AudioContext keeps advancing (Phaser's sound-manager update calls
-// `context.resume()` every frame, so suspending the context wouldn't stick),
-// so on resume we shift `trackStartCtxTime` forward by the pause duration to
-// keep `getMusicTime()` aligned with the actual music position.
+// Bypass Phaser's per-sound `pause()`/`resume()` entirely — they're driven
+// by counters (`playTime`, `loopTime`, `rateUpdates`) that Phaser only
+// reconciles in its per-frame `update()`, which means anything happening
+// near a loop seam (or while a hidden tab throttles rAF) leaves them in
+// an inconsistent state that pause/resume reads back as a bogus seek.
+// Two known-bad outcomes: see phaserjs/phaser#6702 (loop restarts at
+// offset 0 on refocus) and phaser-ce#323 (an extra copy of the buffer
+// plays on top of the loop after resume). Stopping a sound fully tears
+// down both the active and pre-scheduled buffer-source nodes; replaying
+// from a seek we've computed against the AudioContext clock rebuilds
+// clean state without depending on any of Phaser's stale counters.
+//
+// AudioContext keeps advancing during pause (Phaser's sound-manager
+// update calls `context.resume()` every frame, so suspending the context
+// wouldn't stick); on resume we shift `trackStartCtxTime` forward by the
+// pause duration to keep `getMusicTime()` aligned with the actual music
+// position.
+type PausedSoundSnap = { sound: Phaser.Sound.BaseSound; offset: number; loop: boolean };
+let pausedSnaps: PausedSoundSnap[] = [];
+
+function captureBufferOffset(sound: Phaser.Sound.BaseSound, loop: boolean): number {
+  if (!musicBus) return 0;
+  const ws = sound as unknown as { startTime: number; totalDuration: number };
+  const total = ws.totalDuration;
+  if (!total) return 0;
+  // `startTime` is the AudioContext time at which the current buffer
+  // source actually started — Phaser refreshes it on each loop wrap from
+  // `update()`. While update is racing the wrap (or throttled by a
+  // background tab) elapsed exceeds `total`; modulo recovers the
+  // equivalent in-bounds position. One-shots clamp to [0, total].
+  const elapsed = musicBus.context.currentTime - ws.startTime;
+  if (loop) return ((elapsed % total) + total) % total;
+  return Math.max(0, Math.min(total, elapsed));
+}
+
 function doPauseSounds(): void {
   if (!current || !musicBus) return;
   if (pausedAtCtxTime !== null) return;
   pausedAtCtxTime = musicBus.context.currentTime;
-  if (current.intro) current.intro.pause();
-  for (const s of current.sounds) s.pause();
+
+  const snaps: PausedSoundSnap[] = [];
+  const captureAndStop = (sound: Phaser.Sound.BaseSound, loop: boolean): void => {
+    const ws = sound as unknown as { isPlaying: boolean; isPaused: boolean };
+    if (!ws.isPlaying && !ws.isPaused) return;
+    snaps.push({ sound, offset: captureBufferOffset(sound, loop), loop });
+    sound.stop();
+  };
+  if (current.intro) captureAndStop(current.intro, false);
+  for (const s of current.sounds) captureAndStop(s, !current.oneShot);
+  pausedSnaps = snaps;
 }
 
 function doResumeSounds(): void {
@@ -323,8 +363,10 @@ function doResumeSounds(): void {
   const pauseDuration = musicBus.context.currentTime - pausedAtCtxTime;
   pausedAtCtxTime = null;
   if (trackStartCtxTime !== null) trackStartCtxTime += pauseDuration;
-  if (current.intro) current.intro.resume();
-  for (const s of current.sounds) s.resume();
+  for (const ps of pausedSnaps) {
+    ps.sound.play({ seek: ps.offset, loop: ps.loop });
+  }
+  pausedSnaps = [];
 }
 
 // Pause the active music in place. Used by the ESC pause menu so the score
@@ -366,11 +408,20 @@ export function installAutoPauseOnBlur(game: Phaser.Game): void {
     autoPaused = false;
     if (!manualPaused) doResumeSounds();
   };
-  // BLUR/FOCUS for desktop window-focus changes; visibilitychange catches
-  // tab-hide on platforms (notably iOS Safari) that don't reliably fire
-  // window blur for tab switches.
+  // Three independent paths to catch focus loss because no single one is
+  // reliable across platforms:
+  //  - Phaser BLUR/FOCUS: forwarded from `window.onblur`/`onfocus`. These
+  //    are property assignments so any other code (or stale Phaser
+  //    instance) that reassigns `window.onblur` silently drops them.
+  //  - Direct DOM blur/focus listeners: survive that hazard since
+  //    `addEventListener` adds to a list rather than overwriting a slot.
+  //  - visibilitychange: catches tab-hide on platforms (notably iOS
+  //    Safari) that don't reliably fire window blur for tab switches.
+  // The early-return guards on `autoPaused` make duplicate firings no-ops.
   game.events.on(Phaser.Core.Events.BLUR, onBlurOrHidden);
   game.events.on(Phaser.Core.Events.FOCUS, onFocusOrVisible);
+  window.addEventListener('blur', onBlurOrHidden);
+  window.addEventListener('focus', onFocusOrVisible);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) onBlurOrHidden();
     else onFocusOrVisible();

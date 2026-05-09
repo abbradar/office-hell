@@ -10,17 +10,12 @@ import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
-import {
-  BG_DOORS_BBOX_KEY,
-  BG_DOORS_FRAME_LEFT,
-  BG_DOORS_FRAME_RIGHT,
-  BG_DOORS_KEY,
-  BG_FLOOR_KEY,
-  BG_WALLS_KEY,
-} from '../content/textures';
+import { BG_DOORS_BBOX_KEY, BG_DOORS_KEY, BG_FLOOR_KEY, BG_WALLS_KEY } from '../content/textures';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
+import { bindLogicalCamera } from '../render/cameraBind';
+import { displayState } from '../render/displayState';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -42,6 +37,24 @@ const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 // Door layout constants live in src/content/doors.ts so stage scripts
 // can compute door y values from the same formula. See that module for
 // the cycle / spacing rationale.
+//
+// Background rendering pipeline — four stacked layers, drawn back-to-front
+// every frame:
+//   1. Floor   (depth -10, BG_FLOOR_KEY)  — full-canvas TileSprite,
+//                                            vertical scroll = corridor
+//                                            advance.
+//   2. Walls   (depth  -9, wallsRt)       — RenderTexture: tiled walls
+//                                            drawn in...
+//   3. ...then BG_DOORS_BBOX_KEY is erased at each visible door slot's
+//      y, punching through to the floor in the rect the doors will
+//      cover. (Same layer, not a separate display object — the third
+//      logical step happens inside the walls RT.)
+//   4. Doors   (depth  -8, doorSlots)     — full-width door Image drawn
+//                                            at the same (x, y) as the
+//                                            eraser, filling the cutout.
+// Eraser and door Image share native size + origin (0, 0), so they
+// cover the exact same rect — the door pixels can't drift past the
+// cutout edge.
 
 const HEADER_H = 28;
 
@@ -52,25 +65,39 @@ const BOMB_BUTTON_X = GAME_W / 2;
 // On touch devices with a control band, the move pads hug the canvas
 // bottom (lower half clips off-screen — the corner position works well
 // for a thumb at the edge). Without a band (desktop), they fall back to
-// the original in-playfield position.
-function touchButtonY(scale: Phaser.Scale.ScaleManager): number {
-  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 60;
+// the original in-playfield position. Reads displayState.logicalH (the
+// world's logical height — GAME_H on desktop, larger on phones) rather
+// than this.scale.height, which is now in canvas-internal device pixels
+// and not comparable to GAME_H.
+function touchButtonY(): number {
+  return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 60;
 }
 
 // With a control band, the bomb button sits at the canvas bottom (same y
 // as the move pads) — the centre column (x ≈ 90..310) is clear of either
 // move circle so the bomb ring is fully visible without overlapping.
 // Without a band (desktop), it tucks above the move pad inside the playfield.
-function bombButtonY(scale: Phaser.Scale.ScaleManager): number {
-  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 220;
+function bombButtonY(): number {
+  return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 220;
+}
+
+// Pointer.x / .y arrive in canvas-internal device pixels because the
+// canvas is sized at parent CSS × DPR (see main.ts). The world is rendered
+// into a centered scaled rect inside that — convert to logical coords by
+// subtracting the world rect's offset and dividing by displayState.scale.
+function pointerLogicalX(x: number): number {
+  return (x - displayState.offsetX) / displayState.scale;
+}
+function pointerLogicalY(y: number): number {
+  return (y - displayState.offsetY) / displayState.scale;
 }
 
 function anyHeldInCircle(pointers: Phaser.Input.Pointer[], cx: number, cy: number, r: number): boolean {
   const r2 = r * r;
   for (const p of pointers) {
     if (!p.isDown) continue;
-    const dx = p.x - cx;
-    const dy = p.y - cy;
+    const dx = pointerLogicalX(p.x) - cx;
+    const dy = pointerLogicalY(p.y) - cy;
     if (dx * dx + dy * dy <= r2) return true;
   }
   return false;
@@ -98,16 +125,14 @@ export class GameScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private bossNameText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
-  // Doors: each visible "door slot" is rendered as a (left, right) pair
-  // of Images sourced from frames of the 36×80 doors texture. They share
-  // a y, recomputed each frame from the same scroll offset.
-  private doorSlots: { left: Phaser.GameObjects.Image; right: Phaser.GameObjects.Image }[] = [];
-  // Walls layer baked per-frame: walls texture drawn in, then a solid
-  // doors-shaped silhouette (BG_DOORS_BBOX_KEY) is erased from it at each
-  // door's y. The bbox texture is registered with the same native size as
-  // the doors texture, so drawing both at the same (x, y) with origin
-  // (0, 0) and no scaling produces pixel-identical bounds — eraser and
-  // door cover the exact same rect.
+  // Doors: each visible "door slot" is one full-canvas-width Image of the
+  // doors texture (transparent in the middle, panels at the wall columns).
+  // y is recomputed each frame from the shared scroll offset.
+  private doorSlots: Phaser.GameObjects.Image[] = [];
+  // Walls layer baked per-frame: walls texture drawn in, then the doors
+  // silhouette (BG_DOORS_BBOX_KEY) is erased at each door's y. Eraser and
+  // door Image share native size + origin (0, 0), so the cutout matches
+  // the door panel pixel for pixel.
   private wallsRt!: Phaser.GameObjects.RenderTexture;
   // Off-display TileSprite of the 1px-tall walls texture, sized to the
   // full canvas. Drawn into wallsRt each frame so the wall pattern tiles
@@ -165,22 +190,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   isLeftHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
+    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(), TOUCH_BUTTON_RADIUS);
   }
 
   isRightHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
+    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(), TOUCH_BUTTON_RADIUS);
   }
 
   create(): void {
+    bindLogicalCamera(this);
     stopMusicLoop();
 
     // Scene-level pointer listener auto-cleans on shutdown. Pointer
     // coords are already in game space (Phaser's scale manager handles
     // the canvas-fit transform), so a plain distance check is enough.
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      const dx = pointer.x - BOMB_BUTTON_X;
-      const dy = pointer.y - bombButtonY(this.scale);
+      const dx = pointerLogicalX(pointer.x) - BOMB_BUTTON_X;
+      const dy = pointerLogicalY(pointer.y) - bombButtonY();
       if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
     });
 
@@ -200,27 +226,24 @@ export class GameScene extends Phaser.Scene {
       .tileSprite({ x: 0, y: 0, width: GAME_W, height: GAME_H, key: BG_WALLS_KEY }, false)
       .setOrigin(0, 0);
 
-    // Doors: each slot is a (left, right) pair of Images sourced from
-    // the BG_DOORS_FRAME_LEFT / BG_DOORS_FRAME_RIGHT frames of the 36×80
-    // doors texture. The two halves render at the canvas's wall columns
-    // (x=0 and x=GAME_W - WALL_W) and share a y. Per-frame, the same y
-    // also drives wallsRt.erase() at both x positions so the wall cutout
-    // tracks the door panel exactly. Wall column width matches WALL_W,
-    // which is what doors.png was sliced against.
+    // Doors: each slot is one full-canvas-width Image of the doors
+    // texture, drawn at canvas (0, slot_y). The PNG has door panels at
+    // the wall columns (x=0..WALL_W-1, x=GAME_W-WALL_W..GAME_W-1) and is
+    // transparent in the middle, so a single Image renders both panels
+    // and never touches the corridor. Per-frame the same y drives
+    // wallsRt.erase() at (0, y) so the wall cutout tracks the door
+    // panels exactly.
     for (let i = 0; i < DOOR_COUNT; i++) {
       const startY = i * DOOR_SPACING - DOOR_H;
-      const left = this.add.image(0, startY, BG_DOORS_KEY, BG_DOORS_FRAME_LEFT).setOrigin(0, 0).setDepth(-8);
-      const right = this.add
-        .image(GAME_W - WALL_W, startY, BG_DOORS_KEY, BG_DOORS_FRAME_RIGHT)
-        .setOrigin(0, 0)
-        .setDepth(-8);
-      this.doorSlots.push({ left, right });
+      this.doorSlots.push(this.add.image(0, startY, BG_DOORS_KEY).setOrigin(0, 0).setDepth(-8));
     }
 
     // Mask the touch-control band so bullets that drift below the playfield
     // (within CULL_MARGIN before being culled) don't peek through behind the
     // buttons. Depth 50 sits above entities (default 0) and below HUD (99+).
-    const bandH = this.scale.height - GAME_H;
+    // displayState.logicalH is the world's logical height (= GAME_H on
+    // desktop, larger on touch); the band is anything past GAME_H.
+    const bandH = displayState.logicalH - GAME_H;
     if (bandH > 0) {
       this.add.rectangle(0, GAME_H, GAME_W, bandH, COLOR_WALL).setOrigin(0, 0).setDepth(50);
     }
@@ -298,8 +321,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isTouchDevice) {
-      const moveY = touchButtonY(this.scale);
-      const bombY = bombButtonY(this.scale);
+      const moveY = touchButtonY();
+      const bombY = bombButtonY();
       this.add
         .circle(0, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
         .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
@@ -409,6 +432,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pauseGame(): void {
+    console.warn(`[menu-open t=${performance.now().toFixed(0)}]`);
     this.userPaused = true;
     this.stage.freeze();
     pauseMusic();
@@ -568,8 +592,17 @@ export class GameScene extends Phaser.Scene {
       // dial it (e.g. the ending walks home at 0.5×).
       if (this.stage.running) {
         const advance = delta * CORRIDOR_SCROLL_PX_PER_MS * this.stage.scrollSpeedMultiplier;
-        this.bg.tilePositionY -= advance;
         this.bgScrollY += advance;
+        // tilePositionY is fed straight into the texture-coord shader uniform
+        // (TileSpriteWebGLRenderer) and is NOT affected by camera.roundPixels —
+        // a fractional value samples the floor texture at sub-texel offsets,
+        // so the scroll advances by uneven visual amounts each frame (judder
+        // under variable delta). Drive it from the rounded float accumulator
+        // so the displayed position always lands on an integer pixel; the
+        // accumulator itself stays float so the next frame's increment and
+        // the door-wrap math (computeDoorYs, which rounds its own output)
+        // don't lose precision.
+        this.bg.tilePositionY = -Math.round(this.bgScrollY);
       }
       // Mirror the scroll onto the stage so script helpers (alignDoor,
       // pickDoorCenterY) read the same number that drives the door
@@ -584,23 +617,19 @@ export class GameScene extends Phaser.Scene {
       // hits the wallsRt's own camera (roundPixels=false by default), so
       // a fractional y would let the two rasterise to slightly different
       // rows and the door panels would flicker in and out. Rounding once
-      // up front feeds both paths (and both halves of each slot) the
-      // same integer.
+      // up front feeds both paths the same integer.
       const doorYs = computeDoorYs(this.bgScrollY);
 
       // Refresh the walls layer: blit the tiled walls into the RT, then
-      // erase each slot's two panel bboxes (one per side). The bbox
-      // texture and a single door panel frame have the same native size
-      // and are drawn at the same x/y with origin (0, 0), so Phaser's
-      // batchTextureFrame path produces identical pixel coverage.
+      // erase each slot's full-width bbox. Eraser and door Image share
+      // native size + origin (0, 0), so Phaser's batchTextureFrame path
+      // produces identical pixel coverage.
       this.wallsRt.clear();
       this.wallsRt.draw(this.wallsTile, 0, 0);
       this.doorSlots.forEach((slot, i) => {
         const y = doorYs[i] ?? 0;
-        slot.left.y = y;
-        slot.right.y = y;
+        slot.y = y;
         this.wallsRt.erase(BG_DOORS_BBOX_KEY, 0, y);
-        this.wallsRt.erase(BG_DOORS_BBOX_KEY, GAME_W - WALL_W, y);
       });
 
       this.player.controlUpdate();

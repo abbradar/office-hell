@@ -3,6 +3,7 @@ import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { SECTIONS } from '../content/credits';
 import { isTouchDevice } from '../input/device';
+import { bindLogicalCamera } from '../render/cameraBind';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -44,6 +45,7 @@ export class CreditsScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
     this.scrollY = 0;
@@ -128,14 +130,11 @@ export class CreditsScene extends Phaser.Scene {
 
     // Mask the container so content scrolling past the top/bottom of
     // the viewport gets clipped instead of bleeding over the title or
-    // the back-link slot. Phaser's geometry mask only clips WebGL
-    // output; the sibling text-overlay canvas reads `overlayClip` data
-    // to apply the same rect as a canvas2d clip during its flush.
+    // the back-link slot.
     const maskGraphics = this.make.graphics({});
     maskGraphics.fillStyle(0xffffff);
     maskGraphics.fillRect(0, LIST_VIEW_TOP, GAME_W, listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
-    this.listContainer.setData('overlayClip', { x: 0, y: LIST_VIEW_TOP, w: GAME_W, h: listViewHeight });
 
     const totalHeight = cursorY;
     this.maxScroll = Math.max(0, totalHeight - listViewHeight);

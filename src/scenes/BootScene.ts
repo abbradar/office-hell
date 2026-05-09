@@ -8,11 +8,63 @@ import { computeCanvasH } from '../canvasSize';
 import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
-import { generateTextures, preloadBackgrounds, preloadPlayerBullet, registerDoorsFrames } from '../content/textures';
+import { generateTextures, preloadBackgrounds, preloadPlayerBullet } from '../content/textures';
 import { isTouchDevice } from '../input/device';
-import { loadInputIconImages } from '../ui/inputIcons';
+import { bindLogicalCamera } from '../render/cameraBind';
+import { DISPLAY_RESIZE_EVENT, displayState } from '../render/displayState';
+import { loadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
 import { COLOR_ACCENT_GOLD, COLOR_PANEL_BORDER, COLOR_TEXT_DIM_STR, COLOR_WALL_STR } from '../ui/palette';
+
+// Recompute the world-on-canvas geometry shared by every scene.
+//
+// The Phaser canvas internal is sized at native device pixels (parent CSS
+// × DPR) so each canvas pixel == a screen pixel. Inside the canvas, the
+// world (GAME_W × logicalH) is centered + scaled by `scale = min(canvas /
+// world)`. Per-scene cameras (see render/cameraBind.ts) read this state
+// and pin their viewport + zoom; the factory override in
+// render/textResolution.ts reads `scale` for Text resolution.
+//
+// `setGameSize` is called only when the target dimensions differ from the
+// current ones — otherwise the call would re-trigger Phaser's RESIZE
+// event and we'd recurse forever.
+export function recomputeDisplay(scene: Phaser.Scene): boolean {
+  const cssW = scene.scale.parentSize.width;
+  const cssH = scene.scale.parentSize.height;
+  if (!cssW || !cssH) return false;
+  const dpr = window.devicePixelRatio || 1;
+  const targetW = Math.max(1, Math.round(cssW * dpr));
+  const targetH = Math.max(1, Math.round(cssH * dpr));
+  let resized = false;
+  if (targetW !== scene.scale.width || targetH !== scene.scale.height) {
+    scene.scale.setGameSize(targetW, targetH);
+    resized = true;
+  }
+  // Phaser's Scale.RESIZE writes canvas.style.width/height in canvas-
+  // internal pixels (= our device pixels), which would visually blow the
+  // canvas up DPR× past the parent. Override to CSS px so the rendered
+  // size matches the parent rect.
+  const c = scene.game.canvas;
+  c.style.width = `${cssW}px`;
+  c.style.height = `${cssH}px`;
+
+  const logicalH = computeCanvasH(cssW, cssH);
+  const sByW = targetW / GAME_W;
+  const sByH = targetH / logicalH;
+  const s = Math.min(sByW, sByH);
+  const renderedW = GAME_W * s;
+  const renderedH = logicalH * s;
+  const offX = Math.max(0, Math.round((targetW - renderedW) / 2));
+  const offY = Math.max(0, Math.round((targetH - renderedH) / 2));
+
+  displayState.scale = s;
+  displayState.offsetX = offX;
+  displayState.offsetY = offY;
+  displayState.logicalH = logicalH;
+  displayState.canvasW = targetW;
+  displayState.canvasH = targetH;
+  return resized;
+}
 
 export class BootScene extends Phaser.Scene {
   // Set in showLoadingUI() during preload(). Phaser guarantees preload runs
@@ -24,6 +76,11 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    // Prime displayState before the loading-bar text renders so
+    // `Text.resolution = scale` resolves to the live value at creation
+    // time. Without this, the bar text rasterises against scale=1 and
+    // looks fuzzy until the first runtime resize.
+    recomputeDisplay(this);
     // The loading screen is all `preload()` does now — the synchronous
     // bullet/trash/corridor texture generation moved into `content/textures`,
     // which runs as its own promise in `create()` so network requests get
@@ -98,7 +155,6 @@ export class BootScene extends Phaser.Scene {
           // Anims tie into spritesheets that just landed — register now.
           registerAllCharacterAnims(this);
           registerElevatorAnims(this);
-          registerDoorsFrames(this);
           resolve();
         } catch (err) {
           reject(err);
@@ -111,10 +167,11 @@ export class BootScene extends Phaser.Scene {
     // before we start blocking on draws.
     const texturesPromise = Promise.resolve().then(() => generateTextures(this));
 
-    // Input icon SVGs load outside the Phaser loader: they're decoded into
-    // HTMLImageElements for the text-overlay path, not rasterised into
-    // Phaser textures. Kicked off in parallel with the rest.
-    const inputIconsPromise = loadInputIconImages();
+    // Input icon SVGs load outside the Phaser loader: they're decoded
+    // into a white-on-transparent stencil canvas at a high baseline
+    // resolution and registered as Phaser textures (see inputIcons.ts).
+    // Kicked off in parallel with the rest.
+    const inputIconsPromise = loadInputIcons(this.game);
 
     Promise.all([
       assetsPromise,
@@ -164,39 +221,34 @@ export class BootScene extends Phaser.Scene {
       window.addEventListener('pointerup', onGesture);
       window.addEventListener('keydown', onGesture);
 
-      // When the viewport changes shape (fullscreen toggling on/off, address
-      // bar hide/show, orientation flip) we want the canvas's logical aspect
-      // to match the new viewport so Scale.FIT fills it edge-to-edge instead
-      // of letterboxing.
+      // When the viewport changes (fullscreen toggle, address-bar
+      // show/hide, orientation flip, desktop window drag) recompute the
+      // device-pixel canvas size + world-rect math, then notify every
+      // scene so its main camera re-pins the viewport / zoom and any
+      // text bitmap re-rasterises at the new scale.
       //
-      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after*
-      // its own getParentBounds() call has refreshed `scale.parentSize`, so
-      // reading parentSize here gives the live post-fullscreen viewport.
-      // ENTER_FULLSCREEN fires inside the DOM fullscreenchange handler before
-      // the browser has settled the new layout — body/parent bounds are
-      // still stale at that point.
+      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE
+      // *after* its own getParentBounds() refresh, so reading parentSize
+      // here gives the live post-fullscreen viewport. ENTER_FULLSCREEN
+      // fires inside the DOM fullscreenchange handler before the browser
+      // has settled the new layout.
       //
-      // Guard: only call resize when the height actually changes, otherwise
-      // our resize() triggers another RESIZE → infinite loop.
+      // recomputeDisplay returns true only when it called setGameSize
+      // (which itself re-fires RESIZE). The DISPLAY_RESIZE_EVENT below
+      // only goes out on actual changes — emitting unconditionally would
+      // be cheap but would re-rasterise every Text on every native scroll
+      // tick, which is a lot of work for nothing.
       this.scale.on(Phaser.Scale.Events.RESIZE, () => {
-        const pw = this.scale.parentSize.width;
-        const ph = this.scale.parentSize.height;
-        if (!pw || !ph) return;
-        const next = computeCanvasH(pw, ph);
-        if (next !== this.scale.height) {
-          // setGameSize, not resize: resize() is documented for the NONE
-          // scale mode and doesn't refresh the FIT aspect ratio, so display
-          // size ends up computed against the *previous* aspect (canvas
-          // letterboxes inside the parent). setGameSize calls
-          // displaySize.setAspectRatio() before refresh(), giving us a
-          // proper aspect-correct fit.
-          this.scale.setGameSize(GAME_W, next);
-        }
+        const before = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
+        recomputeDisplay(this);
+        const after = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
+        if (before !== after) this.game.events.emit(DISPLAY_RESIZE_EVENT);
       });
     });
   }
 
   private showLoadingUI(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
     const cx = GAME_W / 2;

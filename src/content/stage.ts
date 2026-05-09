@@ -132,13 +132,17 @@ export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
 // then switches to metal for Coach Becky as the stage-1 end boss.
 // Five timed waves (more charts, vacation photos, the harder
 // email-pinch pass, meeting interns, janitors) before the metal cut
-// and her entrance. Total of the wave block = 63s (5 waves:
-// 11+11+7+8+8 = 45s, plus 6 × 3s gaps including gaps adjacent to
-// each boss); the music switch via `waitTrackEnded` snaps to the
-// next retro-02 loop boundary at-or-after the block ends. More
-// charts is strictly sequential (pie-chart colleague then bar-chart
-// colleague) and gets the same 11s slot as vacation photos so both
-// fit comfortably; timeWave truncates the tail if the player drags.
+// and her entrance. Wave block = 5 waves (11 + 16 + 10 + 15 + 8 = 60s)
+// plus 6 × 3s gaps = 78s; the music switch via `waitTrackEnded` snaps
+// to the next retro-02 loop boundary at-or-after the block ends.
+// Vacation photos and meeting interns get longer slots than the
+// shooting body strictly needs because their last beats are visible
+// retreat motions — the colleagues fly back upward, the meeting
+// interns push down past the player — and the extra seconds are what
+// keep `killEnemies` from sweeping the field before the exit lands.
+// More charts is strictly sequential (pie-chart colleague then
+// bar-chart colleague) and gets an 11s slot; timeWave truncates the
+// tail if the player drags.
 //
 // The leading `startMusicLoop` is idempotent — no-op in live flow
 // (retro-02 is already playing from part 1) and switches into
@@ -150,11 +154,11 @@ export function* stage1Part2(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* timeWave(self, 11, self.stage.separateWave(moreChartsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 11, self.stage.separateWave(vacationPhotosWave(self)));
+  yield* timeWave(self, 16, self.stage.separateWave(vacationPhotosWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 7, self.stage.separateWave(emailColleagues3(self)));
+  yield* timeWave(self, 10, self.stage.separateWave(emailColleagues3(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 8, self.stage.separateWave(meetingInternsWave(self)));
+  yield* timeWave(self, 15, self.stage.separateWave(meetingInternsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* timeWave(self, 8, self.stage.separateWave(janitorsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);

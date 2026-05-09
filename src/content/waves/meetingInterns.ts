@@ -107,6 +107,9 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
     for (let i = 0; i < BARRAGES; i++) {
       if (!self.alive) return;
       fireBowlingArrow(self);
+      // After the last formation, head straight for the front rather than
+      // serving out the inter-barrage random shots and gap.
+      if (i === BARRAGES - 1) break;
       let consumed = 0;
       for (let r = 0; r < RANDOM_SHOTS_PER_GAP; r++) {
         yield subWait;
@@ -116,6 +119,7 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
       yield BARRAGE_GAP - consumed;
     }
 
+    // Push through the front: down past the player, off the bottom.
     self.setVelocity(0, EXIT_SPEED);
   };
 }

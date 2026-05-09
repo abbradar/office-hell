@@ -36,41 +36,27 @@ import {
 // the boot scene uses.
 
 // Three-layer office background:
-//  - floor (416×672): full-playfield tile, used by a TileSprite that
-//    scrolls vertically as the corridor advances.
-//  - walls (400×672): full-canvas overlay above the floor, static — the
-//    walls don't scroll with the player.
-//  - doors (400×80): full-width strip with door panels at the corridor
-//    edges. Three copies are placed evenly down the playfield and scroll
-//    in lockstep with the floor, wrapping back to the top as they exit.
+//  - floor (416×112): seamless tile, drawn full-canvas via a TileSprite
+//    that scrolls vertically as the corridor advances.
+//  - walls (400×1): horizontal strip — opaque on the wall columns,
+//    transparent in the middle. Tiled to canvas height into a per-frame
+//    RenderTexture so we can erase the wall pixels under each door.
+//  - doors (400×80): full-canvas-width strip with door panels at the
+//    wall columns and a transparent middle. Three copies are placed
+//    evenly down the playfield and scroll in lockstep with the floor,
+//    wrapping back to the top as they exit.
 export const BG_FLOOR_KEY = 'bg_floor';
 export const BG_WALLS_KEY = 'bg_walls';
 export const BG_DOORS_KEY = 'bg_doors';
 
-// Solid white rectangle sized to a single door panel — the doors texture
-// is 36×80 (left panel + right panel concatenated, 18×80 each), so the
-// bbox eraser is 18×80 and we erase twice per door slot. Drawing it with
-// origin (0, 0) at the same x/y as a door Image covers the exact same
-// pixels — same native size, no scaling, so they can't drift by even a
-// pixel. Update DOORS_W / DOORS_H here if doors.png panel dimensions
-// ever change.
+// Solid white rectangle sized to the full doors texture — drawing it
+// with origin (0, 0) at the same x/y as a door Image covers the same
+// pixels (same native size, no scaling), so the wall cutout matches
+// the door panels exactly. Update DOORS_W / DOORS_H here if doors.png
+// dimensions ever change.
 export const BG_DOORS_BBOX_KEY = 'bg_doors_bbox';
-const DOORS_W = 18;
+const DOORS_W = 400;
 const DOORS_H = 80;
-
-// Named frames into the 36×80 doors texture: the left half (cols 0..17)
-// and the right half (cols 18..35). Registered after the doors PNG
-// loads — see BootScene's load-complete callback. Render-time the
-// GameScene creates two Images per door slot using these frames so the
-// left panel lands at canvas x=0 and the right at canvas x=GAME_W - 18.
-export const BG_DOORS_FRAME_LEFT = 'left';
-export const BG_DOORS_FRAME_RIGHT = 'right';
-
-export function registerDoorsFrames(scene: Phaser.Scene): void {
-  const tex = scene.textures.get(BG_DOORS_KEY);
-  tex.add(BG_DOORS_FRAME_LEFT, 0, 0, 0, DOORS_W, DOORS_H);
-  tex.add(BG_DOORS_FRAME_RIGHT, 0, DOORS_W, 0, DOORS_W, DOORS_H);
-}
 
 export function preloadBackgrounds(scene: Phaser.Scene): void {
   scene.load.image(BG_FLOOR_KEY, bgFloorUrl);

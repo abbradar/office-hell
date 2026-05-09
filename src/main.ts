@@ -1,39 +1,63 @@
 import Phaser from 'phaser';
-import { computeCanvasH } from './canvasSize';
 import { GAME_W, SCRIPT_FPS } from './config';
-// Side-effect import: overrides the global `text` factory so all
-// `scene.add.text(...)` calls produce OverlayText instances that draw onto
-// the high-resolution overlay canvas (see render/textOverlay.ts).
-import './render/OverlayText';
-import { installTextOverlay } from './render/textOverlay';
+// Side-effect import: overrides the global `text` factory so every
+// `scene.add.text(...)` call inherits `resolution: displayState.scale`.
+// Combined with cameraBind's zoom, this keeps glyph stems on whole
+// device pixels (see render/textResolution.ts).
+import './render/textResolution';
+import { installTextResolutionRefresher } from './render/textResolution';
 import { BootScene } from './scenes/BootScene';
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
 // by the top/side safe-area insets (notch, rounded corners), so body
-// width/height already excludes those — using it here means Scale.FIT fills
-// the safe rectangle edge-to-edge instead of letterboxing inside it. The
-// bottom is intentionally not inset, so the control band reaches the
-// physical screen bottom (home indicator overlapping a button is fine).
+// width/height already excludes those. We size the canvas internal to the
+// device-pixel rectangle (parent CSS × DPR) so each canvas pixel = a real
+// screen pixel — no browser-side fractional CSS upscale, which is what
+// gave the older Scale.FIT path its glyph-stem wobble. The bottom is
+// intentionally not inset, so the touch control band reaches the physical
+// screen bottom (home indicator overlapping a button is fine).
 const bodyRect = document.body.getBoundingClientRect();
+const dpr = window.devicePixelRatio || 1;
+
+const initialCssW = Math.max(1, Math.round(bodyRect.width || window.innerWidth));
+const initialCssH = Math.max(1, Math.round(bodyRect.height || window.innerHeight));
+const initialW = Math.max(GAME_W, Math.round(initialCssW * dpr));
+const initialH = Math.max(1, Math.round(initialCssH * dpr));
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   // Phaser's parent (#viewport) is an inner div; #game is the fullscreen
   // target. Padding on #game:fullscreen shrinks #viewport so the canvas
-  // clears the notch/bezels. Outside fullscreen, #viewport sizes to the
-  // canvas (no padding in play), so layout is unchanged.
+  // clears the notch/bezels.
   parent: 'viewport',
-  width: GAME_W,
-  height: computeCanvasH(bodyRect.width, bodyRect.height),
+  // Initial canvas internal = device pixels for the parent. BootScene's
+  // RESIZE handler maintains this on viewport changes.
+  width: initialW,
+  height: initialH,
   backgroundColor: '#10101a',
   pixelArt: true,
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    // Scale.NONE: Phaser doesn't auto-resize the canvas. BootScene owns
+    // the resize path — on Phaser's RESIZE event (which still fires on
+    // parent changes regardless of mode), it calls setGameSize(parent
+    // CSS × DPR) so the framebuffer is at native device resolution and
+    // overrides canvas.style to the parent CSS rect so the on-screen
+    // size matches. Camera zoom in each scene (see render/cameraBind.ts)
+    // upscales logical world coords into that device-pixel buffer with
+    // NEAREST filtering — i.e. game sprites get rendered at game-field
+    // size and NN-scaled to the device size. Text crispness comes from
+    // Text.resolution = scale at the rasterise step (see
+    // render/textResolution.ts).
+    //
+    // Why not Scale.RESIZE: in that mode, Phaser's per-refresh
+    // updateScale resets gameSize → parentSize on every emit, which
+    // would undo our DPR multiplier the moment we set it.
+    mode: Phaser.Scale.NONE,
+    autoCenter: Phaser.Scale.NO_CENTER,
     // Use #game itself as the fullscreen element. Default behaviour creates
     // a wrapper div, moves the canvas into it, and fullscreens the wrapper —
-    // which leaves Phaser's `parent` (#game) empty and collapsed to 0×0, so
-    // FIT computes against zero bounds and the canvas doesn't resize.
+    // which leaves Phaser's `parent` (#game) empty and collapsed to 0×0,
+    // so the canvas doesn't resize.
     fullscreenTarget: 'game',
   },
   physics: {
@@ -57,10 +81,9 @@ const game = new Phaser.Game({
   scene: [BootScene],
 });
 
-// Sibling overlay canvas for crisp text. Phaser appends its canvas during
-// async boot, not synchronously from the constructor — wait for READY so
-// `game.canvas.parentElement` resolves to the live #viewport, not null.
-game.events.once(Phaser.Core.Events.READY, () => installTextOverlay(game));
+// Hook the resize-aware text refresh once Phaser has booted. Module-load
+// side-effects already installed the factory override.
+installTextResolutionRefresher(game);
 
 // Expose the game for in-browser debugging + automated tests (the
 // playwright stress test reads `__game.loop.actualFps` and pokes into

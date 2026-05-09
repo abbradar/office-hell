@@ -17,6 +17,8 @@ import { reportBullet } from './reportBullet';
 // without threatening the player. With three of them stacked across the top,
 // the fans overlap into a moving lattice rather than a single sweep the
 // player can edge around.
+//
+// Exit: all three retreat back the way they came (up off the top).
 
 const ENTRY_SPEED = 100;
 const ENTRY_Y = 110;
@@ -57,10 +59,15 @@ function makeVacationScript(role: Role): EntityScript {
       self.say(intro ? 'Look — vacation photos!' : (lines[i] ?? 'Look look!'), SAY_FRAMES);
       yield PRE_FIRE_GAP;
       arc(self, PHOTO_COUNT, reportBullet, PHOTO_SPEED, PHOTO_ARC_FROM, PHOTO_ARC_TO);
+      // After the last fan, exit immediately rather than serving out a
+      // POST_FIRE_GAP that the wave's killEnemies would just sweep over.
+      if (i === BARRAGES - 1) break;
       yield POST_FIRE_GAP;
     }
 
-    self.setVelocity(0, EXIT_SPEED);
+    // Retreat back the way they came (up off the top); StageManager culls
+    // them once they cross the cull margin.
+    self.setVelocity(0, -EXIT_SPEED);
   };
 }
 

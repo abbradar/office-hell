@@ -20,6 +20,7 @@ import { GAME_H, GAME_W } from '../config';
 import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
+import { bindLogicalCamera } from '../render/cameraBind';
 import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
 import { StageManager } from '../script/StageManager';
 import {
@@ -339,6 +340,7 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 
@@ -523,13 +525,6 @@ export class PatternTestScene extends Phaser.Scene {
     // mask + Y-offset, so the loop toggle and add row above don't clip.
     const listContainer = this.add.container(0, VISUAL_LIST_TOP - this.visualScrollY);
     listContainer.setMask(this.visualMask);
-    // Mirror the mask rect on the overlay-text path (see textOverlay.ts).
-    listContainer.setData('overlayClip', {
-      x: EDITOR_LEFT,
-      y: EDITOR_TOP,
-      w: GAME_W - EDITOR_LEFT * 2,
-      h: EDITOR_HEIGHT,
-    });
     this.visualContainer.add(listContainer);
     this.visualObjects.push(listContainer);
 

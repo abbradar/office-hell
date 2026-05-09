@@ -30,7 +30,7 @@ const BOMB_RADIUS = GAME_W / 2;
 // longer invincibility window so the player has time to reorient before
 // engaging again.
 const DEATH_BOMB_RADIUS = GAME_W / 4;
-const DEATH_BOMB_INVINCIBLE_MS = 3500;
+export const DEATH_BOMB_INVINCIBLE_MS = 3500;
 
 // Passive-aggressive office-speak the player snaps out as they "get angry"
 // and nuke the field. One picked at random per bomb — keeps repeated bombing
@@ -99,12 +99,12 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   });
 }
 
-// Continue-rescue bomb: no bark, no shockwave VFX, no camera shake. Just
+// Death-bomb rescue: no bark, no shockwave VFX, no camera shake. Just
 // pop bullets in a tighter radius and grant a longer invincibility window
-// so the revived player isn't immediately killed again by whatever was
-// already on top of them. Caller is responsible for actually reviving the
-// player (alive flag, body, hp); this function only handles the rescue
-// effect itself.
+// so the player isn't immediately killed again by whatever was already
+// on top of them. Used for both the continue revive and the non-fatal
+// on-hit auto-rescue; the caller (continue path) is responsible for
+// actually reviving the player (alive flag, body, hp) when applicable.
 export function activateDeathBomb(player: Player, stage: StageManager): void {
   const scene = stage.scene;
   const cx = player.x;
@@ -114,6 +114,24 @@ export function activateDeathBomb(player: Player, stage: StageManager): void {
   scene.time.delayedCall(DEATH_BOMB_INVINCIBLE_MS, () => player.popInvincible());
 
   for (const { e } of findBulletsInRadius(stage, cx, cy, DEATH_BOMB_RADIUS)) e.die();
+
+  // Sprite alpha pulses at ~10 Hz across the invincibility window so the
+  // rescue reads visually as "you got saved" — death-bomb has no field
+  // VFX of its own, so this is the only feedback the player gets that
+  // the rescue happened.
+  scene.tweens.add({
+    targets: player,
+    alpha: 0.3,
+    duration: 100,
+    yoyo: true,
+    repeat: Math.floor(DEATH_BOMB_INVINCIBLE_MS / 200) - 1,
+    onComplete: () => {
+      player.setAlpha(1);
+    },
+    onStop: () => {
+      player.setAlpha(1);
+    },
+  });
 }
 
 // Snapshot of every live player-damaging projectile within `radius` of
