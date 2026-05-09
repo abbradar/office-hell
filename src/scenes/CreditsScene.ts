@@ -47,10 +47,11 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    heading: 'ART & INPUT ICONS',
+    heading: 'ART & INPUT ICONS & SFX',
     entries: [
       { name: 'Kenney', url: 'opengameart.org/users/kenney' },
       { name: 'Universal LPC Spritesheet Generator', url: 'github.com/LiberatedPixelCup' },
+      { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
     ],
   },
   {
