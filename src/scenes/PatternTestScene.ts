@@ -21,6 +21,7 @@ import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { bindLogicalCamera } from '../render/cameraBind';
+import { displayState } from '../render/displayState';
 import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
 import { StageManager } from '../script/StageManager';
 import {
@@ -435,15 +436,21 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   private repositionCodeEditor(): void {
+    // Convert logical (EDITOR_LEFT, EDITOR_TOP) to CSS pixels for the
+    // DOM textarea overlay. Under the new rendering pipeline the canvas
+    // internal is device-pixel-sized; the world is rendered into a
+    // centered viewport at displayState.offset/scale (device pixels).
+    // CSS-per-device = rect.width / canvas.width handles the browser-
+    // side display scaling.
     const canvas = this.game.canvas;
     const rect = canvas.getBoundingClientRect();
-    const sx = rect.width / canvas.width;
-    const sy = rect.height / canvas.height;
-    const left = rect.left + EDITOR_LEFT * sx;
-    const top = rect.top + EDITOR_TOP * sy;
-    const width = (GAME_W - EDITOR_LEFT * 2) * sx;
-    const height = EDITOR_HEIGHT * sy;
-    const fontPx = Math.max(11, Math.round(13 * Math.min(sx, sy)));
+    const cssPerDevice = canvas.width > 0 ? rect.width / canvas.width : 1;
+    const cssScale = displayState.scale * cssPerDevice;
+    const left = rect.left + displayState.offsetX * cssPerDevice + EDITOR_LEFT * cssScale;
+    const top = rect.top + displayState.offsetY * cssPerDevice + EDITOR_TOP * cssScale;
+    const width = (GAME_W - EDITOR_LEFT * 2) * cssScale;
+    const height = EDITOR_HEIGHT * cssScale;
+    const fontPx = Math.max(11, Math.round(13 * cssScale));
     this.codeEditor.style.left = `${left}px`;
     this.codeEditor.style.top = `${top}px`;
     this.codeEditor.style.width = `${width}px`;
