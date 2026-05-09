@@ -28,16 +28,13 @@ const SMALL_FAMILY = '"Eazygoin", sans-serif';
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
 // Phaser caches each Text into a texture and `pixelArt: true` (in main.ts)
-// disables anti-aliasing on it. We previously set this to devicePixelRatio
-// to compensate for Scale.FIT's fractional canvas-to-screen scaling, but
-// the canvas now scales by integer multiples only (see main.ts). At
-// integer scale the DPR boost backfires: the text is rasterised at 2×
-// density and then NEAREST-downsampled to canvas resolution, throwing
-// away every other texel and producing the soft "subpixel sampling"
-// look. Resolution 1 keeps the rasteriser on the canvas pixel grid —
-// each glyph pixel lands cleanly on a canvas pixel and then on N device
-// pixels via image-rendering: pixelated.
-const TEXT_RESOLUTION = 1;
+// disables anti-aliasing on it. Under Scale.FIT the canvas scales by
+// fractional ratios to fill the viewport, so rasterising text at canvas
+// resolution and then NEAREST-sampling up to screen pixels gives uneven
+// glyph stems. devicePixelRatio rasterises text at the device-pixel grid
+// instead, so the eventual NEAREST sample is closer to integer-aligned
+// per glyph row.
+const TEXT_RESOLUTION = window.devicePixelRatio;
 
 // Big dramatic single-line: main menu title, end-screen verdict, scene headers.
 // Press Start 2P at 32px — clean 8px multiple, crisp glyph grid.

@@ -23,21 +23,12 @@ const game = new Phaser.Game({
   backgroundColor: '#10101a',
   pixelArt: true,
   scale: {
-    // Scale.NONE + integer zoom (computed in BootScene's RESIZE handler)
-    // instead of Scale.FIT. FIT scales the canvas at fractional ratios to
-    // fill the viewport, which under `pixelArt: true` (NEAREST sampling)
-    // turns 1-canvas-pixel stems into mixed 1- and 2-screen-pixel stems —
-    // pixel-art looks ok-ish but small sans-serif text gets visibly
-    // distorted. NONE keeps the canvas at integer multiples of game size
-    // so every canvas pixel maps to N×N screen pixels uniformly. Trade-off:
-    // on viewports smaller than 2× the game size, we sit at zoom 1 with
-    // margins instead of expanding fractionally to fill.
-    mode: Phaser.Scale.NONE,
+    mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     // Use #game itself as the fullscreen element. Default behaviour creates
     // a wrapper div, moves the canvas into it, and fullscreens the wrapper —
     // which leaves Phaser's `parent` (#game) empty and collapsed to 0×0, so
-    // the canvas doesn't resize.
+    // FIT computes against zero bounds and the canvas doesn't resize.
     fullscreenTarget: 'game',
   },
   physics: {
