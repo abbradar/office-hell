@@ -4,6 +4,11 @@
 // configured with Scale.FIT, so the canvas still scales to fit the page.
 export const GAME_W = 400;
 export const GAME_H = 660;
+// Width of the static side walls; the playable corridor between them is
+// `GAME_W - 2 * WALL_W`. Read by both GameScene (sprite layout) and Player
+// (horizontal movement clamp), so it lives here rather than in either.
+// Matches the width of the office_hell_wall.png slice tiled on each side.
+export const WALL_W = 18;
 
 export const PLAYER_SPEED = 280;
 export const ENTITY_POOL_SIZE = 1024;

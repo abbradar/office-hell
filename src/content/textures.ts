@@ -1,4 +1,6 @@
 import type Phaser from 'phaser';
+import officeFloorUrl from '../assets/sprites/office hell floor.png';
+import officeWallUrl from '../assets/sprites/office_hell_wall.png';
 import floorPatternUrl from '../assets/sprites/floor_pattern.png';
 import { BULLET_RADIUS } from '../config';
 import {
@@ -42,8 +44,23 @@ import {
 export const FLOOR_PATTERN_SOURCE_KEY = 'floor_pattern_src';
 export const FLOOR_PATTERN_KEY = 'corridor_floor';
 
+// Pre-rendered office-stage map sprites:
+//  - floor: 416×672 full-playfield tile, used by a TileSprite that scrolls
+//    the texture vertically as the corridor advances.
+//  - wall: 18×1 horizontal slice of one wall column, used by a TileSprite
+//    on each side that repeats the slice down the playfield. The right
+//    side flips the source horizontally so the inner-seam pixel of the
+//    slice ends up against the corridor on both walls.
+export const OFFICE_FLOOR_KEY = 'office_floor';
+export const OFFICE_WALL_KEY = 'office_wall';
+
 export function preloadFloorPattern(scene: Phaser.Scene): void {
   scene.load.image(FLOOR_PATTERN_SOURCE_KEY, floorPatternUrl);
+}
+
+export function preloadOfficeMap(scene: Phaser.Scene): void {
+  scene.load.image(OFFICE_FLOOR_KEY, officeFloorUrl);
+  scene.load.image(OFFICE_WALL_KEY, officeWallUrl);
 }
 
 export function generateBulletTexture(scene: Phaser.Scene): void {

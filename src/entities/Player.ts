@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
-import { GAME_W, PLAYER_SPEED, PLAYER_Y } from '../config';
+import { GAME_W, PLAYER_SPEED, PLAYER_Y, WALL_W } from '../config';
 import { type Action, characterAnimKey, type Direction } from '../content/animations';
 import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
@@ -186,11 +186,13 @@ export class Player extends Entity {
     if (this.rightKey.isDown || this.scene.isRightHeld()) dir += 1;
 
     const half = this.width / 2;
-    if (dir < 0 && this.x <= half) dir = 0;
-    if (dir > 0 && this.x >= GAME_W - half) dir = 0;
+    const minX = WALL_W + half;
+    const maxX = GAME_W - WALL_W - half;
+    if (dir < 0 && this.x <= minX) dir = 0;
+    if (dir > 0 && this.x >= maxX) dir = 0;
     this.setVelocityX(dir * PLAYER_SPEED);
 
-    this.x = Phaser.Math.Clamp(this.x, half, GAME_W - half);
+    this.x = Phaser.Math.Clamp(this.x, minX, maxX);
 
     const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
     if (firing) {

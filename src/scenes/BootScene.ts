@@ -8,7 +8,7 @@ import { computeCanvasH } from '../canvasSize';
 import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
-import { generateTextures, preloadFloorPattern, recolorFloorPattern } from '../content/textures';
+import { generateTextures, preloadFloorPattern, preloadOfficeMap, recolorFloorPattern } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
@@ -55,6 +55,7 @@ export class BootScene extends Phaser.Scene {
     preloadCharacterSheets(this);
     preloadElevator(this);
     preloadFloorPattern(this);
+    preloadOfficeMap(this);
     preloadAudio(this);
     preloadInputIcons(this);
     preloadMuteIcons(this);

@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { GAME_H, GAME_W } from '../config';
+import { GAME_H, GAME_W, WALL_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { stageKaedalus } from '../content/kaedalusStage';
 import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
-import { FLOOR_PATTERN_KEY } from '../content/textures';
+import { OFFICE_FLOOR_KEY, OFFICE_WALL_KEY } from '../content/textures';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
@@ -25,12 +25,10 @@ import {
   COLOR_TEXT_DIM_STR,
   COLOR_TEXT_PRIMARY_STR,
   COLOR_WALL,
-  COLOR_WALL_BORDER,
 } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 
-const CORRIDOR_SCROLL_PX_PER_MS = 0.8;
-const WALL_W = 40;
+const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 
 const HEADER_H = 28;
 
@@ -146,30 +144,29 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
     });
 
-    // Floor: tiled diamond pattern (recolored to two warm greys at boot)
-    // scrolling vertically as the corridor advances. Spans the full
-    // playfield; wall rects cover the gutters on top.
+    // Floor: pre-rendered office-tile sprite (416×672). TileSprite tiles
+    // the texture vertically as `tilePositionY` advances. The source is
+    // 16px wider and 12px taller than the canvas, so seed
+    // `tilePosition` with half the overhang on each axis — that way the
+    // diamond pattern sits centred in the visible area instead of being
+    // chopped off the left edge.
     this.bg = this.add
-      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, FLOOR_PATTERN_KEY)
-      .setDepth(-10)
-      .setTileScale(0.1, 0.1);
+      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, OFFICE_FLOOR_KEY)
+      .setDepth(-10);
+    this.bg.tilePositionX = 8;
+    this.bg.tilePositionY = 6;
 
-    // Walls: static cream strips on each side. They don't scroll — the
-    // architecture is fixed, motion reads off the moving floor underneath.
-    this.add.rectangle(0, 0, WALL_W, GAME_H, COLOR_WALL).setOrigin(0, 0).setDepth(-9);
+    // Walls: an 18×1 wall-column slice tiled vertically down each side.
+    // TileSprite repeats the source texture along its size; the slice
+    // is 1px tall so the wall is built up row-by-row across GAME_H.
     this.add
-      .rectangle(GAME_W - WALL_W, 0, WALL_W, GAME_H, COLOR_WALL)
+      .tileSprite(0, 0, WALL_W, GAME_H, OFFICE_WALL_KEY)
       .setOrigin(0, 0)
       .setDepth(-9);
-    // Wall/floor seam — a thin border line on each inner edge.
     this.add
-      .rectangle(WALL_W - 2, 0, 2, GAME_H, COLOR_WALL_BORDER)
+      .tileSprite(GAME_W - WALL_W, 0, WALL_W, GAME_H, OFFICE_WALL_KEY)
       .setOrigin(0, 0)
-      .setDepth(-8);
-    this.add
-      .rectangle(GAME_W - WALL_W, 0, 2, GAME_H, COLOR_WALL_BORDER)
-      .setOrigin(0, 0)
-      .setDepth(-8);
+      .setDepth(-9);
 
     // Mask the touch-control band so bullets that drift below the playfield
     // (within CULL_MARGIN before being culled) don't peek through behind the

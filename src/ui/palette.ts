@@ -11,8 +11,8 @@
 
 // --- Surfaces -------------------------------------------------------------
 
-export const COLOR_WALL = 0x10101a;
-export const COLOR_WALL_STR = '#10101a';
+export const COLOR_WALL = 0x3c4551;
+export const COLOR_WALL_STR = '#3c4551';
 export const COLOR_WALL_BORDER = 0x6262a0;
 export const COLOR_WALL_BORDER_STR = '#6262a0';
 
