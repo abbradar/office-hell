@@ -67,7 +67,7 @@ const stationaryRightScript = makeStationaryEmailColleagueScript(-1);
 
 export const emailColleague = new EntityKind({
   sprite: 'sales',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 4,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

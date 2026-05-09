@@ -75,7 +75,7 @@ function* oversleeperScript(self: Entity) {
 
 export const oversleeper = new EntityKind({
   sprite: 'overslept',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 22,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

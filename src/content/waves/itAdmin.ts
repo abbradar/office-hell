@@ -104,7 +104,7 @@ function makeITAdminScript(speech: SpeechSchedule): EntityScript {
 
 export const itAdmin = new EntityKind({
   sprite: 'sysop',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 18,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

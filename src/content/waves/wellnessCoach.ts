@@ -169,7 +169,7 @@ function* coachScript(self: Entity) {
 
 export const wellnessCoach = new EntityKind({
   sprite: 'coach1',
-  hitboxRadius: 12,
+  hitboxRadius: 22,
   hp: 400,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

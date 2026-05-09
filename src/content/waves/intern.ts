@@ -33,7 +33,7 @@ function makeInternScript(side: -1 | 1): EntityScript {
 
 export const intern = new EntityKind({
   sprite: 'checkEmail',
-  hitboxRadius: 11,
+  hitboxRadius: 16,
   hp: 2,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

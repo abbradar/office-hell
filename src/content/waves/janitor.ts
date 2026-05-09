@@ -60,7 +60,7 @@ function* janitorScript(self: Entity) {
 
 export const janitor = new EntityKind({
   sprite: 'janitor',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 24,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

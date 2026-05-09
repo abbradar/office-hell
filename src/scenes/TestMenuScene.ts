@@ -14,6 +14,7 @@ import {
   COLOR_WALL_STR,
 } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
+import { addScrollIndicators, type ScrollIndicators } from '../ui/scrollIndicator';
 import { onTap } from '../ui/tap';
 import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
 
@@ -70,6 +71,7 @@ export class TestMenuScene extends Phaser.Scene {
   // last header button + a small gap.
   private listViewTop = 0;
   private listViewHeight = 0;
+  private indicators!: ScrollIndicators;
 
   constructor() {
     super('TestMenu');
@@ -178,6 +180,8 @@ export class TestMenuScene extends Phaser.Scene {
 
     const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
     this.maxScroll = Math.max(0, totalHeight - this.listViewHeight);
+    this.indicators = addScrollIndicators(this, this.listViewTop, LIST_VIEW_BOTTOM);
+    this.indicators.update(this.scrollY, this.maxScroll);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
@@ -254,6 +258,7 @@ export class TestMenuScene extends Phaser.Scene {
   private setScroll(target: number): void {
     this.scrollY = Phaser.Math.Clamp(target, 0, this.maxScroll);
     this.listContainer.y = this.listViewTop - this.scrollY;
+    this.indicators.update(this.scrollY, this.maxScroll);
   }
 
   private scrollToCursor(): void {

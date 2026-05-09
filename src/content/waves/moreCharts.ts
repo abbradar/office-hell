@@ -342,7 +342,7 @@ function* columnColleagueScript(self: Entity): Generator<ScriptYield, void, void
 
 export const slideColleague = new EntityKind({
   sprite: 'sales',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   // Sized so the colleague survives long enough to fire all four maze
   // volleys / both pie barrages on top of entry + say + exit. With the
   // player firing a 3-bullet spread every 140ms, ~10 dps lands cleanly,

@@ -40,7 +40,7 @@ function* colleagueScript(self: Entity) {
 
 export const colleague = new EntityKind({
   sprite: 'sales',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 12,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

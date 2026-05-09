@@ -313,7 +313,7 @@ function* gymBroScript(self: Entity) {
 
 export const gymBro = new GymBroKind({
   sprite: 'gymBro',
-  hitboxRadius: 18,
+  hitboxRadius: 24,
   hp: PHASE_ONE_HP,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

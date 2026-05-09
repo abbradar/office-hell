@@ -63,7 +63,7 @@ function* checkEmailScript(self: Entity) {
 
 export const checkEmailCoworker = new EntityKind({
   sprite: 'checkEmail',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 20,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

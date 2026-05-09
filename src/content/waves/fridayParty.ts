@@ -102,7 +102,7 @@ function makePartyMemberScript(targetY: number, fireOffset: number): EntityScrip
 
 export const normieManager = new EntityKind({
   sprite: 'partyManager',
-  hitboxRadius: 13,
+  hitboxRadius: 16,
   hp: MANAGER_HP,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
@@ -111,7 +111,7 @@ export const normieManager = new EntityKind({
 
 export const partyMember = new EntityKind({
   sprite: 'partyManager',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: MEMBER_HP,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

@@ -122,7 +122,7 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
 
 export const meetingIntern = new EntityKind({
   sprite: 'checkEmail',
-  hitboxRadius: 12,
+  hitboxRadius: 16,
   hp: 30,
   damageClass: ['player'],
   damagedByClass: ['enemy'],

@@ -109,7 +109,7 @@ function* shrunkOldManScript(self: Entity) {
 
 export const shrunkOldMan = new BossKind({
   sprite: 'geezer',
-  hitboxRadius: 16,
+  hitboxRadius: 22,
   hp: 72,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
