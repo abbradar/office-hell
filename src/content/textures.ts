@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
-import officeFloorUrl from '../assets/sprites/office hell floor.png';
-import officeWallUrl from '../assets/sprites/office_hell_wall.png';
+import bgDoorsUrl from '../assets/bg/doors.png';
+import bgFloorUrl from '../assets/bg/floor.png';
+import bgWallsUrl from '../assets/bg/walls.png';
 import playerBulletUrl from '../assets/sprites/player_bullet.png';
 import { BULLET_RADIUS } from '../config';
 import {
@@ -34,19 +35,55 @@ import {
 // function has run — see `generateTextures` for the bulk-register helper
 // the boot scene uses.
 
-// Pre-rendered office-stage map sprites:
-//  - floor: 416×672 full-playfield tile, used by a TileSprite that scrolls
-//    the texture vertically as the corridor advances.
-//  - wall: 18×1 horizontal slice of one wall column, used by a TileSprite
-//    on each side that repeats the slice down the playfield. The right
-//    side flips the source horizontally so the inner-seam pixel of the
-//    slice ends up against the corridor on both walls.
-export const OFFICE_FLOOR_KEY = 'office_floor';
-export const OFFICE_WALL_KEY = 'office_wall';
+// Three-layer office background:
+//  - floor (416×672): full-playfield tile, used by a TileSprite that
+//    scrolls vertically as the corridor advances.
+//  - walls (400×672): full-canvas overlay above the floor, static — the
+//    walls don't scroll with the player.
+//  - doors (400×80): full-width strip with door panels at the corridor
+//    edges. Three copies are placed evenly down the playfield and scroll
+//    in lockstep with the floor, wrapping back to the top as they exit.
+export const BG_FLOOR_KEY = 'bg_floor';
+export const BG_WALLS_KEY = 'bg_walls';
+export const BG_DOORS_KEY = 'bg_doors';
 
-export function preloadOfficeMap(scene: Phaser.Scene): void {
-  scene.load.image(OFFICE_FLOOR_KEY, officeFloorUrl);
-  scene.load.image(OFFICE_WALL_KEY, officeWallUrl);
+// Solid white rectangle sized to a single door panel — the doors texture
+// is 36×80 (left panel + right panel concatenated, 18×80 each), so the
+// bbox eraser is 18×80 and we erase twice per door slot. Drawing it with
+// origin (0, 0) at the same x/y as a door Image covers the exact same
+// pixels — same native size, no scaling, so they can't drift by even a
+// pixel. Update DOORS_W / DOORS_H here if doors.png panel dimensions
+// ever change.
+export const BG_DOORS_BBOX_KEY = 'bg_doors_bbox';
+const DOORS_W = 18;
+const DOORS_H = 80;
+
+// Named frames into the 36×80 doors texture: the left half (cols 0..17)
+// and the right half (cols 18..35). Registered after the doors PNG
+// loads — see BootScene's load-complete callback. Render-time the
+// GameScene creates two Images per door slot using these frames so the
+// left panel lands at canvas x=0 and the right at canvas x=GAME_W - 18.
+export const BG_DOORS_FRAME_LEFT = 'left';
+export const BG_DOORS_FRAME_RIGHT = 'right';
+
+export function registerDoorsFrames(scene: Phaser.Scene): void {
+  const tex = scene.textures.get(BG_DOORS_KEY);
+  tex.add(BG_DOORS_FRAME_LEFT, 0, 0, 0, DOORS_W, DOORS_H);
+  tex.add(BG_DOORS_FRAME_RIGHT, 0, DOORS_W, 0, DOORS_W, DOORS_H);
+}
+
+export function preloadBackgrounds(scene: Phaser.Scene): void {
+  scene.load.image(BG_FLOOR_KEY, bgFloorUrl);
+  scene.load.image(BG_WALLS_KEY, bgWallsUrl);
+  scene.load.image(BG_DOORS_KEY, bgDoorsUrl);
+}
+
+export function generateDoorsBboxTexture(scene: Phaser.Scene): void {
+  const g = scene.add.graphics();
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(0, 0, DOORS_W, DOORS_H);
+  g.generateTexture(BG_DOORS_BBOX_KEY, DOORS_W, DOORS_H);
+  g.destroy();
 }
 
 // Player-shot bullet — Kenney pixelshmup green pill (tile_0000_green),
@@ -234,14 +271,12 @@ export function generateDrinkBulletTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-// Bulk-register every synchronous runtime texture (bullets only). Boot scene
-// calls this from a microtask after queueing the network loads, so canvas
-// draws don't block the kick-off of XHRs and dynamic-imports.
-//
-// NOT called for the floor pattern — that one needs the source PNG loaded
-// first, so the boot scene runs `recolorFloorPattern` from its loader
-// COMPLETE callback instead.
+// Bulk-register every synchronous runtime texture (bullets + doors-bbox
+// silhouette). Boot scene calls this from a microtask after queueing the
+// network loads, so canvas draws don't block the kick-off of XHRs and
+// dynamic-imports.
 export function generateTextures(scene: Phaser.Scene): void {
+  generateDoorsBboxTexture(scene);
   generateBulletTexture(scene);
   generateReportBulletTexture(scene);
   generateMissedCallTexture(scene);

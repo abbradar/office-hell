@@ -8,7 +8,14 @@ import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
-import { OFFICE_FLOOR_KEY, OFFICE_WALL_KEY } from '../content/textures';
+import {
+  BG_DOORS_BBOX_KEY,
+  BG_DOORS_FRAME_LEFT,
+  BG_DOORS_FRAME_RIGHT,
+  BG_DOORS_KEY,
+  BG_FLOOR_KEY,
+  BG_WALLS_KEY,
+} from '../content/textures';
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
@@ -29,6 +36,19 @@ import {
 import { makePrompt } from '../ui/prompt';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
+
+// Doors layer: three sets of doors evenly spaced down the playfield,
+// scrolling in lockstep with the floor and wrapping back up off-screen.
+// Cycle includes a DOOR_H buffer above and below the visible area so the
+// hand-off (door top at GAME_H → door top at -DOOR_H) happens while the
+// door is fully off-canvas — no pop in the middle of the screen. Spacing
+// is the cycle divided by the count, which means at any moment 2 or 3
+// doors are visible and the gap between consecutive visible doors is
+// always the same (CYCLE / DOOR_COUNT).
+const DOOR_H = 80;
+const DOOR_COUNT = 3;
+const DOOR_CYCLE = GAME_H + DOOR_H;
+const DOOR_SPACING = DOOR_CYCLE / DOOR_COUNT;
 
 const HEADER_H = 28;
 
@@ -85,6 +105,27 @@ export class GameScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private bossNameText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
+  // Doors: each visible "door slot" is rendered as a (left, right) pair
+  // of Images sourced from frames of the 36×80 doors texture. They share
+  // a y, recomputed each frame from the same scroll offset.
+  private doorSlots: { left: Phaser.GameObjects.Image; right: Phaser.GameObjects.Image }[] = [];
+  // Walls layer baked per-frame: walls texture drawn in, then a solid
+  // doors-shaped silhouette (BG_DOORS_BBOX_KEY) is erased from it at each
+  // door's y. The bbox texture is registered with the same native size as
+  // the doors texture, so drawing both at the same (x, y) with origin
+  // (0, 0) and no scaling produces pixel-identical bounds — eraser and
+  // door cover the exact same rect.
+  private wallsRt!: Phaser.GameObjects.RenderTexture;
+  // Off-display TileSprite of the 1px-tall walls texture, sized to the
+  // full canvas. Drawn into wallsRt each frame so the wall pattern tiles
+  // vertically across the playfield in a single RT.draw() call instead of
+  // looping the 1px source GAME_H times.
+  private wallsTile!: Phaser.GameObjects.TileSprite;
+  // Accumulated forward scroll, in pixels. Mirrors `-bg.tilePositionY` (the
+  // floor's tile offset) and drives the doors' wrap-around y. Tracked
+  // separately so the doors keep their phase across the modulo without
+  // having to reason about tilePositionY's seed offset.
+  private bgScrollY = 0;
   private practiceWave: WaveDef | null = null;
   private testMode = false;
   private musicMode: 'kaedalus' | 'monster-rpg' | null = null;
@@ -144,24 +185,38 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
     });
 
-    // Floor: pre-rendered office-tile sprite (416×672). TileSprite tiles
-    // the texture vertically as `tilePositionY` advances. The source is
-    // 16px wider and 12px taller than the canvas, so seed
-    // `tilePosition` with half the overhang on each axis — that way the
-    // diamond pattern sits centred in the visible area instead of being
-    // chopped off the left edge.
-    this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, OFFICE_FLOOR_KEY).setDepth(-10);
+    // Floor: small repeating tile (416 wide × 112 tall, designed to loop
+    // seamlessly in both axes). TileSprite scrolls the texture vertically
+    // as `tilePositionY` advances; with a 660-tall sprite the source
+    // tiles ~6 times down the canvas. Seed tilePositionX = 8 to centre
+    // the 16px horizontal overhang the same way the previous floor did.
+    this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, BG_FLOOR_KEY).setDepth(-10);
     this.bg.tilePositionX = 8;
-    this.bg.tilePositionY = 6;
 
-    // Walls: an 18×1 wall-column slice tiled vertically down each side.
-    // TileSprite repeats the source texture along its size; the slice
-    // is 1px tall so the wall is built up row-by-row across GAME_H.
-    this.add.tileSprite(0, 0, WALL_W, GAME_H, OFFICE_WALL_KEY).setOrigin(0, 0).setDepth(-9);
-    this.add
-      .tileSprite(GAME_W - WALL_W, 0, WALL_W, GAME_H, OFFICE_WALL_KEY)
-      .setOrigin(0, 0)
-      .setDepth(-9);
+    // Walls: a 400×1 repeating pattern. Tiled to canvas height via an
+    // off-display TileSprite, then drawn into a per-frame RenderTexture
+    // so we can erase each door's bbox before the doors are drawn on top.
+    this.wallsRt = this.add.renderTexture(0, 0, GAME_W, GAME_H).setOrigin(0, 0).setDepth(-9);
+    this.wallsTile = this.make
+      .tileSprite({ x: 0, y: 0, width: GAME_W, height: GAME_H, key: BG_WALLS_KEY }, false)
+      .setOrigin(0, 0);
+
+    // Doors: each slot is a (left, right) pair of Images sourced from
+    // the BG_DOORS_FRAME_LEFT / BG_DOORS_FRAME_RIGHT frames of the 36×80
+    // doors texture. The two halves render at the canvas's wall columns
+    // (x=0 and x=GAME_W - WALL_W) and share a y. Per-frame, the same y
+    // also drives wallsRt.erase() at both x positions so the wall cutout
+    // tracks the door panel exactly. Wall column width matches WALL_W,
+    // which is what doors.png was sliced against.
+    for (let i = 0; i < DOOR_COUNT; i++) {
+      const startY = i * DOOR_SPACING - DOOR_H;
+      const left = this.add.image(0, startY, BG_DOORS_KEY, BG_DOORS_FRAME_LEFT).setOrigin(0, 0).setDepth(-8);
+      const right = this.add
+        .image(GAME_W - WALL_W, startY, BG_DOORS_KEY, BG_DOORS_FRAME_RIGHT)
+        .setOrigin(0, 0)
+        .setDepth(-8);
+      this.doorSlots.push({ left, right });
+    }
 
     // Mask the touch-control band so bullets that drift below the playfield
     // (within CULL_MARGIN before being culled) don't peek through behind the
@@ -319,6 +374,9 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(Phaser.Core.Events.BLUR, onLoseFocus);
       document.removeEventListener('visibilitychange', onVisibility);
+      // wallsTile is held off the display list, so the scene's normal
+      // teardown won't reach it — destroy it explicitly.
+      this.wallsTile.destroy();
       if (this.practiceWave) {
         this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.practiceWave.id, this.playerKind.hits);
       }
@@ -422,8 +480,37 @@ export class GameScene extends Phaser.Scene {
       // additionally scaled by `scrollSpeedMultiplier` so cutscenes can
       // dial it (e.g. the ending walks home at 0.5×).
       if (this.stage.running) {
-        this.bg.tilePositionY -= delta * CORRIDOR_SCROLL_PX_PER_MS * this.stage.scrollSpeedMultiplier;
+        const advance = delta * CORRIDOR_SCROLL_PX_PER_MS * this.stage.scrollSpeedMultiplier;
+        this.bg.tilePositionY -= advance;
+        this.bgScrollY += advance;
       }
+      // Doors ride the floor: each slot's y is its phase offset plus the
+      // shared scroll, wrapped through DOOR_CYCLE so the trio cycles
+      // through the canvas with no gaps. Subtract DOOR_H so the wrap
+      // happens fully off-screen at the top instead of popping in.
+      // Round to an integer pixel: the door renders through the main
+      // scene camera (roundPixels=true via pixelArt) while the eraser
+      // hits the wallsRt's own camera (roundPixels=false by default), so
+      // a fractional y would let the two rasterise to slightly different
+      // rows and the door panels would flicker in and out. Rounding once
+      // up front feeds both paths (and both halves of each slot) the
+      // same integer.
+      const phase = this.bgScrollY % DOOR_CYCLE;
+
+      // Refresh the walls layer: blit the tiled walls into the RT, then
+      // erase each slot's two panel bboxes (one per side). The bbox
+      // texture and a single door panel frame have the same native size
+      // and are drawn at the same x/y with origin (0, 0), so Phaser's
+      // batchTextureFrame path produces identical pixel coverage.
+      this.wallsRt.clear();
+      this.wallsRt.draw(this.wallsTile, 0, 0);
+      this.doorSlots.forEach((slot, i) => {
+        const y = Math.round(((i * DOOR_SPACING + phase) % DOOR_CYCLE) - DOOR_H);
+        slot.left.y = y;
+        slot.right.y = y;
+        this.wallsRt.erase(BG_DOORS_BBOX_KEY, 0, y);
+        this.wallsRt.erase(BG_DOORS_BBOX_KEY, GAME_W - WALL_W, y);
+      });
 
       this.player.controlUpdate();
     } else {

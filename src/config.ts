@@ -5,9 +5,9 @@
 export const GAME_W = 400;
 export const GAME_H = 660;
 // Width of the static side walls; the playable corridor between them is
-// `GAME_W - 2 * WALL_W`. Read by both GameScene (sprite layout) and Player
-// (horizontal movement clamp), so it lives here rather than in either.
-// Matches the width of the office_hell_wall.png slice tiled on each side.
+// `GAME_W - 2 * WALL_W`. Read by Player.ts to clamp horizontal movement
+// inside the corridor. Must match the visible wall-column width baked
+// into src/assets/bg/walls.png.
 export const WALL_W = 18;
 
 export const PLAYER_SPEED = 280;
