@@ -4,9 +4,9 @@ import { stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, startMusicWithIntro, waitSeconds } from '../../script/stage';
+import { markWave, startMusicWithIntro, waitAudioTimeAtLeast, waitSeconds } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
-import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../../ui/fonts';
+import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU } from '../../ui/fonts';
 import {
   COLOR_ACCENT_GOLD_STR,
   COLOR_TEXT_DIM_STR,
@@ -133,11 +133,11 @@ export function* endingScene(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitSeconds(FADE_IN_S);
 
   // Phase 9 — wait for the music's first cycle to approach its end.
-  // `untilMusicTime` schedules a single resume at the target audio
-  // time; if the user lingered through the dialogs and we're already
-  // past it, the wait resolves immediately and we move on without a
-  // visible stutter.
-  yield { untilMusicTime: TRACK_TAIL_S };
+  // `waitAudioTimeAtLeast` sleeps the wall-clock gap to the target
+  // music timestamp; if the user lingered through the dialogs and
+  // we're already past it, the wait resolves immediately and we move
+  // on without a visible stutter.
+  yield* waitAudioTimeAtLeast(TRACK_TAIL_S);
 
   // Phase 10 — walk out of frame. Player exits straight up past the
   // top of the canvas. moveTo's velocity → walk-up animation, no need
