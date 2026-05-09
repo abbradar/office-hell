@@ -177,6 +177,8 @@ export class TestMenuScene extends Phaser.Scene {
     maskGraphics.fillStyle(0xffffff);
     maskGraphics.fillRect(0, this.listViewTop, GAME_W, this.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
+    // Mirror the mask rect on the overlay-text path (see textOverlay.ts).
+    this.listContainer.setData('overlayClip', { x: 0, y: this.listViewTop, w: GAME_W, h: this.listViewHeight });
 
     const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
     this.maxScroll = Math.max(0, totalHeight - this.listViewHeight);

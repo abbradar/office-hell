@@ -53,11 +53,41 @@ interface BaseQueued {
   tx: number;
   ty: number;
   alpha: number;
+  // Optional axis-aligned clip rectangle in Phaser canvas-internal pixel
+  // coords (= logical pixels). When set, the overlay flush wraps the
+  // draw in a save / clip / restore so content past the rect is dropped.
+  // Phaser's GeometryMask only clips WebGL output, not our overlay pass,
+  // so masked containers (scroll viewports in Credits / TestMenu /
+  // PatternTest) flag their region with `setData('overlayClip', rect)`
+  // and we read it on enqueue. See findOverlayClipRect below.
+  clipX?: number;
+  clipY?: number;
+  clipW?: number;
+  clipH?: number;
 }
 
 type QueuedDraw =
   | (BaseQueued & { kind: 'text'; src: Phaser.GameObjects.Text })
   | (BaseQueued & { kind: 'icon'; src: OverlayImageSource });
+
+// Walk the GameObject's parentContainer chain looking for an
+// `overlayClip` data entry — the runtime equivalent of a clipping mask
+// for the overlay path. The first one we hit wins (innermost-mask
+// semantics, matching how Phaser's geometry masks override outer masks).
+type RectXYWH = { x: number; y: number; w: number; h: number };
+function findOverlayClipRect(go: Phaser.GameObjects.GameObject): RectXYWH | null {
+  type Walkable = {
+    parentContainer?: Phaser.GameObjects.Container | null;
+    getData?: (key: string) => RectXYWH | null | undefined;
+  };
+  let cur: Walkable | null = go as unknown as Walkable;
+  while (cur) {
+    const r = cur.getData?.('overlayClip');
+    if (r && r.w > 0 && r.h > 0) return r;
+    cur = cur.parentContainer ?? null;
+  }
+  return null;
+}
 
 const queue: QueuedDraw[] = [];
 let overlayCanvas: HTMLCanvasElement | null = null;
@@ -71,6 +101,7 @@ export function enqueueOverlayText(
   matrix: Phaser.GameObjects.Components.TransformMatrix,
   alpha: number,
 ): void {
+  const clip = findOverlayClipRect(src);
   queue.push({
     kind: 'text',
     src,
@@ -83,6 +114,10 @@ export function enqueueOverlayText(
     tx: matrix.e,
     ty: matrix.f,
     alpha,
+    clipX: clip?.x,
+    clipY: clip?.y,
+    clipW: clip?.w,
+    clipH: clip?.h,
   });
 }
 
@@ -91,6 +126,9 @@ export function enqueueOverlayIcon(
   matrix: Phaser.GameObjects.Components.TransformMatrix,
   alpha: number,
 ): void {
+  // Icons don't have parentContainer access through the OverlayImageSource
+  // structural type, but the underlying Phaser.GameObjects.Image does.
+  const clip = findOverlayClipRect(src as unknown as Phaser.GameObjects.GameObject);
   queue.push({
     kind: 'icon',
     src,
@@ -101,6 +139,10 @@ export function enqueueOverlayIcon(
     tx: matrix.e,
     ty: matrix.f,
     alpha,
+    clipX: clip?.x,
+    clipY: clip?.y,
+    clipW: clip?.w,
+    clipH: clip?.h,
   });
 }
 
@@ -202,6 +244,20 @@ function flushOverlay(): void {
 
     overlayCtx.globalAlpha = d.alpha;
 
+    // If this draw is inside a masked viewport, install a canvas2d clip.
+    // The clip rect is in Phaser logical pixels; transform by the same
+    // displayScale × DPR factor to land in overlay-canvas pixel space.
+    // save/clip/restore is per-draw because each queue entry may have a
+    // different (or no) clip.
+    const clipped = d.clipW !== undefined && d.clipH !== undefined;
+    if (clipped) {
+      overlayCtx.save();
+      overlayCtx.setTransform(scale, 0, 0, scale, 0, 0);
+      overlayCtx.beginPath();
+      overlayCtx.rect(d.clipX ?? 0, d.clipY ?? 0, d.clipW ?? 0, d.clipH ?? 0);
+      overlayCtx.clip();
+    }
+
     if (d.kind === 'text') {
       // Text path uses the matrix-encoded transform: fillText handles
       // sub-pixel positioning via font hinting, so the scaled transform
@@ -213,6 +269,8 @@ function flushOverlay(): void {
       // it sets its own identity transform.
       drawIcon(d.src, d.a, d.b, d.c, d.d, d.tx, d.ty, scale);
     }
+
+    if (clipped) overlayCtx.restore();
   }
 
   queue.length = 0;

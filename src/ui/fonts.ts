@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import eazygoinRegularUrl from '../assets/fonts/Eazygoin-Regular.ttf';
+import monogramExtendedUrl from '../assets/fonts/monogram-extended.ttf';
 import pressStart2PRegularUrl from '../assets/fonts/PressStart2P-Regular.woff2';
 import silkscreenBoldUrl from '../assets/fonts/Silkscreen-Bold.woff2';
 import silkscreenRegularUrl from '../assets/fonts/Silkscreen-Regular.woff2';
@@ -20,10 +20,11 @@ import silkscreenRegularUrl from '../assets/fonts/Silkscreen-Regular.woff2';
 // regular sans-serif.
 const TITLE_FAMILY = '"Press Start 2P", monospace';
 const BODY_FAMILY = '"Silkscreen", monospace';
-// Eazygoin (self-hosted .ttf) for the small tiers — a hand-drawn-style
-// face that reads better than a pixel font at 11px, where the bitmap
-// fonts above smear under the canvas pixel grid.
-const SMALL_FAMILY = '"Eazygoin", sans-serif';
+// monogram (self-hosted .ttf, by Vinícius Menézio / @vmenezio) for the
+// small tiers — a 1bpp pixel font that stays legible at sizes where the
+// 8px-grid bitmap fonts above start to smear. Falls back to a generic
+// monospace stack if the .ttf hasn't loaded yet.
+const SMALL_FAMILY = '"monogram", monospace';
 
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
@@ -52,14 +53,14 @@ export const FONT_MENU: Style = {
 // Dialogue body text and speaker names — the "reading" tier.
 export const FONT_DIALOGUE_LG: Style = { fontFamily: BODY_FAMILY, fontSize: '16px', resolution: TEXT_RESOLUTION };
 
-// Speech bubbles, dialogue advance hints, secondary descriptions. Sans-serif
-// because pixel fonts get noisy below 16px and these tiers want to *recede*.
+// Speech bubbles, dialogue advance hints, secondary descriptions. monogram
+// is a 1bpp pixel font tuned for compact rows — narrower and more
+// utilitarian than Silkscreen, so these tiers recede from the dramatic
+// FONT_TITLE / FONT_MENU pair.
 export const FONT_DIALOGUE_SM: Style = { fontFamily: SMALL_FAMILY, fontSize: '16px', resolution: TEXT_RESOLUTION };
 
 // Smallest tier: debug HUD, control hints, "back" links — usually grayed out.
-// Sans-serif for the same reason as FONT_DIALOGUE_SM. Bumped up from the
-// previous 11px because input-prompt rows (text + icon) at that size were
-// hard to read on actual displays, even with `resolution: dpr` boosting.
+// Same monogram face for visual continuity with FONT_DIALOGUE_SM.
 export const FONT_DEBUG: Style = { fontFamily: SMALL_FAMILY, fontSize: '16px', resolution: TEXT_RESOLUTION };
 
 async function registerFont(family: string, url: string, weight: number): Promise<void> {
@@ -79,6 +80,6 @@ export async function preloadFonts(): Promise<void> {
     registerFont('Silkscreen', silkscreenRegularUrl, 400),
     registerFont('Silkscreen', silkscreenBoldUrl, 700),
     registerFont('Press Start 2P', pressStart2PRegularUrl, 400),
-    registerFont('Eazygoin', eazygoinRegularUrl, 400),
+    registerFont('monogram', monogramExtendedUrl, 400),
   ]);
 }

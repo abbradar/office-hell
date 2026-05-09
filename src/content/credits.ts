@@ -26,7 +26,7 @@ export const SECTIONS: Section[] = [
       { name: 'DOS-88 Music Library', url: 'dos88.itch.io/dos-88-music-library' },
       {
         name: 'Crack the Underground Base',
-        url: 'opengameart.org/content/crack-the-underground-base-action-chipmusicrock',
+        url: 'opengameart.org/users/kaedalus',
       },
       { name: 'nene', url: 'opengameart.org/users/nene' },
     ],
@@ -37,6 +37,14 @@ export const SECTIONS: Section[] = [
       { name: 'Kenney', url: 'opengameart.org/users/kenney' },
       { name: 'Universal LPC Spritesheet Generator', url: 'github.com/LiberatedPixelCup' },
       { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
+    ],
+  },
+  {
+    heading: 'FONTS',
+    entries: [
+      { name: 'monogram', url: 'datagoblin.itch.io/monogram' },
+      { name: 'Press Start 2P', url: 'fonts.google.com/specimen/Press+Start+2P' },
+      { name: 'Silkscreen', url: 'fonts.google.com/specimen/Silkscreen' },
     ],
   },
   {

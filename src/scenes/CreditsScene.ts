@@ -128,11 +128,14 @@ export class CreditsScene extends Phaser.Scene {
 
     // Mask the container so content scrolling past the top/bottom of
     // the viewport gets clipped instead of bleeding over the title or
-    // the back-link slot.
+    // the back-link slot. Phaser's geometry mask only clips WebGL
+    // output; the sibling text-overlay canvas reads `overlayClip` data
+    // to apply the same rect as a canvas2d clip during its flush.
     const maskGraphics = this.make.graphics({});
     maskGraphics.fillStyle(0xffffff);
     maskGraphics.fillRect(0, LIST_VIEW_TOP, GAME_W, listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
+    this.listContainer.setData('overlayClip', { x: 0, y: LIST_VIEW_TOP, w: GAME_W, h: listViewHeight });
 
     const totalHeight = cursorY;
     this.maxScroll = Math.max(0, totalHeight - listViewHeight);
