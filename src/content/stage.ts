@@ -1,9 +1,13 @@
 import {
+  KAEDALUS_LONG_KEY,
+  KAEDALUS_SHORT_KEY,
   STAGE1_METAL_LOOP_KEY,
   STAGE1_METAL_OPENING_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
+  STAGE2_METAL_LOOP_KEY,
+  STAGE2_METAL_OPENING_KEY,
 } from '../audio/keys';
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
@@ -175,16 +179,17 @@ export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'music: retro 01');
   yield* waitEnemiesClear(self);
   yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
 
   yield* self.stage.separateWave(itAdminsWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* self.stage.separateWave(salesClientWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
 
-  markWave(self, 'music: retro 02');
-  yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  // markWave(self, 'music: retro 02');
+  // yield* waitTrackEnded();
+  // yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  // yield* startMusicLoop(KAEDALUS_SHORT_KEY);
 
   yield* self.stage.separateWave(shrunkOldManWave(self));
 }
@@ -197,7 +202,7 @@ export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
 // leading `startMusicLoop(retro-02)` mirrors part 2 of stage 1: no-op
 // in live flow, switch in from menu music in practice.
 export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
-  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
   yield* waitSeconds(INTER_WAVE_GAP);
 
   yield* self.stage.separateWave(hrTrioWave(self));
@@ -207,9 +212,9 @@ export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
   yield* self.stage.separateWave(fridayPartyWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
 
-  markWave(self, 'music: metal');
+  markWave(self, 'music: metal (stage 2)');
   yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
 
   yield* self.stage.separateWave(bossWave(self));
 }

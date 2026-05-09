@@ -11,6 +11,8 @@ import stage1MetalOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_me
 import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_loop.ogg';
 import stage1RetroOpeningUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_01_opening.ogg';
 import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/boss_battle_8_retro_02_loop.ogg';
+import stage2MetalLoopUrl from '../assets/audio/loops/stage2/boss_battle_9_metal_loop.ogg';
+import stage2MetalOpeningUrl from '../assets/audio/loops/stage2/boss_battle_9_metal_opening.ogg';
 import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
 import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
@@ -30,6 +32,8 @@ import {
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
+  STAGE2_METAL_LOOP_KEY,
+  STAGE2_METAL_OPENING_KEY,
 } from './keys';
 import { setVoiceCap } from './sfx/pool';
 
@@ -43,6 +47,8 @@ const AUDIO_ASSETS: Record<string, string> = {
   [STAGE1_RETRO_02_LOOP_KEY]: stage1Retro02LoopUrl,
   [STAGE1_METAL_OPENING_KEY]: stage1MetalOpeningUrl,
   [STAGE1_METAL_LOOP_KEY]: stage1MetalLoopUrl,
+  [STAGE2_METAL_OPENING_KEY]: stage2MetalOpeningUrl,
+  [STAGE2_METAL_LOOP_KEY]: stage2MetalLoopUrl,
   [KAEDALUS_LONG_KEY]: kaedalusLongUrl,
   [KAEDALUS_SHORT_KEY]: kaedalusShortUrl,
   [MONSTER_INTRO_KEY]: monsterIntroUrl,

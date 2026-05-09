@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { GAME_H, GAME_W, WALL_W } from '../config';
+import { DEADZONE_Y, GAME_H, GAME_W, WALL_W } from '../config';
 import { getSelectedCharacter } from '../content/characters';
 import { stageKaedalus } from '../content/kaedalusStage';
 import { stageMonsterRpg } from '../content/monsterRpgStage';
@@ -234,6 +234,11 @@ export class GameScene extends Phaser.Scene {
         const attacker = a as Entity;
         const target = b as Entity;
         if (!attacker.alive || !target.alive) return;
+        // Top-of-screen dead zone: an enemy that's still drifting in from
+        // y = -30 shouldn't be killable by the player's auto-fire before
+        // it's visually on-screen. The player itself sits at y ≈ 580 so
+        // this never gates legitimate enemy-bullet → player collisions.
+        if (target.y < DEADZONE_Y) return;
         attacker.kind.targetCollision(attacker, target);
       });
     }

@@ -56,8 +56,8 @@ export const COLOR_NO_TINT = 0xffffff;
 
 export const COLOR_ACCENT_GOLD = 0xffd96a;
 export const COLOR_ACCENT_GOLD_STR = '#ffd96a';
-export const COLOR_ACCENT_RED = 0xff5577;
-export const COLOR_ACCENT_RED_STR = '#ff5577';
+export const COLOR_ACCENT_RED = 0xf73b29;
+export const COLOR_ACCENT_RED_STR = '#f73b29';
 export const COLOR_ACCENT_GREEN = 0x6cf0a8;
 export const COLOR_ACCENT_GREEN_STR = '#6cf0a8';
 // Player hitbox + danger callouts. Slightly hotter than ACCENT_RED.

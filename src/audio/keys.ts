@@ -11,6 +11,12 @@ export const STAGE1_RETRO_02_LOOP_KEY = 'stage1Retro02Loop';
 export const STAGE1_METAL_OPENING_KEY = 'stage1MetalOpening';
 export const STAGE1_METAL_LOOP_KEY = 'stage1MetalLoop';
 
+// Stage 2 final-boss metal track. Distinct from stage 1's metal so the
+// final-boss bookend has its own intensity instead of recycling the
+// mid-stage-1 boss theme.
+export const STAGE2_METAL_OPENING_KEY = 'stage2MetalOpening';
+export const STAGE2_METAL_LOOP_KEY = 'stage2MetalLoop';
+
 // Kaedalus test stage — same arrangement at two lengths. Long version
 // loops as the regular stage music; short version loops under the boss
 // fight after a hand-off triggered mid-stage.

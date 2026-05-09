@@ -151,6 +151,12 @@ export function* hrTrioWave(self: Entity): Generator<ScriptYield, void, void> {
     // Wait for HR-0 to walk in and deliver both intro lines before the others
     // crash the meeting.
     yield ENTRY_FRAMES + LEAD_LINE_1_SLOT + LEAD_LINE_2_SLOT;
+    // TODO(shmup-design): HR-1 and HR-2 spawn on the same frame here.
+    // Per "Bullet Hell Shmup Design 101", multiple high-HP enemies in a
+    // single frame force a snap triage decision. Consider staggering by
+    // ~0.4s. Skipped now: the trio gimmick may justify the simultaneity,
+    // and the existing HP / pattern balance was tuned against the
+    // current spawn shape — needs playtest before changing.
     self.spawn(hr, GAME_W * 0.5, SPAWN_Y, 0, 0, { script: makeHrScript(1) });
     self.spawn(hr, GAME_W * 0.8, SPAWN_Y, 0, 0, { script: makeHrScript(2) });
   });

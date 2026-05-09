@@ -16,6 +16,13 @@ export const ENTITY_POOL_SIZE = 1024;
 export const PLAYER_HITBOX_RADIUS = 4;
 export const PLAYER_Y = GAME_H - 80;
 
+// Top-of-screen dead zone — entities with `y < DEADZONE_Y` are exempt from
+// damage collisions. Stops the player auto-firing through enemies that have
+// spawned at `y = -30` and are still drifting into the visible area, which
+// would otherwise let off-screen pre-entry kills happen and feel arbitrary.
+// Sized just below the HUD's 28px header strip.
+export const DEADZONE_Y = 32;
+
 export const BULLET_RADIUS = 3;
 export const CULL_MARGIN = 96;
 

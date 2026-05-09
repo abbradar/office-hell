@@ -141,6 +141,12 @@ export function* meetingInternsWave(self: Entity): Generator<ScriptYield, void, 
     // Phases 1 and 3 (one top, one side) sprinkle plain aimed bullets
     // between their camera barrages so the encounter isn't a pure
     // formation-dodge — there's always a stray round to track.
+    // TODO(shmup-design): each pair below currently spawns on the same
+    // frame. Per "Bullet Hell Shmup Design 101", two high-HP enemies
+    // appearing simultaneously force a snap triage decision the player
+    // can't reason about. Consider staggering each pair by ~0.4s so one
+    // enters, then the other — keeping the formation but making it
+    // readable. Skipped for now: balance / playtest implications.
     self.spawn(meetingIntern, GAME_W * 0.3, -30, 0, 0, {
       script: makeMeetingInternScript(GAME_W * 0.3, TOP_Y, 0, false),
     });
