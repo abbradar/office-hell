@@ -75,6 +75,12 @@ export class MenuScene extends Phaser.Scene {
     });
     setLargeHit(practiceText, GAME_W * 0.6, 80);
 
+    const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.72, '▷ CREDITS', {
+      ...FONT_DIALOGUE_LG,
+      color: COLOR_TEXT_PRIMARY_STR,
+    });
+    setLargeHit(creditsText, GAME_W * 0.6, 80);
+
     const start = (): void => {
       if (this.starting) return;
       this.starting = true;
@@ -93,11 +99,18 @@ export class MenuScene extends Phaser.Scene {
       playClick();
       this.scene.start('TestMenu');
     };
+    const goCredits = (): void => {
+      if (this.starting) return;
+      playClick();
+      this.scene.start('Credits');
+    };
 
     onTap(this, startText, start);
     onTap(this, practiceText, goPractice);
+    onTap(this, creditsText, goCredits);
     this.input.keyboard?.once('keydown-Z', start);
     this.input.keyboard?.once('keydown-T', goPractice);
+    this.input.keyboard?.once('keydown-C', goCredits);
   }
 
   // Schedule a short up/down jitter on the elevator at a random interval

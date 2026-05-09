@@ -76,6 +76,7 @@ export class BootScene extends Phaser.Scene {
     const patternTestPromise = import('../scenes/PatternTestScene').then((m) =>
       this.scene.add('PatternTest', m.PatternTestScene),
     );
+    const creditsPromise = import('../scenes/CreditsScene').then((m) => this.scene.add('Credits', m.CreditsScene));
 
     // Fonts are dynamic-imported too: the woff2 URL imports + FontFace
     // registration code live in ui/fonts and would otherwise pin into the boot
@@ -110,6 +111,7 @@ export class BootScene extends Phaser.Scene {
       testMenuPromise,
       charSelectPromise,
       patternTestPromise,
+      creditsPromise,
       fontsPromise,
       texturesPromise,
     ]).then(() => {
