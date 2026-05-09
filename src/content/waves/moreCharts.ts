@@ -193,6 +193,12 @@ const COLUMN_STRIDE = 36;
 const COLUMN_FLY_SPEED = 170;
 const COLUMN_VOLLEYS = 4;
 
+// The gap is confined to the interior columns; the leftmost and rightmost
+// columns always fire so the wall keeps a solid frame on each side and the
+// safe lane never runs along the playfield edge.
+const MIN_GAP_INDEX = 1;
+const MAX_GAP_INDEX = COLUMN_COUNT - 2;
+
 // Bullet grid that composes one column block. BLOCK_BULLET_PITCH is the
 // center-to-center distance between adjacent bullets in the grid; with
 // BULLET_RADIUS = 3 (diameter 6) and pitch 8, the edge-to-edge gap is
@@ -287,11 +293,15 @@ function* pieColleagueScript(self: Entity): Generator<ScriptYield, void, void> {
 // has to actually move, so the player has to actually step) and within
 // MAX_GAP_MOVEMENT slots of it (so the worst-case dodge is physically
 // reachable at PLAYER_SPEED in VOLLEY_GAP_FRAMES, not just an "RNG screwed
-// you" hit). First volley gets a fully random slot.
+// you" hit). The gap is also clamped to [MIN_GAP_INDEX..MAX_GAP_INDEX] so
+// the wall's outermost columns always fire. First volley samples uniformly
+// from that interior range.
 function nextGapIndex(previous: number | null): number {
-  if (previous === null) return Math.floor(Math.random() * COLUMN_COUNT);
-  const minIdx = Math.max(0, previous - MAX_GAP_MOVEMENT);
-  const maxIdx = Math.min(COLUMN_COUNT - 1, previous + MAX_GAP_MOVEMENT);
+  if (previous === null) {
+    return MIN_GAP_INDEX + Math.floor(Math.random() * (MAX_GAP_INDEX - MIN_GAP_INDEX + 1));
+  }
+  const minIdx = Math.max(MIN_GAP_INDEX, previous - MAX_GAP_MOVEMENT);
+  const maxIdx = Math.min(MAX_GAP_INDEX, previous + MAX_GAP_MOVEMENT);
   // Sample uniformly over [minIdx, maxIdx] excluding `previous` itself
   // by picking from the window of size (maxIdx - minIdx) and bumping
   // past `previous` if we landed on or above it.
