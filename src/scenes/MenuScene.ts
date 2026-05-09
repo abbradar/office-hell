@@ -5,7 +5,6 @@ import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
-import { bindLogicalCamera } from '../render/logicalCamera';
 import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import { COLOR_ACCENT_GOLD_STR, COLOR_ACCENT_RED_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
@@ -30,7 +29,6 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
-    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
     // Music is owned by the audio module and survives scene transitions, so
