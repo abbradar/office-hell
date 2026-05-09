@@ -10,7 +10,7 @@ import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/ch
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import { generateTextures, preloadBackgrounds, preloadPlayerBullet, registerDoorsFrames } from '../content/textures';
 import { isTouchDevice } from '../input/device';
-import { preloadInputIcons } from '../ui/inputIcons';
+import { loadInputIconImages } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
 import { COLOR_ACCENT_GOLD, COLOR_PANEL_BORDER, COLOR_TEXT_DIM_STR, COLOR_WALL_STR } from '../ui/palette';
 
@@ -65,7 +65,6 @@ export class BootScene extends Phaser.Scene {
     preloadBackgrounds(this);
     preloadPlayerBullet(this);
     preloadAudio(this);
-    preloadInputIcons(this);
     preloadMuteIcons(this);
     this.load.start();
 
@@ -112,6 +111,11 @@ export class BootScene extends Phaser.Scene {
     // before we start blocking on draws.
     const texturesPromise = Promise.resolve().then(() => generateTextures(this));
 
+    // Input icon SVGs load outside the Phaser loader: they're decoded into
+    // HTMLImageElements for the text-overlay path, not rasterised into
+    // Phaser textures. Kicked off in parallel with the rest.
+    const inputIconsPromise = loadInputIconImages();
+
     Promise.all([
       assetsPromise,
       menuPromise,
@@ -123,6 +127,7 @@ export class BootScene extends Phaser.Scene {
       creditsPromise,
       fontsPromise,
       texturesPromise,
+      inputIconsPromise,
     ]).then(() => {
       const promptText = isTouchDevice ? 'tap to continue' : 'press any key or click to continue';
       this.loadingText.setText(promptText);

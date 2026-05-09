@@ -3,19 +3,14 @@
 // Each entry in `InputIconSet` maps a *game action* (not a physical key) to
 // one or more icons. Code that wants to show "press X to bomb" looks up
 // `bomb` and gets back the icon(s) for whatever input scheme the player is
-// on — keyboard today, touch later.
+// on — keyboard or touch.
 //
-// Icons are SVG, rasterised by the browser's SVG renderer at the exact
-// pixel size the prompt needs. We preload one Phaser texture per (icon,
-// size) pair — a 22px texture and a 26px texture, matching the two icon
-// sizes prompt.ts requests today (FONT_DEBUG/SM tier and FONT_MENU tier
-// respectively). No downscaling means no interpolation artifacts and the
-// glyphs stay perfectly symmetric.
-//
-// Touch icons aren't shipped yet: TOUCH_ICONS is intentionally empty so a
-// touch session falls through to "no icon" instead of leaking a keyboard
-// glyph onto a phone screen. Adding touch later means populating that map;
-// no consumer code needs to change.
+// Icons are SVG, decoded into HTMLImageElements at boot and cached here.
+// Render-time, the high-DPR text overlay (see render/textOverlay.ts +
+// render/OverlayImage.ts) rasterises them to a tinted scratch canvas at
+// the exact device-pixel size — no Phaser textures, no pixelArt-style
+// upscaling. The overlay path is shared with prompt text so icons stay
+// crisp alongside the glyphs they annotate.
 //
 // Asset source: Kenney "Input Prompts 1.4" (CC0). SVGs live under
 // src/assets/icons/keyboard-vector/ and src/assets/icons/touch-vector/.
@@ -26,7 +21,6 @@
 // consistency between scenes, so we standardised on one tier — anything
 // that wants smaller "buttons" can just use plain text.
 
-import type Phaser from 'phaser';
 // Outline variants — open-frame look reads better on the dark UI.
 import keyboardArrowDown from '../assets/icons/keyboard-vector/keyboard_arrow_down_outline.svg';
 import keyboardArrowLeft from '../assets/icons/keyboard-vector/keyboard_arrow_left_outline.svg';
@@ -68,11 +62,13 @@ export type InputAction =
   | 'advanceDialogue'; // Z / Space
 
 export type InputIcon = {
-  // Short stable identifier — used to construct per-size texture keys
-  // (`icon_kb_z@22`, `icon_kb_z@26`). Doesn't change when the binding
-  // changes; only the URL it's mapped to does.
+  // Short stable identifier. Used as the cache key for the decoded
+  // HTMLImageElement (one entry per icon, not per-size — the overlay
+  // rasterises at device-pixel size on demand). Doesn't change when the
+  // binding changes; only the URL it's mapped to does.
   name: string;
-  // Vite-fingerprinted SVG asset URL. Passed to scene.load.svg().
+  // Vite-fingerprinted SVG asset URL. Loaded into an HTMLImageElement
+  // at boot via loadInputIconImages.
   url: string;
 };
 
@@ -134,60 +130,48 @@ export function getInputIcon(action: InputAction): InputIconRef | undefined {
   return getInputIcons()[action];
 }
 
-// --- texture-key resolution ------------------------------------------------
+// --- HTMLImageElement preload ---------------------------------------------
 
-// Sizes we preload each icon at. A single tier (22px) — every prompt in the
-// game uses this size, so the second-tier raster was just dead weight. The
-// SVGs were trimmed to their content bbox (no transparent padding), so the
-// rendered texture size IS the visible icon size.
-export const ICON_RENDER_SIZES = [22] as const;
-export type IconRenderSize = (typeof ICON_RENDER_SIZES)[number];
+// Decoded HTMLImageElement per icon name. Populated by loadInputIconImages()
+// at boot, read by the overlay flush (see render/textOverlay.ts) which
+// rasterises each SVG to a tinted scratch canvas at exact device-pixel
+// size. One entry per icon — no per-size variants since rasterisation
+// happens on demand.
+const ICON_IMG_CACHE = new Map<string, HTMLImageElement>();
 
-// Texture key for a specific (icon, size) combo. Mirror of the construction
-// inside preloadInputIcons — both must agree.
-export function iconTextureKey(icon: InputIcon, size: IconRenderSize): string {
-  return `icon_kb_${icon.name}@${size}`;
+async function decodeOne(icon: InputIcon): Promise<void> {
+  if (ICON_IMG_CACHE.has(icon.name)) return;
+  const img = new Image();
+  img.src = icon.url;
+  // decode() resolves once the image is fully parsed and ready for
+  // synchronous drawImage. Without this, the first paint risks drawing
+  // before the SVG has been laid out, producing a blank icon.
+  await img.decode();
+  ICON_IMG_CACHE.set(icon.name, img);
 }
 
-// Pick the closest preloaded render size for a requested display height.
-// Rounds toward the larger of two equidistant options to avoid making
-// already-small icons even smaller.
-export function nearestIconRenderSize(displayHeight: number): IconRenderSize {
-  let best: IconRenderSize = ICON_RENDER_SIZES[0];
-  let bestDelta = Math.abs(best - displayHeight);
-  for (const s of ICON_RENDER_SIZES) {
-    const d = Math.abs(s - displayHeight);
-    if (d < bestDelta || (d === bestDelta && s > best)) {
-      best = s;
-      bestDelta = d;
-    }
-  }
-  return best;
-}
-
-// Preload every icon referenced by the active platform's map (and the
-// shared glyph set when on keyboard) at every size in ICON_RENDER_SIZES.
-// Each (icon, size) becomes its own Phaser texture, rasterised by the
-// browser's SVG renderer at the exact pixel size — no downscaling, so
-// edges stay sharp and symmetric.
-export function preloadInputIcons(scene: Phaser.Scene): void {
+// Load HTMLImageElements for every icon referenced by the active
+// platform's map (plus the keyboard-glyph extras when on desktop).
+// Resolves once every SVG is decoded and ready for drawImage.
+export async function loadInputIconImages(): Promise<void> {
   const seen = new Set<string>();
+  const promises: Promise<void>[] = [];
   const queue = (icon: InputIcon): void => {
-    for (const size of ICON_RENDER_SIZES) {
-      const key = iconTextureKey(icon, size);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      scene.load.svg(key, icon.url, { width: size, height: size });
-    }
+    if (seen.has(icon.name)) return;
+    seen.add(icon.name);
+    promises.push(decodeOne(icon));
   };
-
   for (const ref of Object.values(getInputIcons())) {
     if (!ref) continue;
     if (Array.isArray(ref)) for (const i of ref) queue(i);
     else queue(ref);
   }
-
   if (!isTouchDevice) {
     for (const i of Object.values(KEYBOARD_GLYPHS)) queue(i);
   }
+  await Promise.all(promises);
+}
+
+export function getInputIconImage(name: string): HTMLImageElement | undefined {
+  return ICON_IMG_CACHE.get(name);
 }

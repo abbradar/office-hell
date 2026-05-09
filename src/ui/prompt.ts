@@ -17,17 +17,19 @@
 // call site rather than overloading the template syntax.
 
 import type Phaser from 'phaser';
-import { getInputIcon, type InputAction, type InputIcon, iconTextureKey, nearestIconRenderSize } from './inputIcons';
+import { OverlayImage } from '../render/OverlayImage';
+import { getInputIcon, getInputIconImage, type InputAction, type InputIcon } from './inputIcons';
 import { COLOR_TEXT_PRIMARY } from './palette';
 
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
 
 const TOKEN_RE = /<([a-zA-Z]+)>/g;
 
-// Lower bound on icon height regardless of text size. Pinned to the only
-// preloaded SVG raster size (see ICON_RENDER_SIZES) so every prompt across
-// the game — menu, character select, dialogue hint, tutorial bubble — ends
-// up with the same-size keys regardless of its own text tier.
+// Lower bound on icon height regardless of text size. Holds every prompt
+// across the game — menu, character select, dialogue hint, tutorial bubble
+// — to the same-size keys regardless of the prompt's own text tier. The
+// overlay rasterises at exact device-pixel size on demand, so there's no
+// preload-tier constraint pinning this value any more.
 const MIN_ICON_PX = 22;
 // Multiplier on text height for icons. Slightly larger than 1.0 so icons
 // pop next to text without towering over it. Bumped 10% over the original
@@ -75,9 +77,10 @@ export type PromptOpts = {
   // Each line is laid out left-to-right with this gap (px) between adjacent
   // children — text and icons alike.
   gap?: number;
-  // Pixel height of an icon. Default: max(MIN_ICON_PX, fontSize × 1.6) — see
-  // the constants above for the rationale. Snapped to the nearest preloaded
-  // SVG render size so the icon is rasterised at exactly the displayed size.
+  // Pixel height of an icon. Default: max(MIN_ICON_PX, fontSize × 1.6) —
+  // see the constants above for the rationale. Used as both width and
+  // height; the overlay rasterises the SVG at exact device-pixel size on
+  // demand, so any value works and stays crisp.
   iconHeight?: number;
   // Vertical distance between successive lines. Default: 1.4× text size.
   lineHeight?: number;
@@ -102,11 +105,7 @@ export function makePrompt(
   opts: PromptOpts = {},
 ): Phaser.GameObjects.Container {
   const fontPx = fontSizePx(style);
-  // Snap requested icon height to the nearest preloaded render size — that
-  // way the SVG was already rasterised at exactly this dimension and we
-  // can render 1:1, no scaling and no interpolation.
-  const requestedH = opts.iconHeight ?? Math.max(MIN_ICON_PX, Math.round(fontPx * DEFAULT_ICON_RATIO));
-  const iconH = nearestIconRenderSize(requestedH);
+  const iconH = opts.iconHeight ?? Math.max(MIN_ICON_PX, Math.round(fontPx * DEFAULT_ICON_RATIO));
   const gap = opts.gap ?? 4;
   // Line height tracks whichever is taller — text or icon — so adjacent
   // lines don't overlap when icons exceed the font's own line box.
@@ -159,11 +158,15 @@ export function makePrompt(
         for (let ii = 0; ii < seg.icons.length; ii++) {
           // biome-ignore lint/style/noNonNullAssertion: bounded by seg.icons.length
           const icon = seg.icons[ii]!;
-          // Use the texture preloaded at our snapped iconH — rasterised by
-          // the browser's SVG renderer at exactly this size, so no scaling
-          // or filtering needed; the image renders 1:1.
-          const img = scene.add.image(0, 0, iconTextureKey(icon, iconH)).setOrigin(0, 0.5);
-          img.setTint(iconTint);
+          const svg = getInputIconImage(icon.name);
+          if (!svg) throw new Error(`makePrompt: input icon image '${icon.name}' not loaded`);
+          // Overlay path: the SVG is rasterised on demand at exact
+          // device-pixel size; tint is baked into the scratch canvas, so
+          // no Phaser setTint call needed here.
+          const img = new OverlayImage(scene, 0, 0, svg, icon.name, iconTint);
+          scene.add.existing(img);
+          img.setOrigin(0, 0.5);
+          img.setDisplaySize(iconH, iconH);
           children.push(img);
           lineW += img.displayWidth;
           if (ii < seg.icons.length - 1) lineW += gap;
