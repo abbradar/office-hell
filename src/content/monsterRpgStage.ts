@@ -28,12 +28,12 @@ import {
 } from '../script/stage';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
-import { bossOne } from './kinds';
 import { checkEmailCoworker } from './waves/checkEmail';
 import { colleague } from './waves/colleague';
 import { JANITOR_DOOR_Y, janitor } from './waves/janitor';
 import { oversleeper } from './waves/oversleeper';
 import { shrunkOldMan } from './waves/shrunkOldMan';
+import { theBoss } from './waves/theBoss';
 
 const PORTRAIT = { sprite: 'mc_female', frame: 0, name: 'TEST' };
 
@@ -130,7 +130,7 @@ function* monsterRpgBody(self: Entity) {
   yield* startMusicLoop(MONSTER_FINAL_BOSS_KEY);
 
   markWave(self, 'boss 2');
-  const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
+  const boss2 = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
   yield { until: boss2 };
 
   markWave(self, 'end');

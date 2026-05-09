@@ -57,7 +57,7 @@ const ANXIOUS_RANDOM_CLUSTERS = 3;
 const ANXIOUS_RING_COUNT = 12;
 const ANXIOUS_RING_SPEED = 95;
 const ANXIOUS_GAP = 28;
-const ANXIOUS_SAY = 'Does it\nbother you?';
+const ANXIOUS_SAY = 'Does this\nbother you?';
 // Refresh the bubble every few ticks so it stays visible across the
 // open-ended phase loop.
 const ANXIOUS_SAY_REPEAT_TICKS = 6;
@@ -112,7 +112,7 @@ const TEST_BURSTS = 5;
 const TEST_PER_BURST = 14;
 const TEST_BURST_GAP = 26;
 const TEST_SPEED = 135;
-const TEST_SAY = 'Quick\nPERSONALITY\nTEST!';
+const TEST_SAY = 'Quick\npersonality\ntest!';
 const TEST_SAY_FRAMES = TEST_BURSTS * TEST_BURST_GAP + 12;
 
 // --- Phase 4: vitamins --------------------------------------------------
@@ -122,7 +122,7 @@ const VIT_PER_BURST = 6;
 const VIT_BURST_GAP = 24;
 const VIT_SPEED = 200;
 const VIT_SPREAD = Math.PI / 20;
-const VIT_SAY = 'Have you taken\nyour SUPPLEMENTS?!';
+const VIT_SAY = 'Have you taken\nyour supplements?!';
 const VIT_SAY_FRAMES = VIT_BURSTS * VIT_BURST_GAP + 12;
 
 // --- Phase transition ---------------------------------------------------
@@ -257,11 +257,12 @@ function pickAnxiousRingPos(self: Entity): { x: number; y: number } {
   return { x: GAME_W / 2, y: GAME_H * 0.4 };
 }
 
-// True if the script should bail out of a phase loop — entity died, or
-// the phase's HP pool was just depleted. Inlined as a helper because
-// every phase loop has the same termination condition.
+// True while the current phase is still going — i.e. its HP pool hasn't
+// been depleted yet. Phases 1–3 can't kill the boss (the takeDamage
+// override pins HP at zero and sets phaseDown), so this is the only
+// termination condition the phase loops need.
 function phaseRunning(self: Entity): boolean {
-  return self.alive && self.vars?.phaseDown !== true;
+  return self.vars?.phaseDown !== true;
 }
 
 // --- Phase generators ---------------------------------------------------
@@ -340,10 +341,11 @@ function* personalityPhase(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.alive) {
+  // Final phase: loops until the lethal hit lands, at which point
+  // takeDamage swaps this script out for coachDeath via runScript.
+  while (true) {
     self.say(VIT_SAY, VIT_SAY_FRAMES);
     for (let i = 0; i < VIT_BURSTS; i++) {
-      if (!self.alive) return;
       aimed(self, VIT_PER_BURST, pillBullet, VIT_SPEED, VIT_SPREAD);
       yield VIT_BURST_GAP;
     }
@@ -438,9 +440,9 @@ function* coachScript(self: Entity) {
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
     lines: [
-      { speaker: 'right', text: "Hi-i! I'm here for your URGENT wellness improvement session!" },
-      { speaker: 'left', text: "I'm fine, honestly. I just want to leave." },
-      { speaker: 'right', text: 'Your cortisol is SCREAMING, sweetie. Mindful breathing — together!' },
+      { speaker: 'right', text: `Hi again, I'm ${ch.name}! Welcome to your wellness improvement session!` },
+      { speaker: 'left', text: "I'm fine, actually. I just want to leave." },
+      { speaker: 'right', text: 'Your cortisol is screaming, sweetie.' },
       { speaker: 'left', text: '…that does not feel optional.' },
     ],
   });
@@ -464,21 +466,15 @@ function* coachScript(self: Entity) {
 
   // --- Phase 1 ---
   yield* anxiousPhase(self);
-  if (!self.alive) return;
   yield* phaseTransition(self, 2);
-  if (!self.alive) return;
 
   // --- Phase 2 ---
   yield* breathPhase(self);
-  if (!self.alive) return;
   yield* phaseTransition(self, 3);
-  if (!self.alive) return;
 
   // --- Phase 3 ---
   yield* personalityPhase(self);
-  if (!self.alive) return;
   yield* phaseTransition(self, 4);
-  if (!self.alive) return;
 
   // --- Phase 4 ---
   yield* vitaminsPhase(self);

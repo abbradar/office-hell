@@ -4,19 +4,14 @@ import {
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
-  STAGE2_METAL_LOOP_KEY,
-  STAGE2_METAL_OPENING_KEY,
 } from '../audio/keys';
-import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from '../script/patterns';
 import {
   clearScreen,
   markWave,
-  prepareForBoss,
   startMusicLoop,
   startMusicWithIntro,
-  suspendRunning,
   timeWave,
   waitEnemiesClear,
   waitScreenClear,
@@ -25,7 +20,6 @@ import {
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
-import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
 import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
@@ -43,6 +37,7 @@ import { moreChartsWave } from './waves/moreCharts';
 import { oversleeperWave } from './waves/oversleeper';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
+import { theBossWave } from './waves/theBoss';
 import { vacationPhotosWave } from './waves/vacationPhotos';
 import { COACH_NAME, wellnessCoachWave } from './waves/wellnessCoach';
 
@@ -56,23 +51,6 @@ const PLAYER_OUTRO_EXIT_Y = -60;
 // the next wave spawns the moment the previous one was swept and the
 // "I'm advancing" beat reads as a hard cut.
 const INTER_WAVE_GAP = 3;
-
-function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'final boss');
-  // Idempotent in live flow (stage2Part2 already switched to stage-2
-  // metal at the KAEDALUS_SHORT seam); switches in from menu music when
-  // run from the practice menu.
-  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
-  // Don't open the encounter while leftovers are still on screen. Sweep
-  // enemies + in-flight bullets, brief beat, then bring on the boss.
-  // BossKind makes all bosses spawn unhittable; the boss's own script
-  // handles entry, dialogue, and calls becomeHittable() once it's done.
-  yield* prepareForBoss(self);
-  yield* suspendRunning(self, function* () {
-    const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
-    yield { until: boss };
-  });
-}
 
 export type WaveDef = {
   id: string;
@@ -231,11 +209,11 @@ export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
 
   markWave(self, 'music: metal (stage 2)');
   yield* waitTrackEnded();
-  // bossWave does the actual `startMusicWithIntro(stage-2 metal)` itself
+  // theBossWave does the actual `startMusicWithIntro(stage-2 metal)` itself
   // (idempotent in live flow, switches in from menu music in practice);
   // the seam wait above keeps the live switch on a clean musical seam.
 
-  yield* self.stage.separateWave(bossWave(self));
+  yield* self.stage.separateWave(theBossWave(self));
 }
 
 // Practice menu order matches the real stage's progression: intro,
@@ -277,7 +255,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
   { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },
   { id: 'r-friday-party', name: 'Friday Party', script: fridayPartyWave },
-  { id: 'boss', name: 'Final Boss — The Boss', script: bossWave },
+  { id: 'boss', name: 'Final Boss — The Boss', script: theBossWave },
   { id: 'outro', name: 'Outro — Player exit', script: playerOutro },
 ];
 

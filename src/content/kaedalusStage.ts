@@ -23,11 +23,11 @@ import {
 } from '../script/stage';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
-import { bossOne } from './kinds';
 import { checkEmailCoworker } from './waves/checkEmail';
 import { colleague } from './waves/colleague';
 import { JANITOR_DOOR_Y, janitor } from './waves/janitor';
 import { oversleeper } from './waves/oversleeper';
+import { theBoss } from './waves/theBoss';
 
 const PORTRAIT = { sprite: 'mc_female', frame: 0, name: 'TEST' };
 
@@ -103,7 +103,7 @@ function* kaedalusBody(self: Entity) {
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
 
   markWave(self, 'boss');
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
+  const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
   yield { until: boss };
 
   markWave(self, 'end');

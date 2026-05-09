@@ -182,8 +182,9 @@ function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
   // Single shout ("Make me sweat!") fires from the outer script before this
   // loop runs. Sub-patterns are picked at random per cycle and each one
   // re-rolls its own parameters internally, so two adjacent runs of the same
-  // pick still play differently.
-  while (self.alive) {
+  // pick still play differently. Termination is handled by the race in
+  // gymBroScript — when waitPhaseOneDown wins this generator gets dropped.
+  while (true) {
     const idx = Math.floor(Math.random() * PHASE_ONE_PATTERNS.length);
     // biome-ignore lint/style/noNonNullAssertion: bounded by PHASE_ONE_PATTERNS.length
     yield* PHASE_ONE_PATTERNS[idx]!(self);
@@ -195,7 +196,7 @@ function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
 // phase-1 HP runs out. Lives as the loser's race partner — when this resolves,
 // the barrage above gets dropped mid-volley.
 function* waitPhaseOneDown(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.alive && self.vars?.phaseOneDown !== true) yield 1;
+  while (self.vars?.phaseOneDown !== true) yield 1;
 }
 
 // 4 * (1-t) * t parabola; peak at t=0.5 lands at fromY + JUMP_PEAK_OFFSET.
@@ -221,7 +222,9 @@ function* parabolicJump(
 }
 
 function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.alive) {
+  // Final phase: loops until the lethal hit lands, at which point
+  // takeDamage swaps this script out for gymBroDeath via runScript.
+  while (true) {
     let landX = JUMP_HOME_X;
     let landY = JUMP_HOME_Y;
     for (let i = 0; i < JUMPS_PER_CYCLE; i++) {
@@ -301,7 +304,6 @@ function* gymBroScript(self: Entity) {
   yield POST_DIALOGUE_HOLD;
 
   yield* race(phaseOneBarrage(self), waitPhaseOneDown(self));
-  if (!self.alive) return;
 
   // --- Transition: shudder, clear field, leg-day declaration ---
   self.setDamagedByClasses([]);
