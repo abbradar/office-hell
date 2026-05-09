@@ -3,6 +3,7 @@ import bgDoorsUrl from '../assets/bg/doors.png';
 import bgFloorUrl from '../assets/bg/floor.png';
 import bgWallsUrl from '../assets/bg/walls.png';
 import playerBulletUrl from '../assets/sprites/player_bullet.png';
+import waterDispenserUrl from '../assets/sprites/water_dispenser.png';
 import { BULLET_RADIUS } from '../config';
 import {
   COLOR_BULLET_DEFAULT,
@@ -77,6 +78,14 @@ export function generateDoorsBboxTexture(scene: Phaser.Scene): void {
 // reads as a soft tracer over the floor without per-spawn setAlpha calls.
 export function preloadPlayerBullet(scene: Phaser.Scene): void {
   scene.load.image('playerBullet', playerBulletUrl);
+}
+
+// Water dispenser prop used in the inter-stage breather. 32×32 sprite
+// from the Office-Furniture-Pixel-Art set; placed as a fixture the
+// player walks up to mid-corridor.
+export const PROP_WATER_DISPENSER_KEY = 'prop_water_dispenser';
+export function preloadWaterDispenser(scene: Phaser.Scene): void {
+  scene.load.image(PROP_WATER_DISPENSER_KEY, waterDispenserUrl);
 }
 
 export function generateBulletTexture(scene: Phaser.Scene): void {

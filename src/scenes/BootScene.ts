@@ -8,7 +8,7 @@ import { computeCanvasH } from '../canvasSize';
 import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
-import { generateTextures, preloadBackgrounds, preloadPlayerBullet } from '../content/textures';
+import { generateTextures, preloadBackgrounds, preloadPlayerBullet, preloadWaterDispenser } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { DISPLAY_RESIZE_EVENT, displayState } from '../render/displayState';
@@ -121,6 +121,7 @@ export class BootScene extends Phaser.Scene {
     preloadElevator(this);
     preloadBackgrounds(this);
     preloadPlayerBullet(this);
+    preloadWaterDispenser(this);
     preloadAudio(this);
     preloadMuteIcons(this);
     this.load.start();

@@ -37,6 +37,7 @@ export const SECTIONS: Section[] = [
       { name: 'Kenney', url: 'opengameart.org/users/kenney' },
       { name: 'Universal LPC Spritesheet Generator', url: 'github.com/LiberatedPixelCup' },
       { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
+      { name: 'Furniture Office Set', url: 'stcrbcn.itch.io/furniture-office-set' },
     ],
   },
   {

@@ -50,6 +50,13 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // and any other ambient walking moment. Reset on spawn so a pooled
   // entity reused as a normal enemy doesn't inherit the flag.
   walkAnim = false;
+  // Cutscene flag: when true, updateAnim treats this entity as if it had
+  // zero velocity — so a moveTo set with `silent: true` slides the body
+  // across the field while the sprite holds its idle frame. Used when
+  // the floor is dragging the player (the "carried by the world" feel
+  // in interStage); without it, any non-zero velocity would flip the
+  // anim into walk/run.
+  animSuppressed = false;
   // Per-entity scratchpad for kind-specific flags (e.g. boss phase markers).
   // Reset to null on spawn so pooled entities don't inherit state from a
   // previous life. Kinds should write to `vars ??= {}` when they need a slot
@@ -156,7 +163,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     // and unpause the sprite.
     if (this.scene.physics.world.isPaused) return;
     const v = this.body.velocity;
-    const moving = Math.hypot(v.x, v.y) > ANIM_MOVE_THRESHOLD;
+    const moving = !this.animSuppressed && Math.hypot(v.x, v.y) > ANIM_MOVE_THRESHOLD;
     if (moving) this.facing = directionFromVelocity(v.x, v.y);
     const action = moving ? (this.walkAnim ? 'walk' : 'run') : 'idle';
     const key = characterAnimKey(sheet, action, this.facing);

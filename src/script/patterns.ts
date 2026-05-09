@@ -92,7 +92,19 @@ export function* walkOffScreen(self: Entity, vx: number, vy: number): Generator<
 // stop. Computes heading + travel time for you and yields until it lands.
 // Snaps to the exact target on arrival to absorb sub-pixel rounding so the
 // next script step starts from a clean coordinate.
-export function* moveTo(self: Entity, tx: number, ty: number, speed: number): Generator<ScriptYield, void, void> {
+//
+// `silent`: hold the idle frame for the duration of the move instead of
+// updating the anim from velocity. The body still travels normally; only
+// the visual animation is suppressed. Used for "carried by the world"
+// moments — e.g. the inter-stage water-cooler scene where the floor
+// drags the player back to PLAYER_Y while the sprite stays still.
+export function* moveTo(
+  self: Entity,
+  tx: number,
+  ty: number,
+  speed: number,
+  opts?: { silent?: boolean },
+): Generator<ScriptYield, void, void> {
   const dx = tx - self.x;
   const dy = ty - self.y;
   const dist = Math.hypot(dx, dy);
@@ -100,6 +112,8 @@ export function* moveTo(self: Entity, tx: number, ty: number, speed: number): Ge
     self.setVelocity(0, 0);
     return;
   }
+  const silent = opts?.silent ?? false;
+  if (silent) self.animSuppressed = true;
   self.setVelocity((dx / dist) * speed, (dy / dist) * speed);
   // Floor at one tick: a tiny-but-positive distance still spends a frame
   // moving rather than snapping via the immediate-restart path. Keeps
@@ -110,6 +124,7 @@ export function* moveTo(self: Entity, tx: number, ty: number, speed: number): Ge
   self.setVelocity(0, 0);
   self.x = tx;
   self.y = ty;
+  if (silent) self.animSuppressed = false;
 }
 
 export function arc(

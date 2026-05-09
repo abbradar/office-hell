@@ -294,6 +294,7 @@ export class StageManager {
     e.onDeathQueue = null;
     e.vars = null;
     e.walkAnim = false;
+    e.animSuppressed = false;
 
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);

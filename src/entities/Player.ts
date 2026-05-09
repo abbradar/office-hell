@@ -173,8 +173,12 @@ export class Player extends Entity {
     const sheet = this.kind.sprite;
     if (sheet === null) return;
     if (this.scene.physics.world.isPaused) return;
-    const vx = this.body.velocity.x;
-    const vy = this.body.velocity.y;
+    // animSuppressed (set by `moveTo(..., { silent: true })`) zeroes
+    // out velocity for the anim decision — body still integrates the
+    // real velocity, but the chosen action falls into the stationary
+    // branch (idle, or walk under walkInPlace) instead of walk/run.
+    const vx = this.animSuppressed ? 0 : this.body.velocity.x;
+    const vy = this.animSuppressed ? 0 : this.body.velocity.y;
     let dir: Direction;
     let action: Action;
     if (this.walkAnim) {
