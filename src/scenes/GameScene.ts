@@ -356,18 +356,25 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.hud = this.add
-      .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
+      .text(WALL_W + 8, HEADER_H + 4, '', { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
       .setScrollFactor(0)
       .setDepth(100);
 
     // Debug HUD (track / t / next / blocked) shown for the real stage and
     // every test/music stage. Test/music modes get the green tint as a
     // "you're in test mode" cue; real-stage version is greyer so it recedes.
+    // x is nudged past the wall column so it sits inside the playfield
+    // rather than getting clipped by the side wall. Depth sits below every
+    // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
+    // dialogue=200) so any of them draw on top of the debug line.
     const debugTinted = this.testMode || this.musicMode !== null;
     this.debugHud = this.add
-      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR })
+      .text(WALL_W + 8, HEADER_H + 20, '', {
+        ...FONT_DEBUG,
+        color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
+      })
       .setScrollFactor(0)
-      .setDepth(100);
+      .setDepth(10);
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');

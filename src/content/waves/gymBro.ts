@@ -1,7 +1,7 @@
 import { playJump, playThump, shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind } from '../../script/boss';
+import { BossKind, becomeHittable } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
@@ -273,7 +273,7 @@ function* gymBroScript(self: Entity) {
   });
 
   // --- Phase 1 ---
-  self.setDamagedByClasses(['enemy']);
+  becomeHittable(self);
   self.say('Make me sweat!', POST_DIALOGUE_HOLD);
   yield POST_DIALOGUE_HOLD;
 
@@ -306,7 +306,7 @@ function* gymBroScript(self: Entity) {
   self.vars ??= {};
   self.vars.phaseTwo = true;
   self.hp = PHASE_TWO_HP;
-  self.setDamagedByClasses(['enemy']);
+  becomeHittable(self);
 
   yield* phaseTwoCycle(self);
 }
@@ -320,16 +320,15 @@ export const gymBro = new GymBroKind({
   defaultScript: gymBroScript,
 });
 
-// Wave wrapper that mirrors the final boss's entrance pattern: clear the
-// field, beat, then drop the boss in spawned-unhittable so his own script
-// can run entry + dialogue before becoming damageable.
+// Wave wrapper that mirrors the final boss's entrance pattern: clear
+// the field, beat, then drop the boss in. BossKind keeps him unhittable
+// on spawn so his own script can run entry + dialogue before becoming
+// damageable via becomeHittable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'gym bro');
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
-    const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0, {
-      damagedByClass: [],
-    });
+    const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
   });
 }

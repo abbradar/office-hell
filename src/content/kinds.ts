@@ -1,6 +1,6 @@
 import { BULLET_RADIUS, GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
-import { BossKind } from '../script/boss';
+import { BossKind, becomeHittable } from '../script/boss';
 import { aimed, arc, moveTo, ring } from '../script/patterns';
 import { EntityKind } from '../script/types';
 
@@ -30,12 +30,14 @@ const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
 
 function* bossScript(self: Entity) {
-  // Entry — boss flies down from above to his fight position. He's spawned
-  // unhittable (damagedByClass: [] override at the spawn site) so player bullets
-  // pass through during entrance and dialogue. moveTo computes the travel
-  // time from distance + speed so the dialogue can't fire before he's
-  // actually arrived (the previous frame-counted entry would land short on
-  // displays whose RAF outran 60 Hz).
+  // Entry — boss flies down from above to his fight position. BossKind
+  // forces damagedByClass: [] at construction so all bosses spawn
+  // unhittable (player bullets pass through during entrance + dialogue);
+  // becomeHittable below opts back into the original damage classes.
+  // moveTo computes the travel time from distance + speed so the
+  // dialogue can't fire before he's actually arrived (the previous
+  // frame-counted entry would land short on displays whose RAF outran
+  // 60 Hz).
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
 
@@ -62,7 +64,7 @@ function* bossScript(self: Entity) {
   });
 
   // Become hittable.
-  self.setDamagedByClasses(['enemy']);
+  becomeHittable(self);
   self.say('Shrink the workforce!', 110);
   yield 110;
 
