@@ -6,6 +6,7 @@ import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
+import { GameScore } from './score';
 import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from './types';
 import { INERT_KIND } from './types';
 
@@ -174,6 +175,11 @@ export class StageManager {
   // (computeDoorYs, alignDoor) so they can pick spawn / exit y values
   // through the same door panels the player sees.
   bgScrollY = 0;
+  // Run-wide tally (bombs used, enemies killed, HP lost). Bosses snapshot
+  // a counter at fight start and read the delta on defeat to drive
+  // end-of-fight quips; survives the manager's lifetime, resets when
+  // GameScene constructs a fresh manager on scene transition.
+  readonly score = new GameScore();
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];

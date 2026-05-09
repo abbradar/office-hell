@@ -59,23 +59,37 @@ const HEADERS: HeaderButton[] = [
 
 type CursorTarget = { kind: 'header'; index: number } | { kind: 'wave'; index: number };
 
-export class TestMenuScene extends Phaser.Scene {
-  private rows: Phaser.GameObjects.Text[] = [];
-  private headerTexts: Phaser.GameObjects.Text[] = [];
+// Per-run mutable state. Scene instances are reused across `scene.start`,
+// so anything declared as a class-field initializer (`= []`, `= 0`) keeps
+// last run's value when create() runs again — most visibly, push-mutated
+// arrays grow without bound. Keeping it all in one object lets init()
+// rebuild it from scratch each entry. Only fields assigned every create()
+// (listContainer, indicators) stay on the scene as `!:` refs.
+class RunState {
+  readonly rows: Phaser.GameObjects.Text[] = [];
+  readonly headerTexts: Phaser.GameObjects.Text[] = [];
   // 0..HEADERS.length-1 = headers, then HEADERS.length..HEADERS.length+WAVES.length-1 = waves
-  private cursor = 0;
-  private listContainer!: Phaser.GameObjects.Container;
-  private scrollY = 0;
-  private maxScroll = 0;
-  private gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
+  cursor = 0;
+  scrollY = 0;
+  maxScroll = 0;
+  gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
   // Computed at create time from HEADERS — wave list starts below the
   // last header button + a small gap.
-  private listViewTop = 0;
-  private listViewHeight = 0;
+  listViewTop = 0;
+  listViewHeight = 0;
+}
+
+export class TestMenuScene extends Phaser.Scene {
+  private listContainer!: Phaser.GameObjects.Container;
   private indicators!: ScrollIndicators;
+  private state!: RunState;
 
   constructor() {
     super('TestMenu');
+  }
+
+  init(): void {
+    this.state = new RunState();
   }
 
   private get itemCount(): number {
@@ -91,12 +105,6 @@ export class TestMenuScene extends Phaser.Scene {
     bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
-    this.rows = [];
-    this.headerTexts = [];
-    this.scrollY = 0;
-    this.gesture = null;
-    this.cursor = 0;
-
     this.add
       .text(GAME_W / 2, HEADER_Y, 'PRACTICE', {
         ...FONT_TITLE,
@@ -115,9 +123,9 @@ export class TestMenuScene extends Phaser.Scene {
     // rows. Headers live at the top of listContainer; waves follow
     // after a fixed gap. Everything scrolls together so the headers
     // can disappear off the top to make room for the long wave list.
-    this.listViewTop = LIST_VIEW_TOP;
-    this.listViewHeight = LIST_VIEW_BOTTOM - this.listViewTop;
-    this.listContainer = this.add.container(0, this.listViewTop);
+    this.state.listViewTop = LIST_VIEW_TOP;
+    this.state.listViewHeight = LIST_VIEW_BOTTOM - this.state.listViewTop;
+    this.listContainer = this.add.container(0, this.state.listViewTop);
 
     // Header shortcuts — full stage + each diagnostics test stage.
     for (let i = 0; i < HEADERS.length; i++) {
@@ -131,16 +139,16 @@ export class TestMenuScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
       text.on('pointerover', (p: Phaser.Input.Pointer) => {
         if (isTouchDevice || p.isDown) return;
-        this.cursor = i;
+        this.state.cursor = i;
         this.refresh();
       });
       onTap(this, text, () => {
-        if (this.gesture?.moved) return;
-        this.cursor = i;
+        if (this.state.gesture?.moved) return;
+        this.state.cursor = i;
         this.start();
       });
       this.listContainer.add(text);
-      this.headerTexts.push(text);
+      this.state.headerTexts.push(text);
     }
 
     const wavesTop = HEADERS.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
@@ -160,30 +168,30 @@ export class TestMenuScene extends Phaser.Scene {
         // On touch, pointerover fires on tap and would yank the cursor mid-swipe.
         // On desktop, ignore it during a held drag so the cursor doesn't chase the mouse.
         if (isTouchDevice || p.isDown) return;
-        this.cursor = HEADERS.length + i;
+        this.state.cursor = HEADERS.length + i;
         this.refresh();
       });
       // onTap registers its scene-level pointerup before the gesture-clearing
       // listener below, so the action sees `gesture` intact and can read
       // `.moved` to distinguish swipes from taps.
       onTap(this, row, () => {
-        if (this.gesture?.moved) return;
-        this.cursor = HEADERS.length + i;
+        if (this.state.gesture?.moved) return;
+        this.state.cursor = HEADERS.length + i;
         this.start();
       });
       this.listContainer.add(row);
-      this.rows.push(row);
+      this.state.rows.push(row);
     }
 
     const maskGraphics = this.make.graphics({});
     maskGraphics.fillStyle(0xffffff);
-    maskGraphics.fillRect(0, this.listViewTop, GAME_W, this.listViewHeight);
+    maskGraphics.fillRect(0, this.state.listViewTop, GAME_W, this.state.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
     const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
-    this.maxScroll = Math.max(0, totalHeight - this.listViewHeight);
-    this.indicators = addScrollIndicators(this, this.listViewTop, LIST_VIEW_BOTTOM);
-    this.indicators.update(this.scrollY, this.maxScroll);
+    this.state.maxScroll = Math.max(0, totalHeight - this.state.listViewHeight);
+    this.indicators = addScrollIndicators(this, this.state.listViewTop, LIST_VIEW_BOTTOM);
+    this.indicators.update(this.state.scrollY, this.state.maxScroll);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
@@ -193,7 +201,7 @@ export class TestMenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     onTap(this, back, () => {
-      if (this.gesture?.moved) return;
+      if (this.state.gesture?.moved) return;
       this.scene.start('Menu');
     });
 
@@ -210,38 +218,38 @@ export class TestMenuScene extends Phaser.Scene {
     );
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.y < this.listViewTop || p.y > LIST_VIEW_BOTTOM) {
-        this.gesture = null;
+      if (p.y < this.state.listViewTop || p.y > LIST_VIEW_BOTTOM) {
+        this.state.gesture = null;
         return;
       }
-      this.gesture = { downY: p.y, startScroll: this.scrollY, moved: false };
+      this.state.gesture = { downY: p.y, startScroll: this.state.scrollY, moved: false };
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!this.gesture || !p.isDown) return;
-      const dy = p.y - this.gesture.downY;
-      if (Math.abs(dy) > DRAG_THRESHOLD) this.gesture.moved = true;
-      if (this.gesture.moved) this.setScroll(this.gesture.startScroll - dy);
+      if (!this.state.gesture || !p.isDown) return;
+      const dy = p.y - this.state.gesture.downY;
+      if (Math.abs(dy) > DRAG_THRESHOLD) this.state.gesture.moved = true;
+      if (this.state.gesture.moved) this.setScroll(this.state.gesture.startScroll - dy);
     });
     this.input.on('pointerup', () => {
-      this.gesture = null;
+      this.state.gesture = null;
     });
 
     this.input.on(
       'wheel',
       (_p: Phaser.Input.Pointer, _objs: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
-        this.setScroll(this.scrollY + dy);
+        this.setScroll(this.state.scrollY + dy);
       },
     );
 
     const kb = this.input.keyboard;
     if (kb) {
       kb.on('keydown-UP', () => {
-        this.cursor = (this.cursor - 1 + this.itemCount) % this.itemCount;
+        this.state.cursor = (this.state.cursor - 1 + this.itemCount) % this.itemCount;
         this.refresh();
         this.scrollToCursor();
       });
       kb.on('keydown-DOWN', () => {
-        this.cursor = (this.cursor + 1) % this.itemCount;
+        this.state.cursor = (this.state.cursor + 1) % this.itemCount;
         this.refresh();
         this.scrollToCursor();
       });
@@ -258,13 +266,13 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private setScroll(target: number): void {
-    this.scrollY = Phaser.Math.Clamp(target, 0, this.maxScroll);
-    this.listContainer.y = this.listViewTop - this.scrollY;
-    this.indicators.update(this.scrollY, this.maxScroll);
+    this.state.scrollY = Phaser.Math.Clamp(target, 0, this.state.maxScroll);
+    this.listContainer.y = this.state.listViewTop - this.state.scrollY;
+    this.indicators.update(this.state.scrollY, this.state.maxScroll);
   }
 
   private scrollToCursor(): void {
-    const target = this.cursorTarget(this.cursor);
+    const target = this.cursorTarget(this.state.cursor);
     let top: number;
     let height: number;
     if (target.kind === 'header') {
@@ -276,9 +284,9 @@ export class TestMenuScene extends Phaser.Scene {
       height = ROW_SPACING;
     }
     const bottom = top + height;
-    if (top < this.scrollY) this.setScroll(top);
-    else if (bottom > this.scrollY + this.listViewHeight) {
-      this.setScroll(bottom - this.listViewHeight);
+    if (top < this.state.scrollY) this.setScroll(top);
+    else if (bottom > this.state.scrollY + this.state.listViewHeight) {
+      this.setScroll(bottom - this.state.listViewHeight);
     }
   }
 
@@ -289,23 +297,23 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private refresh(): void {
-    const target = this.cursorTarget(this.cursor);
+    const target = this.cursorTarget(this.state.cursor);
 
     for (let i = 0; i < HEADERS.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
       const header = HEADERS[i]!;
       // biome-ignore lint/style/noNonNullAssertion: bounded by headerTexts.length
-      const text = this.headerTexts[i]!;
+      const text = this.state.headerTexts[i]!;
       const selected = target.kind === 'header' && target.index === i;
       text.setText(`${selected ? '▶ ' : '  '}${header.label}`);
       text.setColor(selected ? SELECTED_COLOR : HEADER_COLOR);
     }
 
-    for (let i = 0; i < this.rows.length; i++) {
+    for (let i = 0; i < this.state.rows.length; i++) {
       // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
       const wave = WAVES[i]!;
       // biome-ignore lint/style/noNonNullAssertion: bounded by rows.length
-      const row = this.rows[i]!;
+      const row = this.state.rows[i]!;
       const selected = target.kind === 'wave' && target.index === i;
       row.setText(`${selected ? '▶ ' : '  '}${this.rowText(wave)}`);
       row.setColor(selected ? SELECTED_COLOR : ROW_COLOR);
@@ -313,7 +321,7 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private start(): void {
-    const target = this.cursorTarget(this.cursor);
+    const target = this.cursorTarget(this.state.cursor);
     if (target.kind === 'header') {
       // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
       const header = HEADERS[target.index]!;

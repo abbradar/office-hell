@@ -131,18 +131,23 @@ export function* withTimeout(
   yield* race(inner, waitSeconds(seconds));
 }
 
-// Run `inner` for exactly `seconds` of game time, then sweep any
-// surviving enemies off the field. Inner is cancelled mid-flight if it
-// would run longer; if it finishes earlier, the slot is padded out via
-// `waitAudioTimeAtLeast` against the start-of-slot music timestamp so
-// the slot still aligns to the music seam if a track is playing.
-// Bullets in flight are left alone — only `damagedBy.enemy` (the enemy
-// entities themselves) is cleared, so the next slot inherits a
-// half-busy field rather than a hard reset.
+// Run `inner` for exactly `seconds` of game time, then verify the field
+// has cleared. Inner is cancelled mid-flight if it would run longer; if
+// it finishes earlier, the slot is padded out via `waitAudioTimeAtLeast`
+// against the start-of-slot music timestamp so the slot still aligns to
+// the music seam if a track is playing.
+//
+// Stragglers — live enemies still on the field when the slot ends — are
+// a timing bug, not something this helper is meant to paper over. Every
+// wave is expected to be paced so its enemies have exited the playfield
+// by the time the slot expires. To keep that invariant loud without
+// breaking the rest of the run, we log a `console.error` listing the
+// stragglers and then kill them so the next wave inherits a clean
+// field. Bullets in flight are out of scope.
 //
 // Used by stage scripts to give each wave a fixed time slot independent
-// of how fast the player kills enemies or whether spawned enemies
-// linger off-screen — completion gates only on the timer.
+// of how fast the player kills enemies; the wave's own scripts must
+// drive their enemies off-screen before the slot is up.
 export function* timeWave(
   self: Entity,
   seconds: number,
@@ -151,7 +156,21 @@ export function* timeWave(
   const start = getMusicTime();
   yield* withTimeout(seconds, inner);
   if (start !== null) yield* waitAudioTimeAtLeast(start.time + seconds);
-  killEnemies(self);
+  sweepStragglers(self, seconds);
+}
+
+function sweepStragglers(self: Entity, seconds: number): void {
+  const stragglers: Entity[] = [];
+  for (const child of self.stage.damagedBy.enemy.getChildren()) {
+    const e = child as Entity;
+    if (e.alive) stragglers.push(e);
+  }
+  if (stragglers.length === 0) return;
+  const summary = stragglers.map((e) => `${e.kind.sprite ?? '?'}@(${Math.round(e.x)},${Math.round(e.y)})`).join(', ');
+  console.error(
+    `[timeWave] ${stragglers.length} enemy/enemies still on the field after ${seconds}s in wave "${self.stage.wave ?? '?'}": ${summary}. Tighten the wave's exits or extend the slot.`,
+  );
+  for (const e of stragglers) e.die();
 }
 
 // Bracket a "fight" section inside a wave: plants the MC + stops the
@@ -452,4 +471,38 @@ export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number):
     yield* moveTo(self, self.x, exitY, speed);
   }
   self.setVelocity(side * speed, 0);
+}
+
+// Variant of `exitThroughSideDoor` that always routes through the next
+// visible door downscreen of the entity (i.e. closer to the player), not
+// the closest one in either direction. Use for enemies whose entry
+// motion is "marching forward into the playfield" — sending them back
+// up through the door they came from would read as a retreat the
+// character isn't doing. Falls back to `exitThroughSideDoor` (closest
+// door) if no door is currently below the entity.
+export function* exitThroughForwardDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
+  const exitY = pickDoorCenterYForward(self, self.y);
+  if (exitY === null) {
+    yield* exitThroughSideDoor(self, side, speed);
+    return;
+  }
+  if (Math.abs(exitY - self.y) > 1) {
+    yield* moveTo(self, self.x, exitY, speed);
+  }
+  self.setVelocity(side * speed, 0);
+}
+
+// Pick the centre y of the nearest visible door whose centre sits at
+// or below `fromY` (i.e. the next door the entity would reach by
+// continuing forward into the playfield). Returns null if every visible
+// door is above `fromY`.
+function pickDoorCenterYForward(self: Entity, fromY: number): number | null {
+  let best: number | null = null;
+  for (const top of computeDoorYs(self.stage.bgScrollY)) {
+    if (!isDoorVisible(top)) continue;
+    const center = top + DOOR_H / 2;
+    if (center < fromY) continue;
+    if (best === null || center < best) best = center;
+  }
+  return best;
 }

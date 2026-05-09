@@ -34,6 +34,14 @@ import { makePrompt } from '../ui/prompt';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 
+// HUD text refresh budget: setText on a Phaser.Text re-rasterises the
+// backing canvas and re-uploads it via gl.texImage2D. Doing that every
+// frame (because actualFps changes every frame) was capping us at ~57 fps
+// on top of the GPU pipeline, independent of bullet count. 1 Hz is plenty
+// for "hostile / fps / practice mode" — the only sub-second thing in the
+// line is the displayed FPS itself.
+const HUD_REFRESH_MS = 1000;
+
 // Door layout constants live in src/content/doors.ts so stage scripts
 // can compute door y values from the same formula. See that module for
 // the cycle / spacing rationale.
@@ -117,6 +125,73 @@ export type GameSceneData = {
   music?: 'kaedalus' | 'monster-rpg';
 };
 
+// Per-run state container. Phaser reuses the same Scene instance across
+// `scene.start('Game')`, so class field initializers (e.g. `= 0`, `= []`)
+// only fire at construction — any per-run state declared that way leaks
+// the previous run's value when create() runs again. Bundling everything
+// per-run into one object lets init() rebuild it from scratch each time
+// and makes "did I forget to reset that field?" a type error: anything
+// added here gets initialised by `RunState`'s ctor or TypeScript complains.
+//
+// Anything assigned with `!:` and reassigned every create() (player,
+// stage, the various Text / RenderTexture refs) stays out of here —
+// those are already fresh by the time update() runs. Only fields that
+// are set at runtime (mutated by handlers, accumulated across frames)
+// live here.
+class RunState {
+  // From init data — set once at scene entry.
+  readonly practiceWave: WaveDef | null;
+  readonly testMode: boolean;
+  readonly musicMode: 'kaedalus' | 'monster-rpg' | null;
+  // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
+  // we share the same physics/script freeze (set stage.paused + physics.pause)
+  // but track this flag so X can route to "exit to menu" only while the
+  // pause overlay owns the freeze. Only entered when no dialogue is active,
+  // so the two pause owners never overlap.
+  userPaused = false;
+  pauseOverlay: Phaser.GameObjects.Container | null = null;
+  // Set once when the player has died and we've kicked off the flicker /
+  // game-over transition. Idempotent: keeps update() from re-firing the
+  // sequence on every subsequent frame while the animation plays out.
+  deathStarted = false;
+  // Continue overlay shown when HP hits 0 in the real stage. Holds the
+  // freeze (stage.freeze + paused music) until the player picks
+  // continue (revive + death-bomb) or exit-to-menu. Cleared when either
+  // path runs; subsequent deaths re-show it. Null in practice / test /
+  // music modes — those fall through to startDeathSequence.
+  continueOverlay: Phaser.GameObjects.Container | null = null;
+  // Edge-triggered touch bomb input — matches keyboard JustDown(X)
+  // semantics. Set on a pointerdown inside the bomb circle and drained
+  // by consumeBombPress. Tracking only pointerdown (not pointermove)
+  // means a finger sliding off the move pad into the bomb region won't
+  // accidentally burn a bomb.
+  bombPending = false;
+  // Accumulated forward scroll, in pixels. Mirrors `-bg.tilePositionY` (the
+  // floor's tile offset) and drives the doors' wrap-around y. Tracked
+  // separately so the doors keep their phase across the modulo without
+  // having to reason about tilePositionY's seed offset.
+  bgScrollY = 0;
+  // Doors: each visible "door slot" is one full-canvas-width Image of the
+  // doors texture (transparent in the middle, panels at the wall columns).
+  // y is recomputed each frame from the shared scroll offset. Built fresh
+  // each create() — the array MUST start empty there or the loop appends
+  // a second set on top of the previous run's destroyed Images.
+  readonly doorSlots: Phaser.GameObjects.Image[] = [];
+  // HUD text is a canvas-backed Phaser.Text — every changed string redraws
+  // the canvas and re-uploads it via gl.texImage2D, which serialises the
+  // WebGL pipeline. The fps + hostile-count line was rebuilt every frame
+  // (actualFps changes constantly), so we throttle to 1 Hz here. Reset on
+  // every tick that exceeds the budget; HUD freeze during pause is fine
+  // because pause itself is a longer-than-1 s state.
+  hudAccumMs = HUD_REFRESH_MS;
+
+  constructor(data: GameSceneData | undefined) {
+    this.practiceWave = data?.practice ?? null;
+    this.testMode = data?.test ?? false;
+    this.musicMode = data?.music ?? null;
+  }
+}
+
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private stage!: StageManager;
@@ -125,10 +200,6 @@ export class GameScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private bossNameText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
-  // Doors: each visible "door slot" is one full-canvas-width Image of the
-  // doors texture (transparent in the middle, panels at the wall columns).
-  // y is recomputed each frame from the shared scroll offset.
-  private doorSlots: Phaser.GameObjects.Image[] = [];
   // Walls layer baked per-frame: walls texture drawn in, then the doors
   // silhouette (BG_DOORS_BBOX_KEY) is erased at each door's y. Eraser and
   // door Image share native size + origin (0, 0), so the cutout matches
@@ -139,53 +210,31 @@ export class GameScene extends Phaser.Scene {
   // vertically across the playfield in a single RT.draw() call instead of
   // looping the 1px source GAME_H times.
   private wallsTile!: Phaser.GameObjects.TileSprite;
-  // Accumulated forward scroll, in pixels. Mirrors `-bg.tilePositionY` (the
-  // floor's tile offset) and drives the doors' wrap-around y. Tracked
-  // separately so the doors keep their phase across the modulo without
-  // having to reason about tilePositionY's seed offset.
-  private bgScrollY = 0;
-  private practiceWave: WaveDef | null = null;
-  private testMode = false;
-  private musicMode: 'kaedalus' | 'monster-rpg' | null = null;
   private debugHud: Phaser.GameObjects.Text | null = null;
   private playerKind!: PlayerKind;
-  // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
-  // we share the same physics/script freeze (set stage.paused + physics.pause)
-  // but track this flag so X can route to "exit to menu" only while the
-  // pause overlay owns the freeze. Only entered when no dialogue is active,
-  // so the two pause owners never overlap.
-  private userPaused = false;
-  private pauseOverlay: Phaser.GameObjects.Container | null = null;
-  // Set once when the player has died and we've kicked off the flicker /
-  // game-over transition. Idempotent: keeps update() from re-firing the
-  // sequence on every subsequent frame while the animation plays out.
-  private deathStarted = false;
-  // Continue overlay shown when HP hits 0 in the real stage. Holds the
-  // freeze (stage.freeze + paused music) until the player picks
-  // continue (revive + death-bomb) or exit-to-menu. Cleared when either
-  // path runs; subsequent deaths re-show it. Null in practice / test /
-  // music modes — those fall through to startDeathSequence.
-  private continueOverlay: Phaser.GameObjects.Container | null = null;
-  // Edge-triggered touch bomb input — matches keyboard JustDown(X)
-  // semantics. Set on a pointerdown inside the bomb circle and drained
-  // by consumeBombPress. Tracking only pointerdown (not pointermove)
-  // means a finger sliding off the move pad into the bomb region won't
-  // accidentally burn a bomb.
-  private bombPending = false;
+  // Per-run mutable state — see RunState. Built fresh in init() each
+  // entry; never assign to fields that should be in here directly.
+  private state!: RunState;
 
   constructor() {
     super('Game');
   }
 
   init(data: GameSceneData): void {
-    this.practiceWave = data?.practice ?? null;
-    this.testMode = data?.test ?? false;
-    this.musicMode = data?.music ?? null;
+    this.state = new RunState(data);
+    // pauseGame() sets `scene.time.paused = true` to freeze realSeconds
+    // waits during the ESC pause overlay. Phaser's Clock.shutdown() does
+    // NOT reset `paused`, and the same Clock instance is reused across
+    // scene.start, so a hard exit from the pause menu (X → Menu) leaves
+    // the clock paused for the next run. Without this reset, every
+    // `realSeconds` yield (e.g. bombSkipPoll's `realSeconds: 0.05` poll)
+    // is parked forever in the next session and X-skip silently no-ops.
+    this.time.paused = false;
   }
 
   consumeBombPress(): boolean {
-    const pending = this.bombPending;
-    this.bombPending = false;
+    const pending = this.state.bombPending;
+    this.state.bombPending = false;
     return pending;
   }
 
@@ -207,7 +256,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       const dx = pointerLogicalX(pointer.x) - BOMB_BUTTON_X;
       const dy = pointerLogicalY(pointer.y) - bombButtonY();
-      if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
+      if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.state.bombPending = true;
     });
 
     // Floor: small repeating tile (416 wide × 112 tall, designed to loop
@@ -235,7 +284,7 @@ export class GameScene extends Phaser.Scene {
     // panels exactly.
     for (let i = 0; i < DOOR_COUNT; i++) {
       const startY = i * DOOR_SPACING - DOOR_H;
-      this.doorSlots.push(this.add.image(0, startY, BG_DOORS_KEY).setOrigin(0, 0).setDepth(-8));
+      this.state.doorSlots.push(this.add.image(0, startY, BG_DOORS_KEY).setOrigin(0, 0).setDepth(-8));
     }
 
     // Mask the touch-control band so bullets that drift below the playfield
@@ -278,11 +327,11 @@ export class GameScene extends Phaser.Scene {
     // Real stage: bombs start at 0; the intro's wellness-coach drop-in
     // unlocks them. Practice / test / music modes get the full pile so
     // they're usable straight from the menu.
-    const isRealStage = !this.practiceWave && !this.testMode && this.musicMode === null;
+    const isRealStage = !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
     this.playerKind = new PlayerKind({
       hpText: this.hpText,
       bombsText: this.bombsText,
-      practice: this.practiceWave !== null,
+      practice: this.state.practiceWave !== null,
       character,
       bombs: isRealStage ? 0 : undefined,
     });
@@ -292,17 +341,17 @@ export class GameScene extends Phaser.Scene {
     // Music + sync test stages: pin player invincible for the whole run so
     // dying doesn't interrupt the timing checks. Pushed once with no pop —
     // bombs still push/pop on top, but the base depth stays at 1.
-    if (this.testMode || this.musicMode !== null) this.player.pushInvincible();
+    if (this.state.testMode || this.state.musicMode !== null) this.player.pushInvincible();
 
     const stageKind =
-      this.musicMode === 'kaedalus'
+      this.state.musicMode === 'kaedalus'
         ? stageKaedalus
-        : this.musicMode === 'monster-rpg'
+        : this.state.musicMode === 'monster-rpg'
           ? stageMonsterRpg
-          : this.testMode
+          : this.state.testMode
             ? stageTest
-            : this.practiceWave
-              ? makeWaveStage(this.practiceWave)
+            : this.state.practiceWave
+              ? makeWaveStage(this.state.practiceWave)
               : stage;
     this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: true });
 
@@ -368,7 +417,7 @@ export class GameScene extends Phaser.Scene {
     // rather than getting clipped by the side wall. Depth sits below every
     // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
     // dialogue=200) so any of them draw on top of the debug line.
-    const debugTinted = this.testMode || this.musicMode !== null;
+    const debugTinted = this.state.testMode || this.state.musicMode !== null;
     this.debugHud = this.add
       .text(WALL_W + 8, HEADER_H + 20, '', {
         ...FONT_DEBUG,
@@ -391,7 +440,7 @@ export class GameScene extends Phaser.Scene {
     // pause overlay stays up after focus returns so the player chooses
     // when to drop back into bullets.
     const onLoseFocus = (): void => {
-      if (this.userPaused || this.stage.paused) return;
+      if (this.state.userPaused || this.stage.paused) return;
       this.pauseGame();
     };
     this.game.events.on(Phaser.Core.Events.BLUR, onLoseFocus);
@@ -406,15 +455,15 @@ export class GameScene extends Phaser.Scene {
       // wallsTile is held off the display list, so the scene's normal
       // teardown won't reach it — destroy it explicitly.
       this.wallsTile.destroy();
-      if (this.practiceWave) {
-        this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.practiceWave.id, this.playerKind.hits);
+      if (this.state.practiceWave) {
+        this.registry.set(PRACTICE_HITS_KEY_PREFIX + this.state.practiceWave.id, this.playerKind.hits);
       }
     });
   }
 
   private handleResume(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (this.userPaused) {
+    if (this.state.userPaused) {
       this.unpauseGame();
       return;
     }
@@ -427,27 +476,37 @@ export class GameScene extends Phaser.Scene {
 
   private handleExitToMenu(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (!this.userPaused) return;
+    if (!this.state.userPaused) return;
     this.scene.start('Menu');
   }
 
   private pauseGame(): void {
     console.warn(`[menu-open t=${performance.now().toFixed(0)}]`);
-    this.userPaused = true;
+    this.state.userPaused = true;
     this.stage.freeze();
+    // Freeze Phaser's clock too: `stage.freeze()` only stops the physics
+    // and script-frame queues, but `realSeconds` waits (e.g. the
+    // `waitTrackEnded` body's `delayedCall`) live on `scene.time` and
+    // keep ticking through `freeze()`. Without this pause, the script
+    // would advance past `waitTrackEnded` during the overlay and call
+    // `playMusicLoop(NEW_KEY)`, starting the next track audibly even
+    // though the user is paused. Dialogue/cutscene freezes intentionally
+    // leave the clock running — only ESC pause stops it.
+    this.time.paused = true;
     pauseMusic();
     this.showPauseOverlay();
   }
 
   private unpauseGame(): void {
-    this.userPaused = false;
+    this.state.userPaused = false;
     this.stage.unfreeze();
+    this.time.paused = false;
     resumeMusic();
     this.hidePauseOverlay();
   }
 
   private showPauseOverlay(): void {
-    if (this.pauseOverlay) return;
+    if (this.state.pauseOverlay) return;
     const c = this.add.container(0, 0).setDepth(200);
     const dim = this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, COLOR_PANEL, 0.85);
     c.add(dim);
@@ -461,20 +520,20 @@ export class GameScene extends Phaser.Scene {
       align: 'center',
     });
     c.add(hint);
-    this.pauseOverlay = c;
+    this.state.pauseOverlay = c;
   }
 
   private hidePauseOverlay(): void {
-    this.pauseOverlay?.destroy();
-    this.pauseOverlay = null;
+    this.state.pauseOverlay?.destroy();
+    this.state.pauseOverlay = null;
   }
 
   private allowsContinue(): boolean {
-    return !this.practiceWave && !this.testMode && this.musicMode === null;
+    return !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
   }
 
   private showContinueOverlay(): void {
-    if (this.continueOverlay) return;
+    if (this.state.continueOverlay) return;
     this.stage.freeze();
     pauseMusic();
 
@@ -491,7 +550,7 @@ export class GameScene extends Phaser.Scene {
       align: 'center',
     });
     c.add(hint);
-    this.continueOverlay = c;
+    this.state.continueOverlay = c;
 
     const kb = this.input.keyboard;
     if (!kb) return;
@@ -500,8 +559,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private dismissContinueOverlay(): void {
-    this.continueOverlay?.destroy();
-    this.continueOverlay = null;
+    this.state.continueOverlay?.destroy();
+    this.state.continueOverlay = null;
     const kb = this.input.keyboard;
     if (!kb) return;
     kb.off('keydown-Z', this.handleContinueConfirm, this);
@@ -510,14 +569,14 @@ export class GameScene extends Phaser.Scene {
 
   private handleContinueConfirm(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (!this.continueOverlay) return;
+    if (!this.state.continueOverlay) return;
     this.dismissContinueOverlay();
     this.revivePlayerWithDeathBomb();
   }
 
   private handleContinueExit(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (!this.continueOverlay) return;
+    if (!this.state.continueOverlay) return;
     // Don't bother dismissing the overlay — scene.start tears the whole
     // scene down, taking the container with it.
     this.scene.start('Menu');
@@ -567,7 +626,7 @@ export class GameScene extends Phaser.Scene {
     // end-of-update check would be fine — but Phaser 3's order is the other
     // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
-      if (this.continueOverlay !== null || this.deathStarted) return;
+      if (this.state.continueOverlay !== null || this.state.deathStarted) return;
       // Continue prompt only in the real stage — practice / test / music
       // modes either keep the player invincible or never decrement HP, so
       // a death there is anomalous and falls through to the death sequence.
@@ -592,7 +651,7 @@ export class GameScene extends Phaser.Scene {
       // dial it (e.g. the ending walks home at 0.5×).
       if (this.stage.running) {
         const advance = delta * CORRIDOR_SCROLL_PX_PER_MS * this.stage.scrollSpeedMultiplier;
-        this.bgScrollY += advance;
+        this.state.bgScrollY += advance;
         // tilePositionY is fed straight into the texture-coord shader uniform
         // (TileSpriteWebGLRenderer) and is NOT affected by camera.roundPixels —
         // a fractional value samples the floor texture at sub-texel offsets,
@@ -602,12 +661,12 @@ export class GameScene extends Phaser.Scene {
         // accumulator itself stays float so the next frame's increment and
         // the door-wrap math (computeDoorYs, which rounds its own output)
         // don't lose precision.
-        this.bg.tilePositionY = -Math.round(this.bgScrollY);
+        this.bg.tilePositionY = -Math.round(this.state.bgScrollY);
       }
       // Mirror the scroll onto the stage so script helpers (alignDoor,
       // pickDoorCenterY) read the same number that drives the door
       // rasterisation below.
-      this.stage.bgScrollY = this.bgScrollY;
+      this.stage.bgScrollY = this.state.bgScrollY;
       // Doors ride the floor: each slot's y is its phase offset plus the
       // shared scroll, wrapped through DOOR_CYCLE so the trio cycles
       // through the canvas with no gaps. Subtract DOOR_H so the wrap
@@ -618,7 +677,7 @@ export class GameScene extends Phaser.Scene {
       // a fractional y would let the two rasterise to slightly different
       // rows and the door panels would flicker in and out. Rounding once
       // up front feeds both paths the same integer.
-      const doorYs = computeDoorYs(this.bgScrollY);
+      const doorYs = computeDoorYs(this.state.bgScrollY);
 
       // Refresh the walls layer: blit the tiled walls into the RT, then
       // erase each slot's full-width bbox. Eraser and door Image share
@@ -626,7 +685,7 @@ export class GameScene extends Phaser.Scene {
       // produces identical pixel coverage.
       this.wallsRt.clear();
       this.wallsRt.draw(this.wallsTile, 0, 0);
-      this.doorSlots.forEach((slot, i) => {
+      this.state.doorSlots.forEach((slot, i) => {
         const y = doorYs[i] ?? 0;
         slot.y = y;
         this.wallsRt.erase(BG_DOORS_BBOX_KEY, 0, y);
@@ -645,9 +704,13 @@ export class GameScene extends Phaser.Scene {
     // from before the cutscene started.
     this.player.updateAnim();
 
-    const hostile = this.stage.damages.player.countActive(true);
-    const mode = this.practiceWave ? `   PRACTICE: ${this.practiceWave.name}` : '';
-    this.hud.setText(`hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
+    this.state.hudAccumMs += delta;
+    if (this.state.hudAccumMs >= HUD_REFRESH_MS) {
+      this.state.hudAccumMs = 0;
+      const hostile = this.stage.damages.player.countActive(true);
+      const mode = this.state.practiceWave ? `   PRACTICE: ${this.state.practiceWave.name}` : '';
+      this.hud.setText(`hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
+    }
 
     this.bossNameText.setText(this.stage.bossName ?? '');
 
@@ -660,7 +723,7 @@ export class GameScene extends Phaser.Scene {
   // we only pause physics — not the scene itself — so the sequence
   // self-completes without needing update() ticks.
   private startDeathSequence(): void {
-    this.deathStarted = true;
+    this.state.deathStarted = true;
     this.stage.freeze();
 
     playerDeath();
@@ -692,7 +755,12 @@ export class GameScene extends Phaser.Scene {
 
   private formatDebugLine(): string {
     const m = getMusicTime();
-    const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${m.time.toFixed(2)}s`;
+    // Whole-second precision: the formatted string only changes once a
+    // second, so Phaser.Text.setText hits its `value !== this._text`
+    // early-bail and skips the canvas redraw + gl.texImage2D upload on
+    // most frames. wave / yield reason / track key change rarely enough
+    // that they pass through cheaply on the same path.
+    const trackPart = m === null ? 'track: (none)  t: -' : `track: ${m.key}  t: ${Math.floor(m.time)}s`;
 
     const wave = this.stage.wave;
     const secondLineParts: string[] = [];

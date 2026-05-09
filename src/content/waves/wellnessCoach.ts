@@ -1,64 +1,96 @@
+import { STAGE1_METAL_LOOP_KEY, STAGE1_METAL_OPENING_KEY } from '../../audio/keys';
 import { shoot } from '../../audio/sfx/events';
-import { GAME_W } from '../../config';
+import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable } from '../../script/boss';
-import { aimed, moveTo, ring } from '../../script/patterns';
-import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
-import type { ScriptYield } from '../../script/types';
+import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
+import { aimed, cluster, moveTo } from '../../script/patterns';
+import { clearBullets, markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
+import type { EntityScript, ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { pillBullet } from './pillBullet';
 import { reportBullet } from './reportBullet';
 
 // Wellness Coach: shows up unannounced for an "urgent wellness improvement
-// session". She cycles three attacks — breathing exercise, "personality
-// test" paperwork blizzard, and a vitamin barrage — narrating each one
-// because of course she does.
+// session". Four HP-gated phases — each one runs continuously until that
+// phase's HP pool is depleted, then a short flash-and-clear transition
+// flips her into the next attack:
 //
-// Phase 1 — breathing: bullet rings converge on her from beyond the screen
-// edges while she says "slowly breath in...", then the same ring layout
-// blows back outward (faster) on "...then out!". "From outside the screen"
-// is implemented by spawning the inbound ring at SPAWN_RADIUS around the
-// coach with each bullet's velocity pointed back at her. The radius is
-// chosen so all spawn points sit past the screen edge from her stand
-// position near the top centre — bullets cross into view as they travel
-// inward, which sells the inhale.
+//   1. Anxious chatter — targeted bunches at the player + random rings
+//      bursting somewhere on screen, repeating "Does it bother you?".
+//   2. Breathing — inbound ring "inhale", then an outbound "exhale" of
+//      a circle of evenly-spaced bullet streams whose headings wiggle
+//      sinusoidally. Per-stream wiggle parameters are randomised at
+//      exhale start; the player navigates the gaps between the
+//      snake-like trails.
+//   3. Personality test — random-direction reports, no homing, weave
+//      the gaps.
+//   4. Vitamins — narrow aimed pill barrages.
 //
-// Phase 2 — personality test: a flurry of report-paper bullets fired from
-// the coach in fully random directions. We override `script: null` on
-// each spawn so the reports do NOT home (the per-bullet homing script on
-// reportBullet would pull every shot back at the player and turn this
-// into a death trap); they fly in straight lines, so the player just
-// has to read the gaps in the random scatter and weave through.
-//
-// Phase 3 — vitamins: tight aimed barrages of two-tone capsule bullets.
-// Narrow spread + repeating bursts so the player has to keep moving
-// laterally between volleys — standing still while the coach restocks
-// her clipboard is a hit guarantee.
+// On the lethal phase-4 hit she runs a custom death dialogue whose
+// single line is chosen from the bombs-used delta captured at fight
+// start (`self.vars.bombsAtStart` against `stage.score.bombsUsed`). 0
+// bombs → "At least you didn't get angry…", 1 → "a single time…", N>1
+// → "N times…".
 
 const ENTRY_SPEED = 110;
 const ENTRY_X = GAME_W / 2;
 const ENTRY_Y = 110;
 
-// --- Phase 1: breathing -------------------------------------------------
+const PHASE_HP = 100;
+
+// --- Phase 1: anxious chatter -------------------------------------------
+
+const ANXIOUS_BUNCH_COUNT = 6;
+const ANXIOUS_BUNCH_SPEED = 200;
+const ANXIOUS_BUNCH_SPREAD_PX = 18;
+const ANXIOUS_RING_COUNT = 12;
+const ANXIOUS_RING_SPEED = 95;
+const ANXIOUS_GAP = 28;
+const ANXIOUS_SAY = 'Does it\nbother you?';
+// Refresh the bubble every few ticks so it stays visible across the
+// open-ended phase loop.
+const ANXIOUS_SAY_REPEAT_TICKS = 6;
+const ANXIOUS_SAY_FRAMES = ANXIOUS_SAY_REPEAT_TICKS * ANXIOUS_GAP + 12;
+// Keep random rings clear of the player so they read as environmental
+// hazards instead of unfair point-blank spawns.
+const ANXIOUS_RING_PLAYER_AVOID = 110;
+const ANXIOUS_RING_BOSS_AVOID = 70;
+
+// --- Phase 2: breathing -------------------------------------------------
 
 const SPAWN_RADIUS = 360;
 const RING_COUNT = 24;
 const IN_SPEED = 80;
-const OUT_SPEED = 170;
 
 const IN_RINGS = 5;
 const IN_RING_GAP = 38;
 const IN_TO_OUT_GAP = 28;
-const OUT_RINGS = 4;
-const OUT_RING_GAP = 14;
+
+// Exhale: a circle of bullet streams. Each stream fires one bullet per
+// tick along its base radial; per-bullet scripts wiggle the heading
+// sinusoidally so each stream traces a snake-like trail outward instead
+// of a clean ray. Per-stream amplitude / frequency / phase are rerolled
+// each exhale so two adjacent breaths don't look identical.
+const EXHALE_STREAMS = 10;
+const EXHALE_TICKS = 20;
+const EXHALE_TICK_GAP = 7;
+const EXHALE_BULLET_SPEED = 160;
+// ±~9° at the upper bound — well below the inter-stream half-spacing
+// (360°/10 / 2 = 18°), so adjacent streams never visually merge.
+const EXHALE_WIGGLE_AMP_MIN = Math.PI / 30;
+const EXHALE_WIGGLE_AMP_MAX = Math.PI / 20;
+// Radians per script-tick. Two-rad-ish range gives anything from a slow
+// ribbon to a tight zigzag.
+const EXHALE_WIGGLE_FREQ_MIN = 0.2;
+const EXHALE_WIGGLE_FREQ_MAX = 0.34;
 const PHASE_GAP = 36;
 
 const IN_SAY = 'Slowly\nbreath in...';
-const OUT_SAY = '...then\nout!';
+const OUT_SAY = '...then\nOUT!';
 const IN_SAY_FRAMES = IN_RINGS * IN_RING_GAP + IN_TO_OUT_GAP;
-const OUT_SAY_FRAMES = OUT_RINGS * OUT_RING_GAP + 4;
+const OUT_SAY_FRAMES = EXHALE_TICKS * EXHALE_TICK_GAP + 8;
 
-// --- Phase 2: personality test -----------------------------------------
+// --- Phase 3: personality test -----------------------------------------
 
 const TEST_BURSTS = 5;
 const TEST_PER_BURST = 14;
@@ -67,7 +99,7 @@ const TEST_SPEED = 135;
 const TEST_SAY = 'Quick\nPERSONALITY\nTEST!';
 const TEST_SAY_FRAMES = TEST_BURSTS * TEST_BURST_GAP + 12;
 
-// --- Phase 3: vitamins --------------------------------------------------
+// --- Phase 4: vitamins --------------------------------------------------
 
 const VIT_BURSTS = 6;
 const VIT_PER_BURST = 6;
@@ -76,6 +108,14 @@ const VIT_SPEED = 200;
 const VIT_SPREAD = Math.PI / 20;
 const VIT_SAY = 'Have you taken\nyour SUPPLEMENTS?!';
 const VIT_SAY_FRAMES = VIT_BURSTS * VIT_BURST_GAP + 12;
+
+// --- Phase transition ---------------------------------------------------
+
+const TRANSITION_FLASHES = 5;
+const TRANSITION_FLASH_GAP = 10;
+const TRANSITION_HOLD = 20;
+
+// --- Helpers ------------------------------------------------------------
 
 // Spawn `count` bullets evenly placed on a circle of radius SPAWN_RADIUS
 // around the coach, each headed straight back toward her at `speed`.
@@ -104,6 +144,236 @@ function scatterReports(self: Entity, count: number, speed: number): void {
   }
 }
 
+// Per-bullet wiggle parameters. All bullets in a single exhale stream
+// share one of these so the trail reads as one coherent wiggling line.
+type ExhaleStream = {
+  baseAngle: number;
+  amp: number;
+  // Radians per script-tick.
+  freq: number;
+  // Initial offset on the global wiggle clock so two streams with the
+  // same amp/freq aren't visually synchronised.
+  phaseOffset: number;
+};
+
+// Build a per-bullet script that walks the stream's wiggle clock from
+// the global tick at which the bullet was launched. Closure-captured
+// rather than vars-driven because the bullet's first body runs
+// synchronously inside `spawn` (before the caller could mutate vars),
+// so the params have to ride in via the script identity itself.
+function makeExhaleBulletScript(stream: ExhaleStream, launchTick: number): EntityScript {
+  return function* (self: Entity) {
+    const v = self.body.velocity;
+    const speed = Math.hypot(v.x, v.y);
+    let localTick = 0;
+    while (self.alive) {
+      const phase = stream.phaseOffset + (launchTick + localTick) * stream.freq;
+      const angle = stream.baseAngle + Math.sin(phase) * stream.amp;
+      self.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      localTick++;
+      yield 1;
+    }
+  };
+}
+
+// Spawn a ring of bullets at an arbitrary screen position (not the
+// boss's position). Used by phase 1's "random circles" so a burst can
+// erupt across the field and force the player to weave around it.
+function ringAt(self: Entity, x: number, y: number, count: number, speed: number, baseAngle: number): void {
+  shoot();
+  const step = (Math.PI * 2) / count;
+  for (let i = 0; i < count; i++) {
+    const a = baseAngle + i * step;
+    self.spawn(bullet, x, y, Math.cos(a) * speed, Math.sin(a) * speed);
+  }
+}
+
+// Pick a random spawn position for an anxious-phase ring, biased away
+// from the player and the boss so the burst is visible and dodgeable
+// rather than a point-blank hit on either. Falls back to a centre-ish
+// position after a few rejected attempts.
+function pickAnxiousRingPos(self: Entity): { x: number; y: number } {
+  const player = self.stage.player;
+  for (let i = 0; i < 8; i++) {
+    const x = 70 + Math.random() * (GAME_W - 140);
+    const y = 100 + Math.random() * (GAME_H * 0.55);
+    if (Math.hypot(x - player.x, y - player.y) < ANXIOUS_RING_PLAYER_AVOID) continue;
+    if (Math.hypot(x - self.x, y - self.y) < ANXIOUS_RING_BOSS_AVOID) continue;
+    return { x, y };
+  }
+  return { x: GAME_W / 2, y: GAME_H * 0.4 };
+}
+
+// True if the script should bail out of a phase loop — entity died, or
+// the phase's HP pool was just depleted. Inlined as a helper because
+// every phase loop has the same termination condition.
+function phaseRunning(self: Entity): boolean {
+  return self.alive && self.vars?.phaseDown !== true;
+}
+
+// --- Phase generators ---------------------------------------------------
+
+function* anxiousPhase(self: Entity): Generator<ScriptYield, void, void> {
+  let tick = 0;
+  while (phaseRunning(self)) {
+    if (tick % ANXIOUS_SAY_REPEAT_TICKS === 0) self.say(ANXIOUS_SAY, ANXIOUS_SAY_FRAMES);
+    if (tick % 2 === 0) {
+      cluster(self, ANXIOUS_BUNCH_COUNT, bullet, ANXIOUS_BUNCH_SPEED, ANXIOUS_BUNCH_SPREAD_PX);
+    } else {
+      const { x, y } = pickAnxiousRingPos(self);
+      ringAt(self, x, y, ANXIOUS_RING_COUNT, ANXIOUS_RING_SPEED, Math.random() * Math.PI * 2);
+    }
+    tick++;
+    yield ANXIOUS_GAP;
+  }
+}
+
+function* breathPhase(self: Entity): Generator<ScriptYield, void, void> {
+  while (phaseRunning(self)) {
+    // Inhale: rings converge on the coach from beyond the screen.
+    self.say(IN_SAY, IN_SAY_FRAMES);
+    let baseAngle = Math.random() * Math.PI * 2;
+    for (let i = 0; i < IN_RINGS; i++) {
+      if (!phaseRunning(self)) return;
+      ringFromOutside(self, RING_COUNT, IN_SPEED, baseAngle);
+      baseAngle += Math.PI / 24;
+      yield IN_RING_GAP;
+    }
+    yield IN_TO_OUT_GAP;
+
+    // Exhale: build the per-stream wiggle params, then fire one bullet
+    // per stream every EXHALE_TICK_GAP frames for EXHALE_TICKS ticks.
+    // Each bullet's script reads from its stream and rides the same
+    // global wiggle clock, so the trails are coherent snakes rather
+    // than independent jitter.
+    self.say(OUT_SAY, OUT_SAY_FRAMES);
+    const streams: ExhaleStream[] = [];
+    const baseRot = Math.random() * Math.PI * 2;
+    for (let s = 0; s < EXHALE_STREAMS; s++) {
+      streams.push({
+        baseAngle: baseRot + (s * Math.PI * 2) / EXHALE_STREAMS,
+        amp: EXHALE_WIGGLE_AMP_MIN + Math.random() * (EXHALE_WIGGLE_AMP_MAX - EXHALE_WIGGLE_AMP_MIN),
+        freq: EXHALE_WIGGLE_FREQ_MIN + Math.random() * (EXHALE_WIGGLE_FREQ_MAX - EXHALE_WIGGLE_FREQ_MIN),
+        phaseOffset: Math.random() * Math.PI * 2,
+      });
+    }
+    for (let tick = 0; tick < EXHALE_TICKS; tick++) {
+      if (!phaseRunning(self)) return;
+      const launchTick = tick * EXHALE_TICK_GAP;
+      shoot();
+      for (const stream of streams) {
+        const vx = Math.cos(stream.baseAngle) * EXHALE_BULLET_SPEED;
+        const vy = Math.sin(stream.baseAngle) * EXHALE_BULLET_SPEED;
+        self.spawn(bullet, self.x, self.y, vx, vy, {
+          script: makeExhaleBulletScript(stream, launchTick),
+        });
+      }
+      yield EXHALE_TICK_GAP;
+    }
+    yield PHASE_GAP;
+  }
+}
+
+function* personalityPhase(self: Entity): Generator<ScriptYield, void, void> {
+  while (phaseRunning(self)) {
+    self.say(TEST_SAY, TEST_SAY_FRAMES);
+    for (let i = 0; i < TEST_BURSTS; i++) {
+      if (!phaseRunning(self)) return;
+      scatterReports(self, TEST_PER_BURST, TEST_SPEED);
+      yield TEST_BURST_GAP;
+    }
+    yield PHASE_GAP;
+  }
+}
+
+function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
+  while (self.alive) {
+    self.say(VIT_SAY, VIT_SAY_FRAMES);
+    for (let i = 0; i < VIT_BURSTS; i++) {
+      if (!self.alive) return;
+      aimed(self, VIT_PER_BURST, pillBullet, VIT_SPEED, VIT_SPREAD);
+      yield VIT_BURST_GAP;
+    }
+    yield PHASE_GAP;
+  }
+}
+
+// Visual reset between phases: lock damage off so the next pool isn't
+// chipped while she's still flashing, judder a few times, sweep the
+// in-flight bullets so the new phase opens on a quiet field, then
+// reset HP and re-arm damage. Does NOT touch self.vars beyond clearing
+// `phaseDown` / advancing `phase` — the takeDamage gate reads them on
+// the next hit.
+function* phaseTransition(self: Entity, nextPhase: number): Generator<ScriptYield, void, void> {
+  self.setDamagedByClasses([]);
+  self.body.setVelocity(0, 0);
+  for (let i = 0; i < TRANSITION_FLASHES; i++) {
+    self.flashDamage();
+    yield TRANSITION_FLASH_GAP;
+  }
+  clearBullets(self);
+  yield TRANSITION_HOLD;
+  self.vars ??= {};
+  self.vars.phase = nextPhase;
+  self.vars.phaseDown = false;
+  self.hp = PHASE_HP;
+  becomeHittable(self);
+}
+
+// --- Death --------------------------------------------------------------
+
+// Custom death dialogue. The bomb-count delta is captured at fight start
+// (`self.vars.bombsAtStart` set just before `becomeHittable`); the
+// difference against the live counter is what determines the line.
+function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
+  self.body.setVelocity(0, 0);
+  self.body.enable = false;
+
+  const bombsAtStart = (self.vars?.bombsAtStart as number | undefined) ?? 0;
+  const used = Math.max(0, self.stage.score.bombsUsed - bombsAtStart);
+  let line: string;
+  if (used === 0) line = "At least you didn't get angry…";
+  else if (used === 1) line = 'You even got angry a single time…';
+  else line = `You even got angry ${used} times…`;
+
+  const ch = self.stage.player.character;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    right: { sprite: 'coach1', frame: 1, name: 'Coach Becky' },
+    lines: [{ speaker: 'right', text: line }],
+  });
+
+  yield* bossShudder(self);
+  self.die();
+}
+
+// --- Kind ---------------------------------------------------------------
+
+// Phases 1-3 cap damage at 0 and signal `phaseDown` so the script can
+// roll into the next phase generator; phase 4's lethal hit defers to
+// the base class, whose `takeDamage` runs the kind's `deathScript`
+// (`coachDeath` below).
+class WellnessCoachKind extends BossKind {
+  override takeDamage(self: Entity, amount: number): void {
+    if (self.hp === null) return;
+    const phase = (self.vars?.phase as number | undefined) ?? 1;
+    if (phase >= 4) {
+      super.takeDamage(self, amount);
+      return;
+    }
+    self.hp -= amount;
+    if (self.hp <= 0) {
+      self.hp = 0;
+      self.vars ??= {};
+      self.vars.phaseDown = true;
+      return;
+    }
+    self.flashDamage();
+  }
+}
+
+// --- Script body --------------------------------------------------------
+
 function* coachScript(self: Entity) {
   // BossKind keeps her unhittable on spawn so the player can't melt her
   // before she's said her piece; becomeHittable below opts back into
@@ -129,61 +399,54 @@ function* coachScript(self: Entity) {
     self.stage.bossName = null;
   });
 
+  // Snapshot the run-wide bomb counter so the death line later reads
+  // *only* the bombs the player burned during this fight, not the ones
+  // they spent earlier in the stage.
+  self.vars ??= {};
+  self.vars.phase = 1;
+  self.vars.phaseDown = false;
+  self.vars.bombsAtStart = self.stage.score.bombsUsed;
+  self.hp = PHASE_HP;
   becomeHittable(self);
 
-  while (self.alive) {
-    // Phase 1 — Inhale: rings converge on the coach from beyond the screen.
-    self.say(IN_SAY, IN_SAY_FRAMES);
-    let baseAngle = Math.random() * Math.PI * 2;
-    for (let i = 0; i < IN_RINGS; i++) {
-      if (!self.alive) return;
-      ringFromOutside(self, RING_COUNT, IN_SPEED, baseAngle);
-      baseAngle += Math.PI / 24;
-      yield IN_RING_GAP;
-    }
-    yield IN_TO_OUT_GAP;
+  // --- Phase 1 ---
+  yield* anxiousPhase(self);
+  if (!self.alive) return;
+  yield* phaseTransition(self, 2);
+  if (!self.alive) return;
 
-    // Phase 1 — Exhale: same ring layout, blown back outward, faster.
-    self.say(OUT_SAY, OUT_SAY_FRAMES);
-    for (let i = 0; i < OUT_RINGS; i++) {
-      if (!self.alive) return;
-      ring(self, RING_COUNT, bullet, OUT_SPEED, baseAngle);
-      baseAngle += Math.PI / 24;
-      yield OUT_RING_GAP;
-    }
-    yield PHASE_GAP;
+  // --- Phase 2 ---
+  yield* breathPhase(self);
+  if (!self.alive) return;
+  yield* phaseTransition(self, 3);
+  if (!self.alive) return;
 
-    // Phase 2 — Personality test: random-direction reports, no homing.
-    self.say(TEST_SAY, TEST_SAY_FRAMES);
-    for (let i = 0; i < TEST_BURSTS; i++) {
-      if (!self.alive) return;
-      scatterReports(self, TEST_PER_BURST, TEST_SPEED);
-      yield TEST_BURST_GAP;
-    }
-    yield PHASE_GAP;
+  // --- Phase 3 ---
+  yield* personalityPhase(self);
+  if (!self.alive) return;
+  yield* phaseTransition(self, 4);
+  if (!self.alive) return;
 
-    // Phase 3 — Vitamins: aimed pill barrages with a narrow spread.
-    self.say(VIT_SAY, VIT_SAY_FRAMES);
-    for (let i = 0; i < VIT_BURSTS; i++) {
-      if (!self.alive) return;
-      aimed(self, VIT_PER_BURST, pillBullet, VIT_SPEED, VIT_SPREAD);
-      yield VIT_BURST_GAP;
-    }
-    yield PHASE_GAP;
-  }
+  // --- Phase 4 ---
+  yield* vitaminsPhase(self);
 }
 
-export const wellnessCoach = new BossKind({
+export const wellnessCoach = new WellnessCoachKind({
   sprite: 'coach1',
   hitboxRadius: 22,
-  hp: 400,
+  hp: PHASE_HP,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: coachScript,
+  deathScript: coachDeath,
 });
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
+  // Idempotent in live flow (stage1Part2 already switched to metal at the
+  // retro-02 seam); switches in from menu music when run from the
+  // practice menu.
+  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
   // Field clean + brief beat, then she enters. BossKind keeps her
   // unhittable on spawn; her script calls becomeHittable after the
   // dialogue.

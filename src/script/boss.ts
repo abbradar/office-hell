@@ -1,11 +1,12 @@
-// Shared base class for boss EntityKinds. The only thing it adds over
-// EntityKind is a death-animation hand-off: when a hit drops the boss
-// below 1 HP we don't call die() right away — we lock the boss out of
-// further damage, swap his running script for a flicker-out generator,
-// play the boss-death cue, and only call die() once the animation
-// finishes. That means any wave script parked on `{ until: boss }`
-// resumes at the *visual* end of the encounter rather than the moment
-// HP hit zero, which is what gives the boss room to fade.
+// Shared base class for boss EntityKinds. Adds two things over
+// EntityKind: a default death script (the standard flicker-and-die
+// shudder) and a "spawn unhittable" gate. The death-script hand-off is
+// the same machinery EntityKind exposes for any kind — a hit that drops
+// the boss below 1 HP doesn't call die() right away; the kind's
+// `deathScript` runs in its place, locked off from further damage. That
+// means any wave script parked on `{ until: boss }` resumes at the
+// *visual* end of the encounter rather than the moment HP hit zero,
+// which is what gives the boss room to fade.
 //
 // Time and physics keep ticking through the animation (the death
 // script is just another entity script — `stage.update` ticks it like
@@ -13,10 +14,10 @@
 // keep moving normally.
 //
 // Mid-bosses that need a richer defeat (final words, music halt for a
-// dramatic beat, etc.) compose `bossShudder` + `pauseMusicForDefeat`
-// inside their own kind-level `takeDamage` override; BossKind itself
-// stays minimal so end-bosses with simple "flicker and disappear"
-// behaviour don't pay for the extra config.
+// dramatic beat, etc.) pass their own `deathScript` to the BossKind
+// constructor; phase-gated bosses additionally override `takeDamage`
+// to keep early phases from triggering the death path before the
+// final phase is reached.
 
 import { getMusicTime, playMusicLoop, stopMusicLoop } from '../audio/music/loop';
 import { playBossDeath } from '../audio/sfx/events';
@@ -26,8 +27,8 @@ import { type DamageClass, EntityKind, type EntityKindOpts, type ScriptYield } f
 // Exported so per-boss death scripts can match the timing of the
 // standard shudder when sizing pre-shudder beats / bubble lifetimes.
 export const FLICKER_TOGGLES = 10;
-export const FLICKER_INTERVAL_FRAMES = 5;
-export const POST_FLICKER_HOLD_FRAMES = 6;
+export const FLICKER_INTERVAL_FRAMES = 10;
+export const POST_FLICKER_HOLD_FRAMES = 12;
 
 // The standard boss-death visual: stop motion, disable the body, play
 // the death sfx, flicker out, hold. Doesn't call die() — callers do
@@ -67,10 +68,10 @@ export function pauseMusicForDefeat(restartKey: string): { restart: () => void }
 }
 
 // Default death script for end-bosses — bare shudder + die. Mid-bosses
-// supply their own death script (composed from `bossShudder` plus
-// whatever narrative beat the boss has) and swap it in via `runScript`
-// from a `takeDamage` override.
-function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
+// supply their own (composed from `bossShudder` plus whatever narrative
+// beat the boss has) by passing `deathScript` to the BossKind
+// constructor.
+export function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
   yield* bossShudder(self);
   self.die();
 }
@@ -83,28 +84,18 @@ function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
 // removes the need for every wave spawn site to remember a per-call
 // `damagedByClass: []` override and removes the matching foot-gun where
 // a script forgets to flip damage on at all (the original Coach bug).
+//
+// The death-on-zero-HP hand-off is inherited from EntityKind — the base
+// `takeDamage` runs `kind.deathScript` when hp reaches zero. BossKind
+// fills in `bossDeathScript` as the default so plain end-bosses get the
+// standard shudder for free; phase-gated bosses override `takeDamage`
+// to gate the death path on the final phase.
 export class BossKind extends EntityKind {
   readonly hittableDamagedBy: DamageClass[];
 
   constructor(opts: EntityKindOpts) {
-    super({ ...opts, damagedByClass: [] });
+    super({ ...opts, damagedByClass: [], deathScript: opts.deathScript ?? bossDeathScript });
     this.hittableDamagedBy = opts.damagedByClass;
-  }
-
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      // Lock incoming damage out for the flicker window so a stray
-      // bullet that lands a frame later can't re-enter takeDamage and
-      // double-trigger the death script (runScript would just drop the
-      // already-running one and restart it, but the boss-death SFX
-      // would play twice).
-      self.setDamagedByClasses([]);
-      self.stage.runScript(self, bossDeathScript);
-      return;
-    }
-    self.flashDamage();
   }
 }
 

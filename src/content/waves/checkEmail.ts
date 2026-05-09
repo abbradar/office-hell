@@ -25,8 +25,8 @@ const ENTRY_SPEED = 110;
 const ENTRY_Y = 110;
 const HOLD_FRAMES = 80;
 
-const VOLLEYS = 3;
-const VOLLEY_GAP = 70;
+const VOLLEYS = 4;
+const VOLLEY_GAP = 50;
 const EMAIL_COUNT = 3;
 const EMAIL_SPEED = 110;
 const EMAIL_SPREAD = Math.PI / 6;
@@ -35,7 +35,10 @@ const CLUSTER_SPREAD_PX = 16;
 const RING_COUNT = 10;
 const RING_SPEED = 130;
 
-const EXIT_SPEED = 220;
+// Exit fast enough that the coworker is fully off the bottom edge well
+// before the wave's 15s slot ends. 320 px/s clears the 574 px from
+// y=110 to fully-off (y=684) in ~1.8s, plenty of margin.
+const EXIT_SPEED = 320;
 
 function* checkEmailScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);

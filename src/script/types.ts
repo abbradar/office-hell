@@ -77,6 +77,14 @@ export type EntityKindOpts = {
   damageClass: DamageClass[];
   damagedByClass: DamageClass[];
   defaultScript?: EntityScript;
+  // Optional generator that runs in place of `die()` when HP hits 0. The
+  // default `takeDamage` locks incoming damage off (so a stray hit a
+  // frame later can't re-fire the script) and hands the entity to
+  // `runScript`. The script itself is responsible for eventually calling
+  // `self.die()` — typically after a flicker / dialogue / shudder beat.
+  // Used by every boss for its own defeat sequence; null on plain
+  // entities that just disappear on death.
+  deathScript?: EntityScript;
 };
 
 export class EntityKind {
@@ -87,6 +95,7 @@ export class EntityKind {
   readonly damageClass: DamageClass[];
   readonly damagedByClass: DamageClass[];
   readonly defaultScript?: EntityScript;
+  readonly deathScript: EntityScript | null;
 
   constructor(opts: EntityKindOpts) {
     this.sprite = opts.sprite;
@@ -96,6 +105,7 @@ export class EntityKind {
     this.damageClass = opts.damageClass;
     this.damagedByClass = opts.damagedByClass;
     this.defaultScript = opts.defaultScript;
+    this.deathScript = opts.deathScript ?? null;
   }
 
   targetCollision(self: Entity, target: Entity): void {
@@ -107,7 +117,17 @@ export class EntityKind {
     if (self.hp === null) return;
     self.hp -= amount;
     if (self.hp <= 0) {
-      self.die();
+      if (this.deathScript !== null) {
+        // Lock incoming damage off so a stray bullet that lands a frame
+        // later can't re-enter takeDamage and double-fire the death
+        // script (runScript would just drop the already-running one and
+        // restart it, but any side-effects in the script's first body —
+        // SFX, music halt — would play twice).
+        self.setDamagedByClasses([]);
+        self.stage.runScript(self, this.deathScript);
+      } else {
+        self.die();
+      }
     } else {
       // Non-killing hit: pop a quick red flash + shake so the player sees
       // the damage register. Skipped on the killing blow because the

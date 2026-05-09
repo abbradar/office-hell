@@ -12,7 +12,7 @@ import {
   pauseMusicForDefeat,
 } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, race, startMusicLoop, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -94,24 +94,15 @@ function* gymBroDeath(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 // Custom kind override so phase-1 damage gets pinned at zero instead of
-// killing the boss, and phase-2's lethal hit is routed through the
-// custom death script above (rather than BossKind's bare flicker). The
-// phase-1 race below polls `self.vars.phaseOneDown` for the transition.
+// killing the boss; phase-2's lethal hit defers to the base class,
+// whose `takeDamage` runs the kind's `deathScript` (set to gymBroDeath
+// below). The phase-1 race below polls `self.vars.phaseOneDown` for
+// the transition.
 class GymBroKind extends BossKind {
   override takeDamage(self: Entity, amount: number): void {
     if (self.hp === null) return;
     if (self.vars?.phaseTwo === true) {
-      self.hp -= amount;
-      if (self.hp <= 0) {
-        // Lock damage off for the death window — same reason as
-        // BossKind's takeDamage: a stray bullet a frame later would
-        // otherwise re-trigger runScript and double-fire the boss-death
-        // sfx.
-        self.setDamagedByClasses([]);
-        self.stage.runScript(self, gymBroDeath);
-        return;
-      }
-      self.flashDamage();
+      super.takeDamage(self, amount);
       return;
     }
     self.hp -= amount;
@@ -158,33 +149,29 @@ function* shoulderCurls(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-// Counter-rotating hula — two ring trains layered on top of each other,
-// going opposite directions at different angular rates and bullet speeds.
-// Reads as two circles spinning past each other rather than one clean
-// expanding spiral. Bullet counts and rotation rates are tuned to leave
-// gaps too narrow to stand in: the slow shell traps the player against the
-// fast one, so dodging requires lateral motion rather than a static safe
-// column.
+// Hula — a slow rotating shell with a faster player-aimed shell on top.
+// Ring A crawls around at a random base angle so the field has a visible
+// rotation; ring B re-aims each rep so one of its bullets flies straight at
+// the player. That guarantees the rep isn't a free pass — the player has to
+// move off the firing line — without making the whole pattern a wall of
+// aimed bullets.
 function* hulaSpin(self: Entity): Generator<ScriptYield, void, void> {
   const reps = 7 + Math.floor(Math.random() * 3);
   let angleA = Math.random() * Math.PI * 2;
-  let angleB = Math.random() * Math.PI * 2;
   const dirA: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
-  const dirB: 1 | -1 = -dirA as 1 | -1;
-  // Asymmetric step ranges — one ring crawls, the other sweeps fast — so
-  // even a randomly-aligned safe wedge between the two shells closes within
-  // a couple of waves.
   const stepA = Math.PI / 20 + Math.random() * (Math.PI / 12);
-  const stepB = Math.PI / 12 + Math.random() * (Math.PI / 8);
   const speedA = 95 + Math.random() * 35;
   const speedB = 165 + Math.random() * 55;
   const countA = 15 + Math.floor(Math.random() * 3);
   const countB = 15 + Math.floor(Math.random() * 3);
   for (let i = 0; i < reps; i++) {
     ring(self, countA, bullet, speedA, angleA);
+    // Snap ring B's base angle to the player so bullet 0 of the ring is a
+    // direct shot; the rest of the ring stays evenly distributed around it.
+    const player = self.stage.player;
+    const angleB = Math.atan2(player.y - self.y, player.x - self.x);
     ring(self, countB, bullet, speedB, angleB);
     angleA += dirA * stepA;
-    angleB += dirB * stepB;
     yield 18 + Math.floor(Math.random() * 6);
   }
 }
@@ -354,6 +341,7 @@ export const gymBro = new GymBroKind({
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: gymBroScript,
+  deathScript: gymBroDeath,
 });
 
 // Wave wrapper that mirrors the final boss's entrance pattern: clear
@@ -362,6 +350,10 @@ export const gymBro = new GymBroKind({
 // damageable via becomeHittable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'gym bro');
+  // Idempotent in live flow (stage1Part1 switched to retro-02 at the
+  // retro-01 seam just before this wave); switches in from menu music
+  // when run from the practice menu.
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0);

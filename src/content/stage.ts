@@ -1,8 +1,6 @@
 import {
   KAEDALUS_LONG_KEY,
   KAEDALUS_SHORT_KEY,
-  STAGE1_METAL_LOOP_KEY,
-  STAGE1_METAL_OPENING_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
@@ -29,7 +27,7 @@ import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { bossOne } from './kinds';
 import { checkEmailWave } from './waves/checkEmail';
-import { colleaguesWave } from './waves/colleague';
+import { urgentCallWave } from './waves/colleague';
 import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
@@ -61,6 +59,10 @@ const INTER_WAVE_GAP = 3;
 
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
+  // Idempotent in live flow (stage2Part2 already switched to stage-2
+  // metal at the KAEDALUS_SHORT seam); switches in from menu music when
+  // run from the practice menu.
+  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
   // Don't open the encounter while leftovers are still on screen. Sweep
   // enemies + in-flight bullets, brief beat, then bring on the boss.
   // BossKind makes all bosses spawn unhittable; the boss's own script
@@ -102,13 +104,16 @@ export type WaveDef = {
 
 // Stage 1, part 1 — retro-01 → retro-02 across the music seam, ending
 // with Brad. Four timed openers under the upbeat theme then a music
-// switch into Brad's entrance: 9+15+11+15 = 50s of waves + 3 × 3s
-// gaps + the music switch (waitTrackEnded snaps to the loop boundary
-// so the cut lands on a musical seam rather than mid-bar) + Brad
-// himself. The 15s email-colleagues slot absorbs what used to be two
-// separate 6s+8s waves with a gap — now a single merged opener that
-// runs both passes back-to-back. Sized to fit under the retro-01
-// loop's 60s body so the switch lands at the next natural seam.
+// switch into Brad's entrance: 9+15+12+15 = 51s of waves + 3 × 3s
+// gaps = 60s, against the 59s part-1 budget (see
+// docs/stage-design.md → "Stage-part durations"). After the block,
+// `waitTrackEnded` snaps the cut to the retro-01 loop boundary so it
+// lands on a musical seam rather than mid-bar, then Brad enters. The
+// 15s email-colleagues slot absorbs what used to be two separate
+// 6s+8s waves with a gap — now a single merged opener that runs both
+// passes back-to-back. Each slot is sized so the wave's last enemy
+// walks off-screen near the slot end, not so much earlier that the
+// timeWave pad+inter-wave-gap reads as a long lull.
 export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'music: retro 01');
   yield* startMusicWithIntro(STAGE1_RETRO_OPENING_KEY, STAGE1_RETRO_01_LOOP_KEY);
@@ -117,55 +122,64 @@ export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* timeWave(self, 15, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 11, self.stage.separateWave(colleaguesWave(self)));
+  yield* timeWave(self, 12, self.stage.separateWave(urgentCallWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* timeWave(self, 15, self.stage.separateWave(checkEmailWave(self)));
 
   markWave(self, 'music: retro 02');
   yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  // gymBroWave does the actual `startMusicLoop(retro-02)` itself
+  // (idempotent in live flow, switches in from menu music in practice);
+  // the seam wait above keeps the live switch on a clean musical seam.
 
   yield* self.stage.separateWave(gymBroWave(self));
 }
 
 // Stage 1, part 2 — retro-02 continues from part 1's mid-boss seam,
 // then switches to metal for Coach Becky as the stage-1 end boss.
-// Five timed waves (more charts, vacation photos, the harder
-// email-pinch pass, meeting interns, janitors) before the metal cut
-// and her entrance. Wave block = 5 waves (11 + 16 + 10 + 15 + 8 = 60s)
-// plus 6 × 3s gaps = 78s; the music switch via `waitTrackEnded` snaps
+// Four timed waves (more charts, vacation photos, the harder
+// email-pinch pass, meeting interns) before the metal cut and her
+// entrance. Wave block = 11+8+8+11 = 38s plus 3 × 3s gaps = 47s,
+// against the 49s part-2 budget (see docs/stage-design.md →
+// "Stage-part durations"). After the block, `waitTrackEnded` snaps
 // to the next retro-02 loop boundary at-or-after the block ends.
-// Vacation photos and meeting interns get longer slots than the
-// shooting body strictly needs because their last beats are visible
-// retreat motions — the colleagues fly back upward, the meeting
-// interns push down past the player — and the extra seconds are what
-// keep `killEnemies` from sweeping the field before the exit lands.
-// More charts is strictly sequential (pie-chart colleague then
-// bar-chart colleague) and gets an 11s slot; timeWave truncates the
-// tail if the player drags.
+// Meeting interns ends on a visible retreat motion (the interns
+// push down past the player), so the 11s slot is tight on that
+// exit. Vacation photos and the email-pinch pass both run at 8s:
+// vacation photos drops to two barrages and exits at EXIT_SPEED for
+// a ~7.1s natural length, and the email pinch's three pairs likewise
+// clear in ~7.3s. `timeWave` logs a `console.error` listing any
+// stragglers and then kills them so the next wave isn't poisoned,
+// but the error is the signal to tighten the wave or extend the
+// slot — don't rely on the sweep. More charts is strictly sequential
+// (pie-chart colleague then bar-chart colleague); timeWave truncates
+// the tail if the player drags.
 //
 // The leading `startMusicLoop` is idempotent — no-op in live flow
 // (retro-02 is already playing from part 1) and switches into
 // retro-02 when the part is run from the practice menu under menu
-// music.
+// music. No leading `waitSeconds(INTER_WAVE_GAP)`: in practice mode
+// that 3s pad delayed the first wave well past the music-start beat
+// (part 1 spawns its first wave immediately under the music), and in
+// live flow Brad's death sequence (bossShudder + retro-02 restart)
+// already supplies the breath.
 export function* stage1Part2(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
-  yield* waitSeconds(INTER_WAVE_GAP);
 
   yield* timeWave(self, 11, self.stage.separateWave(moreChartsWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 16, self.stage.separateWave(vacationPhotosWave(self)));
+  yield* timeWave(self, 8, self.stage.separateWave(vacationPhotosWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 10, self.stage.separateWave(emailColleagues3(self)));
+  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues3(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 15, self.stage.separateWave(meetingInternsWave(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
-  yield* timeWave(self, 8, self.stage.separateWave(janitorsWave(self)));
-  yield* waitSeconds(INTER_WAVE_GAP);
+  yield* timeWave(self, 11, self.stage.separateWave(meetingInternsWave(self)));
 
   markWave(self, 'music: metal');
   yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+  // wellnessCoachWave does the actual `startMusicWithIntro(metal)`
+  // itself (idempotent in live flow, switches in from menu music in
+  // practice); the seam wait above keeps the live switch on a clean
+  // musical seam.
 
   yield* self.stage.separateWave(wellnessCoachWave(self));
 }
@@ -175,10 +189,10 @@ export function* stage1Part2(self: Entity): Generator<ScriptYield, void, void> {
 // `startMusicLoop` (no intro fanfare; it played at game start in
 // stage 1 part 1 and re-firing here would feel like a restart) snaps
 // the previous loop — metal from the stage-1 end-boss fight — back
-// down to retro-01. Run a couple of evening-shift waves (IT admin,
-// sales-and-client), switch to retro-02 at the music seam, then
-// hand off to Hodges. Untimed for now — timing pass comes after the
-// wave content settles.
+// down to retro-01. Run three evening-shift waves (IT admin,
+// sales-and-client, janitors), switch to retro-02 at the music seam,
+// then hand off to Hodges. Untimed for now — timing pass comes after
+// the wave content settles.
 export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'music: retro 01');
   yield* waitEnemiesClear(self);
@@ -189,11 +203,10 @@ export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* self.stage.separateWave(salesClientWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
+  yield* self.stage.separateWave(janitorsWave(self));
 
-  // markWave(self, 'music: retro 02');
-  // yield* waitTrackEnded();
-  // yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
-  // yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+  markWave(self, 'music: retro 02');
+  yield* waitTrackEnded();
 
   yield* self.stage.separateWave(shrunkOldManWave(self));
 }
@@ -218,7 +231,9 @@ export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
 
   markWave(self, 'music: metal (stage 2)');
   yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
+  // bossWave does the actual `startMusicWithIntro(stage-2 metal)` itself
+  // (idempotent in live flow, switches in from menu music in practice);
+  // the seam wait above keeps the live switch on a clean musical seam.
 
   yield* self.stage.separateWave(bossWave(self));
 }
@@ -239,7 +254,7 @@ export const WAVES: WaveDef[] = [
   { id: 'i-ending', name: 'Ending — Walk Home', script: endingScene },
   { id: 'r-interns', name: 'Interns', script: internsWave },
   { id: 'r-email-colleagues', name: 'Email Colleagues', script: emailColleaguesWave },
-  { id: 'r-colleagues', name: 'Colleagues', script: colleaguesWave },
+  { id: 'r-urgent-call', name: 'Urgent Call', script: urgentCallWave },
   { id: 'r-check-email', name: 'Check Email', script: checkEmailWave },
   { id: 'r-gym-bro', name: 'Mid-Stage Boss — Brad', script: gymBroWave },
   { id: 'r-more-charts', name: 'More Charts', script: moreChartsWave },
@@ -250,7 +265,6 @@ export const WAVES: WaveDef[] = [
   },
   { id: 'r-email-colleagues-3', name: 'Email Colleagues 3', script: emailColleagues3 },
   { id: 'r-meeting-interns', name: 'Meeting Interns', script: meetingInternsWave },
-  { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
   {
     id: 'r-wellness-coach',
     name: 'Stage 1 Boss — Coach Becky',
@@ -258,6 +272,7 @@ export const WAVES: WaveDef[] = [
   },
   { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },
   { id: 'r-sales-client', name: 'Sales & Client', script: salesClientWave },
+  { id: 'r-janitor', name: 'Janitor', script: janitorsWave },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: shrunkOldManWave },
   { id: 'r-hr-trio', name: 'HR Trio', script: hrTrioWave },
   { id: 'r-oversleeper', name: 'Oversleeper', script: oversleeperWave },

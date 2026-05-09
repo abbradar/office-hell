@@ -301,28 +301,25 @@ const COLOR_BLOCK_BORDER_EXPANDED = COLOR_ACCENT_GOLD;
 type Mode = 'code' | 'visual';
 type CompileResult = { fn: EntityScript } | { error: string };
 
-export class PatternTestScene extends Phaser.Scene {
-  private stage!: StageManager;
-  private enemy: Entity | null = null;
-
-  private mode: Mode = 'code';
-  private codeEditor!: HTMLTextAreaElement;
-  // Tab buttons — recoloured on switch.
-  private codeTab!: Phaser.GameObjects.Text;
-  private visualTab!: Phaser.GameObjects.Text;
-
-  // Visual editor state.
-  private blocks: Block[] = DEFAULT_BLOCKS.map((b) => ({ ...b, params: { ...b.params } }));
-  private loopForever = true;
+// Per-run mutable state. Phaser reuses the scene instance across
+// `scene.start('PatternTest')`, so class-field initializers (`= []`,
+// `= 'code'`) only fire at construction — without rebuilding on each
+// entry, the user's last block edits, scroll position, and an open
+// load modal would leak into the next session. Anything reassigned in
+// every create() (codeEditor, codeTab, visualTab, visualContainer,
+// visualMask, statusText) stays on the scene as `!:` refs.
+class RunState {
+  enemy: Entity | null = null;
+  mode: Mode = 'code';
+  // Visual editor model. Each entry is cloned out of DEFAULT_BLOCKS so
+  // edits never reach back to the module-level template.
+  blocks: Block[] = DEFAULT_BLOCKS.map((b) => ({ ...b, params: { ...b.params } }));
+  loopForever = true;
   // Phaser objects for the visual editor — destroyed and rebuilt on each
   // model change. Easier than diffing.
-  private visualObjects: Phaser.GameObjects.GameObject[] = [];
-  private visualContainer!: Phaser.GameObjects.Container;
-  private visualScrollY = 0;
-  private visualMaxScroll = 0;
-  private visualMask!: Phaser.Display.Masks.GeometryMask;
-
-  private statusText!: Phaser.GameObjects.Text;
+  visualObjects: Phaser.GameObjects.GameObject[] = [];
+  visualScrollY = 0;
+  visualMaxScroll = 0;
   // Status text has two flavours:
   //   'live'   — auto-appends `  fps: N  active: M` each frame.
   //              Used for steady-state messages (idle / running / stopped)
@@ -330,14 +327,30 @@ export class PatternTestScene extends Phaser.Scene {
   //   'static' — left as-is until the next setStatus call. For error messages,
   //              save/load confirmations, etc. that shouldn't get clobbered
   //              by the per-frame refresh.
-  private statusKind: 'live' | 'static' = 'live';
-  private statusPrefix = 'idle';
+  statusKind: 'live' | 'static' = 'live';
+  statusPrefix = 'idle';
   // Currently-open load modal (null when closed). Holds backdrop + panel
   // + entry rows in a single Container so dismissing tears the lot down.
-  private loadModal: Phaser.GameObjects.Container | null = null;
+  loadModal: Phaser.GameObjects.Container | null = null;
+}
+
+export class PatternTestScene extends Phaser.Scene {
+  private stage!: StageManager;
+  private codeEditor!: HTMLTextAreaElement;
+  // Tab buttons — recoloured on switch.
+  private codeTab!: Phaser.GameObjects.Text;
+  private visualTab!: Phaser.GameObjects.Text;
+  private visualContainer!: Phaser.GameObjects.Container;
+  private visualMask!: Phaser.Display.Masks.GeometryMask;
+  private statusText!: Phaser.GameObjects.Text;
+  private state!: RunState;
 
   constructor() {
     super('PatternTest');
+  }
+
+  init(): void {
+    this.state = new RunState();
   }
 
   create(): void {
@@ -371,7 +384,7 @@ export class PatternTestScene extends Phaser.Scene {
 
   override update(time: number, delta: number): void {
     this.stage.update(time, delta);
-    if (this.mode === 'code') this.repositionCodeEditor();
+    if (this.state.mode === 'code') this.repositionCodeEditor();
     this.refreshLiveStats();
   }
 
@@ -392,19 +405,19 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   private setMode(mode: Mode): void {
-    this.mode = mode;
+    this.state.mode = mode;
     this.applyMode();
   }
 
   private applyMode(): void {
-    this.codeTab.setColor(this.mode === 'code' ? COLOR_HIGHLIGHT : COLOR_DIM);
-    this.visualTab.setColor(this.mode === 'visual' ? COLOR_HIGHLIGHT : COLOR_DIM);
+    this.codeTab.setColor(this.state.mode === 'code' ? COLOR_HIGHLIGHT : COLOR_DIM);
+    this.visualTab.setColor(this.state.mode === 'visual' ? COLOR_HIGHLIGHT : COLOR_DIM);
     // Code tab uses an HTML overlay; show/hide via display rather than
     // visibility so the textarea doesn't reserve focusable space when
     // hidden.
-    this.codeEditor.style.display = this.mode === 'code' ? '' : 'none';
+    this.codeEditor.style.display = this.state.mode === 'code' ? '' : 'none';
     // Visual tab is Phaser objects — toggle the container's visibility.
-    this.visualContainer.setVisible(this.mode === 'visual');
+    this.visualContainer.setVisible(this.state.mode === 'visual');
   }
 
   // --- code editor (HTML overlay) -----------------------------------------
@@ -474,9 +487,9 @@ export class PatternTestScene extends Phaser.Scene {
     this.input.on(
       'wheel',
       (p: Phaser.Input.Pointer, _objs: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
-        if (this.mode !== 'visual') return;
+        if (this.state.mode !== 'visual') return;
         if (p.y < EDITOR_TOP || p.y > EDITOR_TOP + EDITOR_HEIGHT) return;
-        this.visualScrollY = Phaser.Math.Clamp(this.visualScrollY + dy, 0, this.visualMaxScroll);
+        this.state.visualScrollY = Phaser.Math.Clamp(this.state.visualScrollY + dy, 0, this.state.visualMaxScroll);
         this.renderVisual();
       },
     );
@@ -485,30 +498,30 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   private renderVisual(): void {
-    for (const obj of this.visualObjects) obj.destroy();
-    this.visualObjects = [];
+    for (const obj of this.state.visualObjects) obj.destroy();
+    this.state.visualObjects = [];
 
     // Loop-forever toggle (always at top, doesn't scroll).
     const loopText = this.add
-      .text(EDITOR_LEFT + 4, VISUAL_LOOP_Y, `${this.loopForever ? '☑' : '☐'} loop forever`, {
+      .text(EDITOR_LEFT + 4, VISUAL_LOOP_Y, `${this.state.loopForever ? '☑' : '☐'} loop forever`, {
         ...FONT_DIALOGUE_SM,
-        color: this.loopForever ? COLOR_HIGHLIGHT : COLOR_DIM,
+        color: this.state.loopForever ? COLOR_HIGHLIGHT : COLOR_DIM,
       })
       .setOrigin(0, 0)
       .setInteractive({ useHandCursor: true });
     loopText.on('pointerup', () => {
-      this.loopForever = !this.loopForever;
+      this.state.loopForever = !this.state.loopForever;
       this.renderVisual();
     });
     this.visualContainer.add(loopText);
-    this.visualObjects.push(loopText);
+    this.state.visualObjects.push(loopText);
 
     // Add-block buttons (inline labels, "+ ring", "+ aimed", …).
     const addLabel = this.add
       .text(EDITOR_LEFT + 4, VISUAL_ADD_ROW_Y, 'add:', { ...FONT_DEBUG, color: COLOR_DIM })
       .setOrigin(0, 0);
     this.visualContainer.add(addLabel);
-    this.visualObjects.push(addLabel);
+    this.state.visualObjects.push(addLabel);
 
     let addX = EDITOR_LEFT + 36;
     for (const type of BLOCK_TYPE_ORDER) {
@@ -520,24 +533,24 @@ export class PatternTestScene extends Phaser.Scene {
         .setOrigin(0, 0)
         .setInteractive({ useHandCursor: true });
       t.on('pointerup', () => {
-        this.blocks.push(makeBlock(type));
+        this.state.blocks.push(makeBlock(type));
         this.renderVisual();
       });
       this.visualContainer.add(t);
-      this.visualObjects.push(t);
+      this.state.visualObjects.push(t);
       addX += t.width + 10;
     }
 
     // Block list (scrollable). Render INTO a sub-container that gets a
     // mask + Y-offset, so the loop toggle and add row above don't clip.
-    const listContainer = this.add.container(0, VISUAL_LIST_TOP - this.visualScrollY);
+    const listContainer = this.add.container(0, VISUAL_LIST_TOP - this.state.visualScrollY);
     listContainer.setMask(this.visualMask);
     this.visualContainer.add(listContainer);
-    this.visualObjects.push(listContainer);
+    this.state.visualObjects.push(listContainer);
 
     let y = 0;
-    for (let i = 0; i < this.blocks.length; i++) {
-      const block = this.blocks[i];
+    for (let i = 0; i < this.state.blocks.length; i++) {
+      const block = this.state.blocks[i];
       if (!block) continue;
       const headerH = BLOCK_HEADER_H;
       const expandedH = block.expanded ? BLOCK_SPECS[block.type].params.length * BLOCK_PARAM_H : 0;
@@ -567,13 +580,13 @@ export class PatternTestScene extends Phaser.Scene {
     }
 
     const listHeight = VISUAL_LIST_BOTTOM - VISUAL_LIST_TOP;
-    this.visualMaxScroll = Math.max(0, y - listHeight);
-    if (this.visualScrollY > this.visualMaxScroll) {
-      this.visualScrollY = this.visualMaxScroll;
-      listContainer.y = VISUAL_LIST_TOP - this.visualScrollY;
+    this.state.visualMaxScroll = Math.max(0, y - listHeight);
+    if (this.state.visualScrollY > this.state.visualMaxScroll) {
+      this.state.visualScrollY = this.state.visualMaxScroll;
+      listContainer.y = VISUAL_LIST_TOP - this.state.visualScrollY;
     }
 
-    this.visualContainer.setVisible(this.mode === 'visual');
+    this.visualContainer.setVisible(this.state.mode === 'visual');
   }
 
   private renderBlockHeader(parent: Phaser.GameObjects.Container, block: Block, index: number, y: number): void {
@@ -622,20 +635,26 @@ export class PatternTestScene extends Phaser.Scene {
     created.push(
       this.makeRowButton(right - 56, y + BLOCK_HEADER_H / 2, '▲', () => {
         if (index === 0) return;
-        [this.blocks[index - 1], this.blocks[index]] = [this.blocks[index], this.blocks[index - 1]] as [Block, Block];
+        [this.state.blocks[index - 1], this.state.blocks[index]] = [
+          this.state.blocks[index],
+          this.state.blocks[index - 1],
+        ] as [Block, Block];
         this.renderVisual();
       }),
     );
     created.push(
       this.makeRowButton(right - 32, y + BLOCK_HEADER_H / 2, '▼', () => {
-        if (index === this.blocks.length - 1) return;
-        [this.blocks[index], this.blocks[index + 1]] = [this.blocks[index + 1], this.blocks[index]] as [Block, Block];
+        if (index === this.state.blocks.length - 1) return;
+        [this.state.blocks[index], this.state.blocks[index + 1]] = [
+          this.state.blocks[index + 1],
+          this.state.blocks[index],
+        ] as [Block, Block];
         this.renderVisual();
       }),
     );
     created.push(
       this.makeRowButton(right - 8, y + BLOCK_HEADER_H / 2, '×', () => {
-        this.blocks.splice(index, 1);
+        this.state.blocks.splice(index, 1);
         this.renderVisual();
       }),
     );
@@ -709,12 +728,12 @@ export class PatternTestScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
     reset.on('pointerup', () => {
-      if (this.mode === 'code') {
+      if (this.state.mode === 'code') {
         this.codeEditor.value = DEFAULT_CODE;
       } else {
-        this.blocks = DEFAULT_BLOCKS.map((b) => ({ ...b, params: { ...b.params } }));
-        this.loopForever = true;
-        this.visualScrollY = 0;
+        this.state.blocks = DEFAULT_BLOCKS.map((b) => ({ ...b, params: { ...b.params } }));
+        this.state.loopForever = true;
+        this.state.visualScrollY = 0;
         this.renderVisual();
       }
       this.setStatus('reset', COLOR_DIM);
@@ -745,12 +764,14 @@ export class PatternTestScene extends Phaser.Scene {
   // --- script lifecycle ---------------------------------------------------
 
   private currentSource(): string {
-    return this.mode === 'code' ? this.codeEditor.value : generateBlocksCode(this.blocks, this.loopForever);
+    return this.state.mode === 'code'
+      ? this.codeEditor.value
+      : generateBlocksCode(this.state.blocks, this.state.loopForever);
   }
 
   private spawnIdleEnemy(): void {
-    if (this.enemy?.alive) this.enemy.die();
-    this.enemy = this.stage.spawn(DUMMY_ENEMY, ENEMY_X, ENEMY_Y, 0, 0);
+    if (this.state.enemy?.alive) this.state.enemy.die();
+    this.state.enemy = this.stage.spawn(DUMMY_ENEMY, ENEMY_X, ENEMY_Y, 0, 0);
   }
 
   private runUserScript(): void {
@@ -759,14 +780,14 @@ export class PatternTestScene extends Phaser.Scene {
       this.setStatus(`error: ${result.error}`, COLOR_DANGER);
       return;
     }
-    if (this.enemy?.alive) this.enemy.die();
+    if (this.state.enemy?.alive) this.state.enemy.die();
     this.clearBullets();
-    this.enemy = this.stage.spawn(DUMMY_ENEMY, ENEMY_X, ENEMY_Y, 0, 0, { script: result.fn });
+    this.state.enemy = this.stage.spawn(DUMMY_ENEMY, ENEMY_X, ENEMY_Y, 0, 0, { script: result.fn });
     this.setStatus('running', COLOR_RUN, 'live');
   }
 
   private stopUserScript(): void {
-    if (this.enemy?.alive) this.enemy.die();
+    if (this.state.enemy?.alive) this.state.enemy.die();
     this.clearBullets();
     this.spawnIdleEnemy();
     this.setStatus('stopped', COLOR_DIM, 'live');
@@ -849,18 +870,18 @@ export class PatternTestScene extends Phaser.Scene {
   private setStatus(message: string, color: string, kind: 'live' | 'static' = 'static'): void {
     this.statusText.setColor(color);
     this.statusText.setText(message);
-    this.statusPrefix = message;
-    this.statusKind = kind;
+    this.state.statusPrefix = message;
+    this.state.statusKind = kind;
   }
 
   // Per-frame stats append. Only fires when the status is "live"
   // (idle / running / stopped) — error and save/load messages keep their
   // static text.
   private refreshLiveStats(): void {
-    if (this.statusKind !== 'live') return;
+    if (this.state.statusKind !== 'live') return;
     const fps = Math.round(this.game.loop.actualFps);
     const active = this.stage.damages.player.countActive(true);
-    this.statusText.setText(`${this.statusPrefix}  fps: ${fps}  active: ${active}`);
+    this.statusText.setText(`${this.state.statusPrefix}  fps: ${fps}  active: ${active}`);
   }
 
   // --- save / load -------------------------------------------------------
@@ -891,7 +912,7 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   private openLoadModal(): void {
-    if (this.loadModal !== null) return;
+    if (this.state.loadModal !== null) return;
     const saves = readSavedPatterns();
     const names = Object.keys(saves).sort();
 
@@ -977,13 +998,13 @@ export class PatternTestScene extends Phaser.Scene {
     close.on('pointerup', () => this.closeLoadModal());
     modal.add(close);
 
-    this.loadModal = modal;
+    this.state.loadModal = modal;
   }
 
   private closeLoadModal(): void {
-    if (this.loadModal === null) return;
-    this.loadModal.destroy();
-    this.loadModal = null;
+    if (this.state.loadModal === null) return;
+    this.state.loadModal.destroy();
+    this.state.loadModal = null;
     // Re-show the code editor if the active tab wants it. (applyMode
     // owns the display rule — it also covers the case where loadPattern
     // flipped us to the code tab between open and close.)

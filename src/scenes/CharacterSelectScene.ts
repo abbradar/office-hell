@@ -46,27 +46,37 @@ type Card = {
   centerX: number;
 };
 
-export class CharacterSelectScene extends Phaser.Scene {
-  private cards: Card[] = [];
-  private cursor = 0;
-  private next!: string;
+// Per-run mutable state. Phaser reuses the scene instance across
+// `scene.start('CharacterSelect')`, so a class-field `cards: Card[] = []`
+// would grow across re-entries (the create() loop pushes a fresh row of
+// cards each time on top of the previous run's destroyed objects).
+// Bundling it into one object lets init() rebuild from scratch each time.
+class RunState {
+  readonly next: string;
   // biome-ignore lint/suspicious/noExplicitAny: passthrough init payload
-  private nextData: any;
+  readonly nextData: any;
+  readonly cards: Card[] = [];
+  cursor = 0;
   // True once the back handler has fired — prevents the close animation
   // from being retriggered (and the destination scene started twice) by
   // a stray pointerdown / keydown while the doors are sliding shut.
-  private closing = false;
+  closing = false;
+
+  constructor(data: CharacterSelectData | undefined) {
+    this.next = data?.next ?? 'Game';
+    this.nextData = data?.nextData;
+  }
+}
+
+export class CharacterSelectScene extends Phaser.Scene {
+  private state!: RunState;
 
   constructor() {
     super('CharacterSelect');
   }
 
   init(data: CharacterSelectData): void {
-    this.next = data?.next ?? 'Game';
-    this.nextData = data?.nextData;
-    this.cards = [];
-    this.cursor = 0;
-    this.closing = false;
+    this.state = new RunState(data);
   }
 
   create(): void {
@@ -90,8 +100,8 @@ export class CharacterSelectScene extends Phaser.Scene {
     const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_OPEN);
 
     const goBack = (): void => {
-      if (this.closing) return;
-      this.closing = true;
+      if (this.state.closing) return;
+      this.state.closing = true;
       elevator.play(ELEVATOR_CLOSE_ANIM);
       elevator.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
         this.scene.start('Menu');
@@ -112,7 +122,7 @@ export class CharacterSelectScene extends Phaser.Scene {
       // biome-ignore lint/style/noNonNullAssertion: bounded by CHARACTERS.length
       const ch = CHARACTERS[i]!;
       const cx = startX + CARD_W / 2 + i * (CARD_W + CARD_GAP);
-      this.cards.push(this.makeCard(i, ch, cx));
+      this.state.cards.push(this.makeCard(i, ch, cx));
     }
 
     // Keyboard hint: three column-stacked prompts (icon on top, label below)
@@ -149,11 +159,11 @@ export class CharacterSelectScene extends Phaser.Scene {
     const kb = this.input.keyboard;
     if (kb) {
       kb.on('keydown-LEFT', () => {
-        this.cursor = (this.cursor - 1 + CHARACTERS.length) % CHARACTERS.length;
+        this.state.cursor = (this.state.cursor - 1 + CHARACTERS.length) % CHARACTERS.length;
         this.refresh();
       });
       kb.on('keydown-RIGHT', () => {
-        this.cursor = (this.cursor + 1) % CHARACTERS.length;
+        this.state.cursor = (this.state.cursor + 1) % CHARACTERS.length;
         this.refresh();
       });
       kb.on('keydown-Z', () => this.confirm());
@@ -191,11 +201,11 @@ export class CharacterSelectScene extends Phaser.Scene {
     const hitY = cy - CARD_H / 2;
     const zone = this.add.zone(hitX, hitY, CARD_W, CARD_H).setOrigin(0, 0).setInteractive({ useHandCursor: true });
     zone.on('pointerover', () => {
-      this.cursor = index;
+      this.state.cursor = index;
       this.refresh();
     });
     onTap(this, zone, () => {
-      this.cursor = index;
+      this.state.cursor = index;
       this.confirm();
     });
 
@@ -203,8 +213,8 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   private refresh(): void {
-    for (const card of this.cards) {
-      const selected = card.index === this.cursor;
+    for (const card of this.state.cards) {
+      const selected = card.index === this.state.cursor;
       const cy = CARD_Y;
       card.graphics.clear();
       card.graphics.fillStyle(CARD_FILL, selected ? 0.95 : 0.7);
@@ -217,7 +227,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   private confirm(): void {
-    const ch = CHARACTERS[this.cursor];
+    const ch = CHARACTERS[this.state.cursor];
     if (!ch) return;
     this.registry.set(CHARACTER_REGISTRY_KEY, ch);
     // `?? {}` is load-bearing: Phaser's Systems.start only assigns
@@ -228,6 +238,6 @@ export class CharacterSelectScene extends Phaser.Scene {
     // `{ test: true }`), come back to the main menu, press Start →
     // CharSelect calls this with nextData=undefined and the test flag
     // sticks. Empty object forces an overwrite.
-    this.scene.start(this.next, this.nextData ?? {});
+    this.scene.start(this.state.next, this.state.nextData ?? {});
   }
 }

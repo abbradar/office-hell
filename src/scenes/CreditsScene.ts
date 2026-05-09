@@ -33,23 +33,33 @@ const DRAG_THRESHOLD = 6;
 // Per keypress scroll step for keyboard arrows.
 const KEY_SCROLL_STEP = 32;
 
+// Per-run mutable state. Phaser reuses the scene instance across
+// `scene.start('Credits')`, so a class-field `scrollY = 0` keeps the
+// last run's scroll position when create() runs again. Bundling it into
+// one object lets init() rebuild from scratch each entry.
+class RunState {
+  scrollY = 0;
+  maxScroll = 0;
+  gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
+}
+
 export class CreditsScene extends Phaser.Scene {
   private listContainer!: Phaser.GameObjects.Container;
-  private scrollY = 0;
-  private maxScroll = 0;
-  private gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
   private indicators!: ScrollIndicators;
+  private state!: RunState;
 
   constructor() {
     super('Credits');
+  }
+
+  init(): void {
+    this.state = new RunState();
   }
 
   create(): void {
     bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
-    this.scrollY = 0;
-    this.gesture = null;
 
     this.add
       .text(GAME_W / 2, HEADER_Y, 'CREDITS', {
@@ -137,9 +147,9 @@ export class CreditsScene extends Phaser.Scene {
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
     const totalHeight = cursorY;
-    this.maxScroll = Math.max(0, totalHeight - listViewHeight);
+    this.state.maxScroll = Math.max(0, totalHeight - listViewHeight);
     this.indicators = addScrollIndicators(this, LIST_VIEW_TOP, LIST_VIEW_BOTTOM);
-    this.indicators.update(this.scrollY, this.maxScroll);
+    this.indicators.update(this.state.scrollY, this.state.maxScroll);
 
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
@@ -154,7 +164,7 @@ export class CreditsScene extends Phaser.Scene {
       this.scene.start('Menu');
     };
     onTap(this, back, () => {
-      if (this.gesture?.moved) return;
+      if (this.state.gesture?.moved) return;
       goBack();
     });
 
@@ -176,33 +186,33 @@ export class CreditsScene extends Phaser.Scene {
     // the back link still goes through `onTap`.
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.y < LIST_VIEW_TOP || p.y > LIST_VIEW_BOTTOM) {
-        this.gesture = null;
+        this.state.gesture = null;
         return;
       }
-      this.gesture = { downY: p.y, startScroll: this.scrollY, moved: false };
+      this.state.gesture = { downY: p.y, startScroll: this.state.scrollY, moved: false };
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!this.gesture || !p.isDown) return;
-      const dy = p.y - this.gesture.downY;
-      if (Math.abs(dy) > DRAG_THRESHOLD) this.gesture.moved = true;
-      if (this.gesture.moved) this.setScroll(this.gesture.startScroll - dy);
+      if (!this.state.gesture || !p.isDown) return;
+      const dy = p.y - this.state.gesture.downY;
+      if (Math.abs(dy) > DRAG_THRESHOLD) this.state.gesture.moved = true;
+      if (this.state.gesture.moved) this.setScroll(this.state.gesture.startScroll - dy);
     });
     this.input.on('pointerup', () => {
-      this.gesture = null;
+      this.state.gesture = null;
     });
     this.input.on(
       'wheel',
       (_p: Phaser.Input.Pointer, _objs: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
-        this.setScroll(this.scrollY + dy);
+        this.setScroll(this.state.scrollY + dy);
       },
     );
 
     const kb = this.input.keyboard;
     if (kb) {
-      kb.on('keydown-UP', () => this.setScroll(this.scrollY - KEY_SCROLL_STEP));
-      kb.on('keydown-DOWN', () => this.setScroll(this.scrollY + KEY_SCROLL_STEP));
-      kb.on('keydown-PAGE_UP', () => this.setScroll(this.scrollY - listViewHeight));
-      kb.on('keydown-PAGE_DOWN', () => this.setScroll(this.scrollY + listViewHeight));
+      kb.on('keydown-UP', () => this.setScroll(this.state.scrollY - KEY_SCROLL_STEP));
+      kb.on('keydown-DOWN', () => this.setScroll(this.state.scrollY + KEY_SCROLL_STEP));
+      kb.on('keydown-PAGE_UP', () => this.setScroll(this.state.scrollY - listViewHeight));
+      kb.on('keydown-PAGE_DOWN', () => this.setScroll(this.state.scrollY + listViewHeight));
       kb.on('keydown-ESC', goBack);
       kb.on('keydown-ENTER', goBack);
       kb.on('keydown-Z', goBack);
@@ -210,8 +220,8 @@ export class CreditsScene extends Phaser.Scene {
   }
 
   private setScroll(target: number): void {
-    this.scrollY = Phaser.Math.Clamp(target, 0, this.maxScroll);
-    this.listContainer.y = LIST_VIEW_TOP - this.scrollY;
-    this.indicators.update(this.scrollY, this.maxScroll);
+    this.state.scrollY = Phaser.Math.Clamp(target, 0, this.state.maxScroll);
+    this.listContainer.y = LIST_VIEW_TOP - this.state.scrollY;
+    this.indicators.update(this.state.scrollY, this.state.maxScroll);
   }
 }

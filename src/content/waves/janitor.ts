@@ -23,6 +23,13 @@ const ENTRY_Y = 80;
 const ADVANCE_SPEED = 70;
 const ADVANCE_DY = 58;
 const REST_FRAMES = 40;
+// Drop off the bottom fast enough that the second janitor (spawned 1s
+// after the first) is fully off-screen within the wave's 8s design
+// budget. (Currently runs untimed in stage 2 part 1 pending a timing
+// pass; the budget is what the pacing was sized for.) The two sweeps
+// + advance + rest fill 6+ seconds on their own; the remaining budget
+// is just enough for a brisk exit, not a 220 px/s drift.
+const EXIT_SPEED = 380;
 
 function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void, void> {
   const from = leftToRight ? SWEEP_FROM : SWEEP_TO;
@@ -40,7 +47,7 @@ function* janitorScript(self: Entity) {
   if (checkStageOnce(self, 'janitor:wetFloorShown')) {
     self.say('Watch the wet floor!', 110);
   }
-  yield 80;
+  yield 50;
 
   // Pin the sweep direction once — both passes go the same way, like a real
   // mop stroke pair, instead of randomly flipping mid-encounter.
@@ -54,8 +61,9 @@ function* janitorScript(self: Entity) {
 
   yield* sweep(self, leftToRight);
 
-  yield 30;
-  self.setVelocity(0, 220);
+  // Cut straight to the exit — the post-sweep beat that was here used
+  // to sit inside an 11-second budget; the 8s budget can't afford it.
+  self.setVelocity(0, EXIT_SPEED);
 }
 
 export const janitor = new EntityKind({
@@ -69,12 +77,14 @@ export const janitor = new EntityKind({
 
 // Demo wave: two janitors from opposite sides, staggered so a player who
 // focuses fire can drop the first before it sweeps and only eat the
-// second's mop strokes.
+// second's mop strokes. Spacing kept short — the wave's 8s budget has
+// to cover entry + 2 sweeps + advance + exit per janitor, so the
+// second can't afford the original 3s lead.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'janitor');
   yield* suspendRunning(self, function* () {
     self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
-    yield 180;
+    yield 60;
     self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
   });
 }

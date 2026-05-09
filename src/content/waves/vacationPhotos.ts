@@ -23,11 +23,15 @@ import { reportBullet } from './reportBullet';
 const ENTRY_SPEED = 100;
 const ENTRY_Y = 110;
 
-const BARRAGES = 3;
-const SAY_FRAMES = 90;
+const BARRAGES = 2;
+// 6 bubbles × SAY_FRAMES + entry (84f) + last-fire pre-gap (30f) + exit
+// cull (~44f at EXIT_SPEED) all has to fit the wave's 8s timeWave slot
+// (480f); that caps SAY_FRAMES at 64. 54 leaves ~0.9s margin and keeps
+// each say above 0.9s — fine for the 3–4 word punchlines below.
+const SAY_FRAMES = 54;
 const PRE_FIRE_GAP = 30;
 // Each role talks once per SAY_CYCLE; three roles staggered by SAY_FRAMES means
-// the nine bubbles play back-to-back with no overlap and no gap.
+// the six bubbles play back-to-back with no overlap and no gap.
 const SAY_CYCLE = 3 * SAY_FRAMES;
 const POST_FIRE_GAP = SAY_CYCLE - PRE_FIRE_GAP;
 
@@ -36,14 +40,14 @@ const PHOTO_SPEED = 140;
 const PHOTO_ARC_FROM = 0;
 const PHOTO_ARC_TO = Math.PI;
 
-const EXIT_SPEED = 200;
+const EXIT_SPEED = 280;
 
-// Per-role caption arcs: each colleague has her own three lines so the three
+// Per-role caption arcs: each colleague has her own two lines so the three
 // monologues don't echo each other when fans overlap.
 const LINES_BY_ROLE = [
-  ['Italy was\nAMAZING!', 'Tuscany was\na DREAM!', 'And the food!\nLook!'],
-  ['Florence —\nso pretty!', 'Look at this\nbasilica!', 'You HAVE\nto see this!'],
-  ['Me at the\nColosseum!', 'Venice canals\nat sunset!', 'Last one —\npromise!'],
+  ['Italy was\nAMAZING!', 'And the food!\nLook!'],
+  ['Florence —\nso pretty!', 'You HAVE\nto see this!'],
+  ['Me at the\nColosseum!', 'Last one —\npromise!'],
 ] as const;
 
 type Role = 0 | 1 | 2;

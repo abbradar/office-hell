@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
-import { alignDoor, doorY, exitThroughSideDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
+import { doorY, exitThroughForwardDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -14,9 +14,11 @@ const INTERN_REPORT_SAID = 'internReportSaid';
 // side of the screen, lobs a couple of report bullets, and is one-shot.
 //
 // `side` is the horizontal exit direction: -1 = left, +1 = right. Exit
-// routes through the closest visible door panel rather than drifting
-// off the bare wall — `exitThroughSideDoor` walks the intern to that
-// door's y first, then sets a horizontal velocity that carries it off.
+// routes through the next visible door panel downscreen (the one the
+// intern would reach by continuing forward) rather than back through
+// whatever door is closest in either direction — these interns are
+// marching *into* the office, so retreating up through the door they
+// came in would contradict the entry motion.
 function makeInternScript(side: -1 | 1): EntityScript {
   return function* (self: Entity) {
     self.setVelocity(0, 110);
@@ -27,7 +29,7 @@ function makeInternScript(side: -1 | 1): EntityScript {
     yield 50;
     aimed(self, 1, reportBullet, 170);
     yield 35;
-    yield* exitThroughSideDoor(self, side, 140);
+    yield* exitThroughForwardDoor(self, side, 140);
     aimed(self, 1, reportBullet, 170);
     yield 55;
     aimed(self, 1, reportBullet, 170);
@@ -61,11 +63,20 @@ export function* internLine(
 }
 
 // Per-intern script for the second sub-wave: march straight across to a
-// target column, hold long enough to read as a formed line, fire a couple
-// of report bullets, then drop off the bottom.
-function makeInternMarchScript(targetX: number, y: number): EntityScript {
+// target column, hold long enough to read as a formed line, fire a few
+// report bullets, then retreat back through the entry door — `side` is
+// the entry direction (-1 from the left wall, +1 from the right). The
+// retreat is slower than the march: they came in eager, they leave at
+// a "we're done here" amble. The original vertical drop at the same
+// speed contradicted the comment promising the interns step back out
+// through the same panel; sideways through the entry door reads
+// honestly and the slow pace fills the wave's slot rather than
+// emptying it the moment the last shot fires.
+const SIDES_MARCH_SPEED = 130;
+const SIDES_RETREAT_SPEED = 100;
+function makeInternMarchScript(targetX: number, y: number, side: -1 | 1): EntityScript {
   return function* (self: Entity) {
-    yield* moveTo(self, targetX, y, 130);
+    yield* moveTo(self, targetX, y, SIDES_MARCH_SPEED);
     yield 30;
     aimed(self, 1, reportBullet, 170);
     yield 35;
@@ -74,8 +85,7 @@ function makeInternMarchScript(targetX: number, y: number): EntityScript {
     aimed(self, 1, reportBullet, 170);
     yield 35;
     aimed(self, 1, reportBullet, 170);
-    yield 30;
-    self.setVelocity(0, 100);
+    self.setVelocity(side * SIDES_RETREAT_SPEED, 0);
   };
 }
 
@@ -90,10 +100,10 @@ function* internSidesLine(self: Entity, y: number): Generator<ScriptYield, void,
   const leftTargets = [170, 110, 50];
   for (const [i, lx] of leftTargets.entries()) {
     self.spawn(intern, sideSpawnX(-1), y, 0, 0, {
-      script: makeInternMarchScript(lx, y),
+      script: makeInternMarchScript(lx, y, -1),
     });
     self.spawn(intern, sideSpawnX(1), y, 0, 0, {
-      script: makeInternMarchScript(GAME_W - lx, y),
+      script: makeInternMarchScript(GAME_W - lx, y, 1),
     });
     if (i < leftTargets.length - 1) yield 12;
   }
@@ -101,15 +111,17 @@ function* internSidesLine(self: Entity, y: number): Generator<ScriptYield, void,
 
 // Two sub-waves: a line trickling from the top, then a row entering from
 // both sides at once and forming a horizontal line across the playfield.
-// The sides-line wants its row at the very top of the playfield, so we
-// align a door near the door's minimum visible centre (DOOR_H/2 ≈ 40)
-// before suspendRunning — the snapped y is then used by both the spawn
-// and the in-corridor target so every intern walks out through the
-// same panel.
+// The sides-line wants its row near the top of the playfield; it picks
+// the closest visible door to that target y at wave start. Because
+// interns is the very first wave, the corridor's scroll state when this
+// runs is whatever the intro left it at (deterministic per playthrough)
+// — no need for an `alignDoor` snap, which would only burn slot budget
+// for a worst-case wait that doesn't happen here. The line still lands
+// on a real door panel; if its y drifts a little run-to-run that's
+// acceptable variety, not a bug.
 const INTERN_SIDES_TARGET_Y = 90;
 export function* internsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'interns');
-  yield* alignDoor(self, INTERN_SIDES_TARGET_Y);
   yield* suspendRunning(self, function* () {
     yield* internLine(self, GAME_W * 0.25, 1);
     yield 60;

@@ -197,6 +197,72 @@ generation and is silently ignored. Race / all children are dropped
 before the parent's own finally runs, so nested cancellation is
 inside-out.
 
+## Timed slots — `timeWave`
+
+`timeWave(self, seconds, inner)` runs `inner` (the wave body) inside a
+`withTimeout(seconds, …)` race, then pads the slot to the music seam
+via `waitAudioTimeAtLeast`. It exists so the stage script can keep its
+beats music-aligned even when the player blows through enemies fast or
+lets them linger.
+
+**The slot's duration is a hard contract.** Every enemy spawned by the
+wave must be off the visible playfield by the time the timer fires —
+the wave's own scripts (entry → on-screen activity → exit setVelocity)
+have to be paced so the last spawn's exit lands inside the budget,
+counting:
+
+- the wave's pre-suspend setup (e.g. `alignDoor`, which can wait up to
+  `(DOOR_SPACING - 2*tolerance) / scrollSpeed` ≈ 1.8s with the default
+  tolerance);
+- the spawn schedule's last `yield` (when the latest enemy actually
+  appears);
+- per-enemy entry + on-screen beats + exit travel to the off-visible
+  edge.
+
+If any enemy is still alive on the field when the slot expires,
+`timeWave` logs a `console.error` listing the stragglers and their
+positions; it does **not** kill them. The error is the alarm that
+something needs tightening — either the wave body (faster exits, fewer
+or shorter on-screen beats, earlier last-spawn) or the slot duration.
+Live stragglers will continue running their entity scripts and drift
+off naturally, but the next slot inherits a busy field, which reads as
+visual jank.
+
+Pacing levers, in roughly the order to try them:
+
+1. **Faster exits.** Add a `RETREAT_SPEED` / `EXIT_SPEED` distinct
+   from the entry speed; sideways exits through the entry door clear
+   the field much faster than vertical drops at slow speed.
+2. **Tighter spawn schedule.** Shrink the late `yield N` between
+   spawn pairs so the last enemy starts its on-screen beat sooner.
+3. **Wider `alignDoor` tolerance.** Default 32 burns up to 1.8s on
+   alignment alone; `alignDoor(self, y, 64)` (or wider) cuts that in
+   half or better when the wave's spawn ys can tolerate a looser
+   snap.
+4. **Extend the slot.** Last resort — every extra second eats into the
+   stage's music budget (the wave block plus its inter-wave gaps must
+   fit inside an integer number of loop iterations, or
+   `waitTrackEnded` will hold for the next boundary instead of the
+   current one).
+
+## Stage-part durations
+
+A stage is split by its mid-boss into two parts. Each part's **wave
+block** — every `timeWave` slot plus the `waitSeconds(INTER_WAVE_GAP)`
+gaps between them, ending at the boss music switch — runs to a fixed
+budget:
+
+- **Part 1 (intro → mid-boss): 59 seconds.**
+- **Part 2 (mid-boss → end-boss): 49 seconds.**
+
+Hold both parts to these budgets so music seams stay predictable
+across stages: `waitTrackEnded` lands on the next natural loop
+boundary instead of holding for a full extra iteration, and a
+practice-menu replay of a part lands on the same beat the live stage
+does. If a wave wants more time than the budget allows, push the
+pacing levers in [Timed slots — `timeWave`](#timed-slots--timewave)
+before extending the slot.
+
 ## Wave cleanup — `separateWave`
 
 Waves can leave the world in non-default state: `stage.running =

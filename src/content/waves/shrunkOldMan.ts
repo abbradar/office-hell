@@ -1,4 +1,4 @@
-import { KAEDALUS_SHORT_KEY } from '../../audio/keys';
+import { KAEDALUS_LONG_KEY, KAEDALUS_SHORT_KEY } from '../../audio/keys';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
@@ -11,7 +11,7 @@ import {
   pauseMusicForDefeat,
 } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
+import { markWave, prepareForBoss, startMusicLoop, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
@@ -73,23 +73,6 @@ function* shrunkOldManDeath(self: Entity): Generator<ScriptYield, void, void> {
   yield* bossShudder(self);
   m.restart();
   self.die();
-}
-
-class ShrunkOldManKind extends BossKind {
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      // Lock damage off for the death window — same reason as
-      // BossKind's takeDamage: a stray bullet a frame later would
-      // otherwise re-trigger runScript and double-fire the boss-death
-      // sfx.
-      self.setDamagedByClasses([]);
-      self.stage.runScript(self, shrunkOldManDeath);
-      return;
-    }
-    self.flashDamage();
-  }
 }
 
 function* shrunkOldManScript(self: Entity) {
@@ -157,17 +140,22 @@ function* shrunkOldManScript(self: Entity) {
   }
 }
 
-export const shrunkOldMan = new ShrunkOldManKind({
+export const shrunkOldMan = new BossKind({
   sprite: 'geezer',
   hitboxRadius: 22,
   hp: 72,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: shrunkOldManScript,
+  deathScript: shrunkOldManDeath,
 });
 
 export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'mr. hodges');
+  // Idempotent in live flow (stage2Part1 already started KAEDALUS_LONG
+  // for the part); switches in from menu music when run from the
+  // practice menu.
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
   // Same opening beat as the final-boss wave: don't bring him on while
   // leftover enemies are still drifting around, sweep stragglers, brief
   // pause for funereal tone, then he shuffles in. BossKind keeps him

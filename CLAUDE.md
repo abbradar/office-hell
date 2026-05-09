@@ -147,6 +147,33 @@ sourced from `getMusicTime()` + `stage.beat`. The beat is set by
 play, green during the sync-test stage. Useful any time you're
 working on stage timing.
 
+### Per-run scene state lives in a `RunState` class
+
+Phaser reuses the same Scene instance across every `scene.start(key)` —
+shutdown → init → create runs on the same object, so class-field
+initializers (`= 0`, `= []`, `= null`) only ever fire once at
+construction. Anything mutated at runtime that was declared that way
+will still hold the *previous run's* value when the player re-enters
+the scene — most visibly, push-mutated arrays (`doorSlots`, `cards`,
+`rows`, `visualObjects`) grow on top of last run's destroyed objects.
+
+The convention every scene with mutable per-run state follows: keep a
+single `private state!: RunState;` field on the scene, declare a
+nested `class RunState { … }` that owns every runtime-mutable field
+(arrays, scroll positions, cursor indices, overlay refs, flags), and
+rebuild it in `init()` with `this.state = new RunState(data)`. The
+`!:` discipline stays for refs that `create()` reassigns
+unconditionally every entry (Text, RenderTexture, Container handles)
+— those are already fresh by the time `update()` runs and don't
+belong in `state`. Adding a new mutable field = adding it to
+`RunState` so init() resets it for free; if you put it directly on
+the scene it will silently leak.
+
+See [src/scenes/GameScene.ts](src/scenes/GameScene.ts) for the
+canonical example (RunState carries init data + every per-run flag);
+the same pattern is in TestMenuScene, PatternTestScene,
+CharacterSelectScene, and CreditsScene.
+
 ## Things to be careful with
 
 - **Phaser frame order.** Arcade physics integration + overlap callbacks
