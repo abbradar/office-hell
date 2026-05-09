@@ -5,12 +5,19 @@
 // `bomb` and gets back the icon(s) for whatever input scheme the player is
 // on — keyboard or touch.
 //
-// Icons are SVG, decoded into HTMLImageElements at boot and cached here.
-// Render-time, the high-DPR text overlay (see render/textOverlay.ts +
-// render/OverlayImage.ts) rasterises them to a tinted scratch canvas at
-// the exact device-pixel size — no Phaser textures, no pixelArt-style
-// upscaling. The overlay path is shared with prompt text so icons stay
-// crisp alongside the glyphs they annotate.
+// At boot, each SVG is rasterised onto a scratch canvas at a fixed high
+// baseline (ICON_TEXTURE_SIZE) and stencil-painted to white via
+// `source-in`. The white-mask canvas is registered as a Phaser texture
+// keyed by `inputIcon:<name>`. Consumers (prompt.ts) draw a regular
+// Phaser.GameObjects.Image and `setTint(color)` to colour the icon —
+// the multiply against pure white reproduces whatever shade the call
+// site needs.
+//
+// Why a high-resolution baseline texture: prompts display at iconH = 22
+// logical pixels, which on a Retina display becomes ~66 device pixels
+// (logical × scale). A 128×128 white-mask texture has plenty of source
+// pixels for NN-downscale to that target, leaving icons sharp at any
+// device pixel ratio without re-rasterisation.
 //
 // Asset source: Kenney "Input Prompts 1.4" (CC0). SVGs live under
 // src/assets/icons/keyboard-vector/ and src/assets/icons/touch-vector/.
@@ -130,36 +137,54 @@ export function getInputIcon(action: InputAction): InputIconRef | undefined {
   return getInputIcons()[action];
 }
 
-// --- HTMLImageElement preload ---------------------------------------------
+// --- Phaser texture preload -----------------------------------------------
 
-// Decoded HTMLImageElement per icon name. Populated by loadInputIconImages()
-// at boot, read by the overlay flush (see render/textOverlay.ts) which
-// rasterises each SVG to a tinted scratch canvas at exact device-pixel
-// size. One entry per icon — no per-size variants since rasterisation
-// happens on demand.
-const ICON_IMG_CACHE = new Map<string, HTMLImageElement>();
+// Side length (in canvas pixels) of each rasterised icon mask. Larger than
+// any sensible on-screen size so the eventual NN-downscale to display
+// pixels stays sharp; smaller than overkill so icon textures don't bloat
+// the GPU atlas.
+const ICON_TEXTURE_SIZE = 128;
 
-async function decodeOne(icon: InputIcon): Promise<void> {
-  if (ICON_IMG_CACHE.has(icon.name)) return;
+export function inputIconTextureKey(name: string): string {
+  return `inputIcon:${name}`;
+}
+
+async function rasteriseToTexture(game: Phaser.Game, icon: InputIcon): Promise<void> {
+  const key = inputIconTextureKey(icon.name);
+  if (game.textures.exists(key)) return;
   const img = new Image();
   img.src = icon.url;
   // decode() resolves once the image is fully parsed and ready for
-  // synchronous drawImage. Without this, the first paint risks drawing
-  // before the SVG has been laid out, producing a blank icon.
+  // synchronous drawImage; without it the first paint risks blanking.
   await img.decode();
-  ICON_IMG_CACHE.set(icon.name, img);
+
+  const c = document.createElement('canvas');
+  c.width = ICON_TEXTURE_SIZE;
+  c.height = ICON_TEXTURE_SIZE;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error(`inputIcon ${icon.name}: failed to acquire 2D canvas context`);
+
+  // Draw the SVG (browser AA pass), then stencil it to white via
+  // source-in. The white mask plays nicely with Phaser's setTint multiply
+  // — `tint × 1 = tint`, so callers get the colour they ask for.
+  ctx.drawImage(img, 0, 0, ICON_TEXTURE_SIZE, ICON_TEXTURE_SIZE);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, ICON_TEXTURE_SIZE, ICON_TEXTURE_SIZE);
+
+  game.textures.addCanvas(key, c);
 }
 
-// Load HTMLImageElements for every icon referenced by the active
-// platform's map (plus the keyboard-glyph extras when on desktop).
-// Resolves once every SVG is decoded and ready for drawImage.
-export async function loadInputIconImages(): Promise<void> {
+// Load every icon referenced by the active platform's map (plus the
+// keyboard-glyph extras when on desktop) as a Phaser canvas texture.
+// Resolves once every SVG is rasterised and registered.
+export async function loadInputIcons(game: import('phaser').Game): Promise<void> {
   const seen = new Set<string>();
   const promises: Promise<void>[] = [];
   const queue = (icon: InputIcon): void => {
     if (seen.has(icon.name)) return;
     seen.add(icon.name);
-    promises.push(decodeOne(icon));
+    promises.push(rasteriseToTexture(game, icon));
   };
   for (const ref of Object.values(getInputIcons())) {
     if (!ref) continue;
@@ -170,8 +195,4 @@ export async function loadInputIconImages(): Promise<void> {
     for (const i of Object.values(KEYBOARD_GLYPHS)) queue(i);
   }
   await Promise.all(promises);
-}
-
-export function getInputIconImage(name: string): HTMLImageElement | undefined {
-  return ICON_IMG_CACHE.get(name);
 }

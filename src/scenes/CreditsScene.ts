@@ -3,6 +3,7 @@ import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { SECTIONS } from '../content/credits';
 import { isTouchDevice } from '../input/device';
+import { bindLogicalCamera } from '../render/cameraBind';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -44,6 +45,7 @@ export class CreditsScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
     this.scrollY = 0;

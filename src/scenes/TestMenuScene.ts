@@ -3,6 +3,7 @@ import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
+import { bindLogicalCamera } from '../render/cameraBind';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -87,6 +88,7 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
     this.rows = [];

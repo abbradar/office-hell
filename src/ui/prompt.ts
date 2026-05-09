@@ -17,8 +17,7 @@
 // call site rather than overloading the template syntax.
 
 import type Phaser from 'phaser';
-import { OverlayImage } from '../render/OverlayImage';
-import { getInputIcon, getInputIconImage, type InputAction, type InputIcon } from './inputIcons';
+import { getInputIcon, type InputAction, type InputIcon, inputIconTextureKey } from './inputIcons';
 import { COLOR_TEXT_PRIMARY } from './palette';
 
 type Style = Phaser.Types.GameObjects.Text.TextStyle;
@@ -28,8 +27,8 @@ const TOKEN_RE = /<([a-zA-Z]+)>/g;
 // Lower bound on icon height regardless of text size. Holds every prompt
 // across the game — menu, character select, dialogue hint, tutorial bubble
 // — to the same-size keys regardless of the prompt's own text tier. The
-// overlay rasterises at exact device-pixel size on demand, so there's no
-// preload-tier constraint pinning this value any more.
+// preloaded texture is high-resolution (see ICON_TEXTURE_SIZE in
+// inputIcons.ts) so any value here renders sharply via NN downscale.
 const MIN_ICON_PX = 22;
 // Multiplier on text height for icons. Slightly larger than 1.0 so icons
 // pop next to text without towering over it. Bumped 10% over the original
@@ -158,15 +157,12 @@ export function makePrompt(
         for (let ii = 0; ii < seg.icons.length; ii++) {
           // biome-ignore lint/style/noNonNullAssertion: bounded by seg.icons.length
           const icon = seg.icons[ii]!;
-          const svg = getInputIconImage(icon.name);
-          if (!svg) throw new Error(`makePrompt: input icon image '${icon.name}' not loaded`);
-          // Overlay path: the SVG is rasterised on demand at exact
-          // device-pixel size; tint is baked into the scratch canvas, so
-          // no Phaser setTint call needed here.
-          const img = new OverlayImage(scene, 0, 0, svg, icon.name, iconTint);
-          scene.add.existing(img);
-          img.setOrigin(0, 0.5);
-          img.setDisplaySize(iconH, iconH);
+          const key = inputIconTextureKey(icon.name);
+          if (!scene.textures.exists(key)) throw new Error(`makePrompt: input icon texture '${icon.name}' not loaded`);
+          // The preloaded texture is a white-on-transparent stencil
+          // (see inputIcons.ts), so `setTint` multiplies it through to
+          // whatever colour the prompt asks for.
+          const img = scene.add.image(0, 0, key).setOrigin(0, 0.5).setTint(iconTint).setDisplaySize(iconH, iconH);
           children.push(img);
           lineW += img.displayWidth;
           if (ii < seg.icons.length - 1) lineW += gap;
