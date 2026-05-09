@@ -10,7 +10,7 @@ import { showTutorialBubble } from '../../ui/tutorialBubble';
 import { activateBomb, BOMB_DURATION_MS } from '../bomb';
 import { PLAYER_BOMBS } from '../player';
 import { emailBullet } from './checkEmail';
-import { wellnessCoach } from './wellnessCoach';
+import { COACH_NAME, COACH_SPRITE, wellnessCoach } from './wellnessCoach';
 
 const COACH_INTRO_Y = 110;
 const COACH_INTRO_SPEED = 110;
@@ -178,7 +178,7 @@ function* skippableIntroBody(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(coach, GAME_W / 2, COACH_INTRO_Y, COACH_INTRO_SPEED);
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    right: { sprite: 'coach1', frame: 1, name: 'Coach Becky' },
+    right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
     lines: [
       {
         speaker: 'right',

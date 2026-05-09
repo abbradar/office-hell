@@ -17,7 +17,9 @@ import { MONSTER_BATTLE_KEY, MONSTER_CHASE_KEY, MONSTER_FINAL_BOSS_KEY, MONSTER_
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
+  doorY,
   markWave,
+  sideSpawnX,
   startMusicLoop,
   waitEnemiesClear,
   waitScreenClear,
@@ -29,7 +31,7 @@ import type { DialogueOpts } from '../ui/dialogue';
 import { bossOne } from './kinds';
 import { checkEmailCoworker } from './waves/checkEmail';
 import { colleague } from './waves/colleague';
-import { janitor } from './waves/janitor';
+import { JANITOR_DOOR_Y, janitor } from './waves/janitor';
 import { oversleeper } from './waves/oversleeper';
 import { shrunkOldMan } from './waves/shrunkOldMan';
 
@@ -65,8 +67,9 @@ function spawnWave2(self: Entity): void {
 }
 
 function spawnWave3(self: Entity): void {
-  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
+  const y = doorY(self, JANITOR_DOOR_Y);
+  self.spawn(janitor, sideSpawnX(-1), y, 0, 0);
+  self.spawn(janitor, sideSpawnX(1), y, 0, 0);
 }
 
 function spawnWave4(self: Entity): void {

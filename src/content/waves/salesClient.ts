@@ -16,7 +16,11 @@ import { reportBullet } from './reportBullet';
 // the same beat, with the client's intro 50 frames behind to interleave.
 
 const ENTRY_SPEED = 60;
-const ENTRY_Y = 40;
+// Bubble manager flips a two-line bubble (h≈50 with padding) below the
+// speaker once `target.y < ~92` — keep ENTRY_Y comfortably above that so
+// the announcement bubbles render upward into open space, not behind the
+// pair on top of their own bullet origins.
+const ENTRY_Y = 130;
 
 const SALES_X = GAME_W * 0.3;
 const CLIENT_X = GAME_W * 0.7;

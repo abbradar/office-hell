@@ -1,14 +1,14 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
-import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
+import { alignDoor, checkStageOnce, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
-// Janitor: drives in, plants, and fires a long horizontal sweep — a "mop
-// swipe" that fans bullets across the screen. After the first swipe they
-// shuffle a bit further down and swipe again, so the player has to dodge
-// twice from a fresh angle.
+// Janitor: walks out of the uppermost wall door, plants, and fires a long
+// horizontal sweep — a "mop swipe" that fans bullets across the screen.
+// After the first swipe they shuffle a bit further down and swipe again,
+// so the player has to dodge twice from a fresh angle.
 
 const SWEEP_STEPS = 28;
 const SWEEP_STEP_FRAMES = 2;
@@ -19,7 +19,14 @@ const SWEEP_SPREAD = Math.PI / 22;
 const SWEEP_SPEED = 160;
 
 const ENTRY_SPEED = 110;
-const ENTRY_Y = 80;
+// Door y the wave aligns the topmost panel to before spawning. Pushed
+// well below the corridor header so the "Watch the wet floor!" bubble
+// fits above the sprite — the bubble manager flips below the speaker
+// once `target.y < ~92`, which would put the line under the sweep
+// instead of above it.
+export const JANITOR_DOOR_Y = 130;
+const ENTRY_X_LEFT = GAME_W * 0.3;
+const ENTRY_X_RIGHT = GAME_W * 0.7;
 const ADVANCE_SPEED = 70;
 const ADVANCE_DY = 58;
 const REST_FRAMES = 40;
@@ -43,15 +50,20 @@ function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void
 }
 
 function* janitorScript(self: Entity) {
-  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
+  // Spawn x is `sideSpawnX(±1)` (just outside the wall); walk in
+  // through whichever side door the wave routed us to, stopping at
+  // 30%/70% of the corridor width.
+  const fromLeft = self.x < GAME_W / 2;
+  const targetX = fromLeft ? ENTRY_X_LEFT : ENTRY_X_RIGHT;
+  yield* moveTo(self, targetX, self.y, ENTRY_SPEED);
   if (checkStageOnce(self, 'janitor:wetFloorShown')) {
     self.say('Watch the wet floor!', 110);
   }
   yield 50;
 
-  // Pin the sweep direction once — both passes go the same way, like a real
-  // mop stroke pair, instead of randomly flipping mid-encounter.
-  const leftToRight = self.x < GAME_W / 2;
+  // Sweep away from the wall the janitor came in through, so the two
+  // janitors converge their mop strokes toward the corridor centre.
+  const leftToRight = fromLeft;
 
   yield* sweep(self, leftToRight);
 
@@ -75,16 +87,23 @@ export const janitor = new EntityKind({
   defaultScript: janitorScript,
 });
 
-// Demo wave: two janitors from opposite sides, staggered so a player who
-// focuses fire can drop the first before it sweeps and only eat the
-// second's mop strokes. Spacing kept short — the wave's 8s budget has
-// to cover entry + 2 sweeps + advance + exit per janitor, so the
-// second can't afford the original 3s lead.
+// Demo wave: two janitors stepping out of the same uppermost wall door,
+// one from each side, staggered so a player who focuses fire can drop the
+// first before it sweeps and only eat the second's mop strokes. Spacing
+// kept short — the wave's 8s budget has to cover entry + 2 sweeps +
+// advance + exit per janitor, so the second can't afford the original
+// 3s lead.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'janitor');
+  // Pin the topmost door near JANITOR_DOOR_Y before suspending so both
+  // janitors emerge through the same panel — without this they'd snap to
+  // whichever door happened to be closest, which on a fresh scroll could
+  // be the middle or bottom slot.
+  yield* alignDoor(self, JANITOR_DOOR_Y);
   yield* suspendRunning(self, function* () {
-    self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
+    const y = doorY(self, JANITOR_DOOR_Y);
+    self.spawn(janitor, sideSpawnX(-1), y, 0, 0);
     yield 60;
-    self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
+    self.spawn(janitor, sideSpawnX(1), y, 0, 0);
   });
 }

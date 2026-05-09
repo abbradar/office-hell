@@ -44,7 +44,7 @@ import { oversleeperWave } from './waves/oversleeper';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
 import { vacationPhotosWave } from './waves/vacationPhotos';
-import { wellnessCoachWave } from './waves/wellnessCoach';
+import { COACH_NAME, wellnessCoachWave } from './waves/wellnessCoach';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -136,7 +136,7 @@ export function* stage1Part1(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 // Stage 1, part 2 — retro-02 continues from part 1's mid-boss seam,
-// then switches to metal for Coach Becky as the stage-1 end boss.
+// then switches to metal for the wellness coach as the stage-1 end boss.
 // Four timed waves (more charts, vacation photos, the harder
 // email-pinch pass, meeting interns) before the metal cut and her
 // entrance. Wave block = 11+8+8+11 = 38s plus 3 × 3s gaps = 47s,
@@ -184,17 +184,17 @@ export function* stage1Part2(self: Entity): Generator<ScriptYield, void, void> {
   yield* self.stage.separateWave(wellnessCoachWave(self));
 }
 
-// Stage 2, part 1 — retro-01 takes over for the early stage-2 beats,
-// then switches to retro-02 for Mr. Hodges as the stage-2 mid-boss.
-// `startMusicLoop` (no intro fanfare; it played at game start in
-// stage 1 part 1 and re-firing here would feel like a restart) snaps
-// the previous loop — metal from the stage-1 end-boss fight — back
-// down to retro-01. Run three evening-shift waves (IT admin,
-// sales-and-client, janitors), switch to retro-02 at the music seam,
-// then hand off to Hodges. Untimed for now — timing pass comes after
-// the wave content settles.
+// Stage 2, part 1 — kaedalus-long takes over for the early stage-2
+// beats, then switches to kaedalus-short for Mr. Hodges as the
+// stage-2 mid-boss. `startMusicLoop` (no intro fanfare; the stage-1
+// retro opening played at game start and re-firing an opening here
+// would feel like a restart) snaps the previous loop — metal from
+// the stage-1 end-boss fight — back down to kaedalus-long. Run three
+// evening-shift waves (IT admin, sales-and-client, janitors), switch
+// to kaedalus-short at the music seam, then hand off to Hodges.
+// Untimed for now — timing pass comes after the wave content settles.
 export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'music: retro 01');
+  markWave(self, 'music: kaedalus long');
   yield* waitEnemiesClear(self);
   yield* waitTrackEnded();
   yield* startMusicLoop(KAEDALUS_LONG_KEY);
@@ -205,19 +205,19 @@ export function* stage2Part1(self: Entity): Generator<ScriptYield, void, void> {
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* self.stage.separateWave(janitorsWave(self));
 
-  markWave(self, 'music: retro 02');
+  markWave(self, 'music: kaedalus short');
   yield* waitTrackEnded();
 
   yield* self.stage.separateWave(shrunkOldManWave(self));
 }
 
-// Stage 2, part 2 — retro-02 continues from part 1's mid-boss seam,
-// then switches to metal for The Boss as the final-boss bookend.
-// Three remaining late-day waves (HR trio, oversleeper,
+// Stage 2, part 2 — kaedalus-short continues from part 1's mid-boss
+// seam, then switches to metal for The Boss as the final-boss
+// bookend. Three remaining late-day waves (HR trio, oversleeper,
 // Friday-party) before the metal cut and his entrance. Untimed for
 // now — same as part 1, timing pass is a later concern. Idempotent
-// leading `startMusicLoop(retro-02)` mirrors part 2 of stage 1: no-op
-// in live flow, switch in from menu music in practice.
+// leading `startMusicLoop(kaedalus-short)` mirrors part 2 of stage 1:
+// no-op in live flow, switch in from menu music in practice.
 export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
   yield* waitSeconds(INTER_WAVE_GAP);
@@ -267,7 +267,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-meeting-interns', name: 'Meeting Interns', script: meetingInternsWave },
   {
     id: 'r-wellness-coach',
-    name: 'Stage 1 Boss — Coach Becky',
+    name: `Stage 1 Boss — ${COACH_NAME}`,
     script: wellnessCoachWave,
   },
   { id: 'r-it-admin', name: 'IT Admin', script: itAdminsWave },

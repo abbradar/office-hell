@@ -18,12 +18,14 @@ import { reportBullet } from './reportBullet';
 //   1. Anxious chatter — alternating: a volley of bullet bunches (one
 //      aimed at the player, the rest in random directions) and a ring
 //      bursting somewhere on screen, repeating "Does it bother you?".
-//   2. Breathing — inbound ring "inhale", then an outbound "exhale" of
-//      a circle of evenly-spaced bullet streams that snake sideways
-//      along a parametric sine path. Per-stream amplitude (in pixels)
-//      and frequency are randomised at exhale start; peak-to-peak
-//      swing reaches ~half the screen, so streams cross visibly and
-//      the gaps the player threads keep moving.
+//   2. Breathing — inbound ring "inhale", then an outbound "exhale"
+//      shaped like a sun: a circle of evenly-spaced rays radiating
+//      from Coach, each ray a sine wave standing still in space (the
+//      bullets flow outward along a fixed wavy curve rather than the
+//      whole stream sloshing sideways). Amplitude and frequency are
+//      picked per breath and shared across all rays so the sun keeps
+//      its rotational symmetry; only the curvature varies between
+//      breaths.
 //   3. Personality test — random-direction reports, no homing, weave
 //      the gaps.
 //   4. Vitamins — narrow aimed pill barrages.
@@ -33,6 +35,9 @@ import { reportBullet } from './reportBullet';
 // start (`self.vars.bombsAtStart` against `stage.score.bombsUsed`). 0
 // bombs → "At least you didn't get angry…", 1 → "a single time…", N>1
 // → "N times…".
+
+export const COACH_NAME = 'Coach Karen';
+export const COACH_SPRITE = 'coach1';
 
 const ENTRY_SPEED = 110;
 const ENTRY_X = GAME_W / 2;
@@ -72,26 +77,28 @@ const IN_RINGS = 5;
 const IN_RING_GAP = 38;
 const IN_TO_OUT_GAP = 28;
 
-// Exhale: a circle of bullet streams. Each stream fires one bullet per
-// tick along its base radial; per-bullet scripts ride a parametric
-// sine path — forward at EXHALE_BULLET_SPEED along the base direction,
-// drifting sideways by EXHALE_WIGGLE_AMP_* pixels. Per-stream
-// amplitude / frequency / phase are rerolled each exhale so two
-// adjacent breaths don't look identical.
+// Exhale: a sun of bullet streams. Each stream fires one bullet per
+// tick along a fixed radial; the per-bullet script rides a parametric
+// sine path so the *sequence* of bullets in a stream traces a single
+// sine curve outward from Coach — successive bullets walk the same
+// path, just staggered by launch time. Amplitude and frequency are
+// chosen once per exhale and shared across every ray, so the sun has
+// rotational symmetry; only the curvature varies from breath to breath.
 const EXHALE_STREAMS = 10;
 const EXHALE_TICKS = 20;
 const EXHALE_TICK_GAP = 7;
 const EXHALE_BULLET_SPEED = 160;
-// Lateral amplitude in pixels (peak excursion from the base radial).
-// Upper bound ≈ GAME_H / 4, so peak-to-peak swing covers roughly half
-// the screen height. Adjacent streams cross visibly at this amplitude
-// — that's the point: the gaps move and the player has to weave.
-const EXHALE_WIGGLE_AMP_MIN = 100;
-const EXHALE_WIGGLE_AMP_MAX = 160;
-// Radians per script-tick. Tuned so a typical bullet sees roughly one
-// full wave during its on-screen lifetime (period ~2-3.5s at 60Hz).
-const EXHALE_WIGGLE_FREQ_MIN = 0.03;
-const EXHALE_WIGGLE_FREQ_MAX = 0.05;
+// Lateral amplitude in pixels — peak excursion of each ray's sine
+// curve from its base radial. Kept below the inter-ray spacing at
+// mid-screen (124px between adjacent radials at d=200) so adjacent
+// rays brush but don't dissolve into each other.
+const EXHALE_WIGGLE_AMP_MIN = 40;
+const EXHALE_WIGGLE_AMP_MAX = 70;
+// Radians per script-tick — controls spatial wavelength of the ray
+// (wavelength ≈ 2π · BULLET_SPEED / (freq · SCRIPT_FPS)). Tuned so a
+// ray displays ~1–1.5 visible waves before leaving the play field.
+const EXHALE_WIGGLE_FREQ_MIN = 0.05;
+const EXHALE_WIGGLE_FREQ_MAX = 0.07;
 const PHASE_GAP = 36;
 
 const IN_SAY = 'Slowly\nbreath in...';
@@ -153,31 +160,31 @@ function scatterReports(self: Entity, count: number, speed: number): void {
   }
 }
 
-// Per-bullet wiggle parameters. All bullets in a single exhale stream
-// share one of these so the trail reads as one coherent wiggling line.
+// Per-stream wiggle parameters. Within one exhale, every stream gets
+// the same amp/freq so the rays form a rotationally-symmetric sun;
+// only baseAngle differs.
 type ExhaleStream = {
   baseAngle: number;
   // Lateral amplitude in pixels — peak excursion from the base radial.
   amp: number;
   // Radians per script-tick.
   freq: number;
-  // Initial offset on the global wiggle clock so two streams with the
-  // same amp/freq aren't visually synchronised.
-  phaseOffset: number;
 };
 
-// Build a per-bullet script that walks the stream's wiggle clock from
-// the global tick at which the bullet was launched. Closure-captured
+// Build a per-bullet script that traces a sine curve outward from the
+// launch point. Phase is driven by time-since-launch only, so every
+// bullet in a stream walks the same path — the stream as a whole reads
+// as a stationary wavy ray that lengthens as new bullets are fired,
+// not as a line of bullets sloshing sideways together. Closure-captured
 // rather than vars-driven because the bullet's first body runs
-// synchronously inside `spawn` (before the caller could mutate vars),
-// so the params have to ride in via the script identity itself.
+// synchronously inside `spawn`, before the caller could mutate vars.
 //
 // Trajectory is parametric: forward at EXHALE_BULLET_SPEED along
 // `baseAngle`, plus a sinusoidal sideways drift of amplitude `amp`.
-// We set velocity = base + perp * amp * ω * cos(ωt + φ) every tick;
-// integrating gives lateral position = amp * sin(...) — an exact sine
-// wave whose peak is `amp` pixels regardless of how big amp gets.
-function makeExhaleBulletScript(stream: ExhaleStream, launchTick: number): EntityScript {
+// We set velocity = base + perp * amp * ω * cos(ωt) every tick;
+// integrating gives lateral position = amp * sin(ωt) — an exact sine
+// wave whose peak is `amp` pixels.
+function makeExhaleBulletScript(stream: ExhaleStream): EntityScript {
   return function* (self: Entity) {
     const baseVx = Math.cos(stream.baseAngle) * EXHALE_BULLET_SPEED;
     const baseVy = Math.sin(stream.baseAngle) * EXHALE_BULLET_SPEED;
@@ -188,7 +195,7 @@ function makeExhaleBulletScript(stream: ExhaleStream, launchTick: number): Entit
     const lateralVScale = stream.amp * stream.freq * SCRIPT_FPS;
     let localTick = 0;
     while (self.alive) {
-      const phase = stream.phaseOffset + (launchTick + localTick) * stream.freq;
+      const phase = localTick * stream.freq;
       const lateralV = lateralVScale * Math.cos(phase);
       self.body.setVelocity(baseVx + perpX * lateralV, baseVy + perpY * lateralV);
       localTick++;
@@ -287,31 +294,31 @@ function* breathPhase(self: Entity): Generator<ScriptYield, void, void> {
     }
     yield IN_TO_OUT_GAP;
 
-    // Exhale: build the per-stream wiggle params, then fire one bullet
-    // per stream every EXHALE_TICK_GAP frames for EXHALE_TICKS ticks.
-    // Each bullet's script reads from its stream and rides the same
-    // global wiggle clock, so the trails are coherent snakes rather
-    // than independent jitter.
+    // Exhale: pick one amp/freq for the whole sun, then fire one bullet
+    // per ray every EXHALE_TICK_GAP frames for EXHALE_TICKS ticks. Each
+    // bullet's script walks its ray's sine path from time-of-launch, so
+    // successive bullets in a ray form a stationary wavy curve emanating
+    // from Coach.
     self.say(OUT_SAY, OUT_SAY_FRAMES);
-    const streams: ExhaleStream[] = [];
     const baseRot = Math.random() * Math.PI * 2;
+    const amp = EXHALE_WIGGLE_AMP_MIN + Math.random() * (EXHALE_WIGGLE_AMP_MAX - EXHALE_WIGGLE_AMP_MIN);
+    const freq = EXHALE_WIGGLE_FREQ_MIN + Math.random() * (EXHALE_WIGGLE_FREQ_MAX - EXHALE_WIGGLE_FREQ_MIN);
+    const streams: ExhaleStream[] = [];
     for (let s = 0; s < EXHALE_STREAMS; s++) {
       streams.push({
         baseAngle: baseRot + (s * Math.PI * 2) / EXHALE_STREAMS,
-        amp: EXHALE_WIGGLE_AMP_MIN + Math.random() * (EXHALE_WIGGLE_AMP_MAX - EXHALE_WIGGLE_AMP_MIN),
-        freq: EXHALE_WIGGLE_FREQ_MIN + Math.random() * (EXHALE_WIGGLE_FREQ_MAX - EXHALE_WIGGLE_FREQ_MIN),
-        phaseOffset: Math.random() * Math.PI * 2,
+        amp,
+        freq,
       });
     }
     for (let tick = 0; tick < EXHALE_TICKS; tick++) {
       if (!phaseRunning(self)) return;
-      const launchTick = tick * EXHALE_TICK_GAP;
       shoot();
       for (const stream of streams) {
         const vx = Math.cos(stream.baseAngle) * EXHALE_BULLET_SPEED;
         const vy = Math.sin(stream.baseAngle) * EXHALE_BULLET_SPEED;
         self.spawn(bullet, self.x, self.y, vx, vy, {
-          script: makeExhaleBulletScript(stream, launchTick),
+          script: makeExhaleBulletScript(stream),
         });
       }
       yield EXHALE_TICK_GAP;
@@ -385,7 +392,7 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    right: { sprite: 'coach1', frame: 1, name: 'Coach Becky' },
+    right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
     lines: [{ speaker: 'right', text: line }],
   });
 
@@ -429,7 +436,7 @@ function* coachScript(self: Entity) {
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    right: { sprite: 'coach1', frame: 1, name: 'Coach Becky' },
+    right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
     lines: [
       { speaker: 'right', text: "Hi-i! I'm here for your URGENT wellness improvement session!" },
       { speaker: 'left', text: "I'm fine, honestly. I just want to leave." },
@@ -440,7 +447,7 @@ function* coachScript(self: Entity) {
 
   // Claim the HUD header now that the fight is starting; release it on
   // death so the corridor doesn't keep her name pinned afterwards.
-  self.stage.bossName = 'Coach Becky';
+  self.stage.bossName = COACH_NAME;
   self.onDeath(() => {
     self.stage.bossName = null;
   });
@@ -478,7 +485,7 @@ function* coachScript(self: Entity) {
 }
 
 export const wellnessCoach = new WellnessCoachKind({
-  sprite: 'coach1',
+  sprite: COACH_SPRITE,
   hitboxRadius: 22,
   hp: PHASE_HP,
   damageClass: ['player'],
