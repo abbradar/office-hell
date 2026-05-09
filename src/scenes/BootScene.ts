@@ -8,7 +8,7 @@ import { computeCanvasH } from '../canvasSize';
 import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
-import { generateTextures, preloadFloorPattern, preloadOfficeMap, recolorFloorPattern } from '../content/textures';
+import { generateTextures, preloadOfficeMap, preloadPlayerBullet } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
@@ -54,8 +54,8 @@ export class BootScene extends Phaser.Scene {
     // existing PROGRESS handler refills the bar for this batch.
     preloadCharacterSheets(this);
     preloadElevator(this);
-    preloadFloorPattern(this);
     preloadOfficeMap(this);
+    preloadPlayerBullet(this);
     preloadAudio(this);
     preloadInputIcons(this);
     preloadMuteIcons(this);
@@ -90,10 +90,6 @@ export class BootScene extends Phaser.Scene {
           // Anims tie into spritesheets that just landed — register now.
           registerAllCharacterAnims(this);
           registerElevatorAnims(this);
-          // Floor pattern needs the source PNG in the texture cache before
-          // we can recolor it — must run inside the COMPLETE handler, not
-          // alongside the synchronous bullet generators.
-          recolorFloorPattern(this);
           resolve();
         } catch (err) {
           reject(err);

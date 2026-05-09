@@ -16,16 +16,6 @@ export const COLOR_WALL_STR = '#3c4551';
 export const COLOR_WALL_BORDER = 0x6262a0;
 export const COLOR_WALL_BORDER_STR = '#6262a0';
 
-// Floor "cell" (the darker shade behind the diamonds in the recolored
-// pattern PNG) and the diamond shape itself (a slightly lighter shade
-// on top of the cells). Two close shades — pattern is subtle, not loud.
-export const COLOR_FLOOR_BG = 0x1a1a28;
-export const COLOR_FLOOR_BG_STR = '#1a1a28';
-export const COLOR_FLOOR_PATTERN = 0x303048;
-export const COLOR_FLOOR_PATTERN_STR = '#303048';
-export const COLOR_FLOOR_BORDER = 0x303048;
-export const COLOR_FLOOR_BORDER_STR = '#303048';
-
 // Cards, modals, dialog box, header bar — slightly lighter than walls so
 // stacked surfaces visually separate.
 export const COLOR_PANEL = 0x1c1c2e;

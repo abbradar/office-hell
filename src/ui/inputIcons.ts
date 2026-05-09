@@ -18,8 +18,8 @@
 // no consumer code needs to change.
 //
 // Asset source: Kenney "Input Prompts 1.4" (CC0). SVGs live under
-// src/assets/icons/keyboard-vector/; raster PNGs (legacy) under
-// src/assets/icons/keyboard/. See LICENSE-kenney.txt one level up.
+// src/assets/icons/keyboard-vector/ and src/assets/icons/touch-vector/.
+// See LICENSE-kenney.txt one level up.
 //
 // Icon size: every prompt in the game uses 22px keys (main menu, character
 // select, dialogue hint, tutorial bubble). Mixing sizes broke visual
@@ -43,6 +43,10 @@ import keyboardSpace from '../assets/icons/keyboard-vector/keyboard_space_outlin
 import keyboardT from '../assets/icons/keyboard-vector/keyboard_t_outline.svg';
 import keyboardX from '../assets/icons/keyboard-vector/keyboard_x_outline.svg';
 import keyboardZ from '../assets/icons/keyboard-vector/keyboard_z_outline.svg';
+// Touch glyphs — single-tap for the common "do something" actions, two-finger
+// gesture as the visually distinct "back / cancel" cue.
+import touchTap from '../assets/icons/touch-vector/touch_tap.svg';
+import touchTwo from '../assets/icons/touch-vector/touch_two.svg';
 import { isTouchDevice } from '../input/device';
 
 // Game-level input actions. Keep this list aligned with what's actually
@@ -105,10 +109,19 @@ export const KEYBOARD_GLYPHS = {
   space: kb('space', keyboardSpace),
 };
 
-// Touch icons land later. Empty for now — `getInputIcons()` returns this
-// on touch devices so consumers see `undefined` lookups and can either
-// fall back to text prompts or skip rendering.
-export const TOUCH_ICONS: Partial<Record<InputAction, InputIconRef>> = {};
+// Touch glyph mappings. Anything that's a "press button" action on
+// keyboard becomes a tap on touch; `back` uses a two-finger glyph so it
+// reads as visually distinct from the everyday tap. Movement and menu
+// navigation aren't mapped — virtual move pads handle the former and
+// menu items are direct-tap interactives, so a touch glyph next to those
+// prompts would be redundant.
+const tch = (name: string, url: string): InputIcon => ({ name, url });
+export const TOUCH_ICONS: Partial<Record<InputAction, InputIconRef>> = {
+  bomb: tch('tap', touchTap),
+  confirm: tch('tap', touchTap),
+  advanceDialogue: tch('tap', touchTap),
+  back: tch('two', touchTwo),
+};
 
 export function getInputIcons(): Partial<Record<InputAction, InputIconRef>> {
   return isTouchDevice ? TOUCH_ICONS : KEYBOARD_ICONS;

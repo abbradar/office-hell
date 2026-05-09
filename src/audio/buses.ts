@@ -36,7 +36,7 @@ export function initBuses(soundManager: Phaser.Sound.BaseSoundManager): void {
   compressor.release.value = 0.3;
 
   sfxBus = ctx.createGain();
-  sfxBus.gain.value = 1.0;
+  sfxBus.gain.value = 0.3;
 
   musicBus = ctx.createGain();
   musicBus.gain.value = 0.8;

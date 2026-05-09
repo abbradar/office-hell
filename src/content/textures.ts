@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
-import floorPatternUrl from '../assets/sprites/floor_pattern.png';
 import officeFloorUrl from '../assets/sprites/office hell floor.png';
 import officeWallUrl from '../assets/sprites/office_hell_wall.png';
+import playerBulletUrl from '../assets/sprites/player_bullet.png';
 import { BULLET_RADIUS } from '../config';
 import {
   COLOR_BULLET_DEFAULT,
@@ -17,15 +17,11 @@ import {
   COLOR_DRINK_LIQUID,
   COLOR_EMAIL_BORDER,
   COLOR_EMAIL_PAPER,
-  COLOR_FLOOR_BG,
-  COLOR_FLOOR_PATTERN,
   COLOR_MISSED_CALL_INNER,
   COLOR_MISSED_CALL_OUTER,
   COLOR_PILL_BORDER,
   COLOR_PILL_LEFT,
   COLOR_PILL_RIGHT,
-  COLOR_PLAYER_BULLET,
-  COLOR_PLAYER_BULLET_HIGHLIGHT,
   COLOR_QUESTION_STAMP,
   COLOR_QUESTION_TILE,
   COLOR_REPORT_BORDER,
@@ -38,12 +34,6 @@ import {
 // function has run — see `generateTextures` for the bulk-register helper
 // the boot scene uses.
 
-// Texture keys referenced by GameScene. The "src" is the raw monochrome
-// pattern PNG; the recolored copy under FLOOR_PATTERN_KEY is what
-// gameplay tiles.
-export const FLOOR_PATTERN_SOURCE_KEY = 'floor_pattern_src';
-export const FLOOR_PATTERN_KEY = 'corridor_floor';
-
 // Pre-rendered office-stage map sprites:
 //  - floor: 416×672 full-playfield tile, used by a TileSprite that scrolls
 //    the texture vertically as the corridor advances.
@@ -54,13 +44,16 @@ export const FLOOR_PATTERN_KEY = 'corridor_floor';
 export const OFFICE_FLOOR_KEY = 'office_floor';
 export const OFFICE_WALL_KEY = 'office_wall';
 
-export function preloadFloorPattern(scene: Phaser.Scene): void {
-  scene.load.image(FLOOR_PATTERN_SOURCE_KEY, floorPatternUrl);
-}
-
 export function preloadOfficeMap(scene: Phaser.Scene): void {
   scene.load.image(OFFICE_FLOOR_KEY, officeFloorUrl);
   scene.load.image(OFFICE_WALL_KEY, officeWallUrl);
+}
+
+// Player-shot bullet — Kenney pixelshmup green pill (tile_0000_green),
+// trimmed to its content bbox (6×16) and pre-baked at 50% alpha so it
+// reads as a soft tracer over the floor without per-spawn setAlpha calls.
+export function preloadPlayerBullet(scene: Phaser.Scene): void {
+  scene.load.image('playerBullet', playerBulletUrl);
 }
 
 export function generateBulletTexture(scene: Phaser.Scene): void {
@@ -70,16 +63,6 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
   g.fillStyle(COLOR_BULLET_DEFAULT, 1);
   g.fillCircle(r, r, r);
   g.generateTexture('bullet', d, d);
-  g.destroy();
-}
-
-export function generatePlayerBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  g.fillStyle(COLOR_PLAYER_BULLET, 1);
-  g.fillRect(0, 0, 6, 14);
-  g.fillStyle(COLOR_PLAYER_BULLET_HIGHLIGHT, 1);
-  g.fillRect(1, 1, 4, 5);
-  g.generateTexture('playerBullet', 6, 14);
   g.destroy();
 }
 
@@ -251,51 +234,6 @@ export function generateDrinkBulletTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-// Recolor the loaded monochrome floor pattern PNG into a warm two-grey
-// version that matches the rest of the palette. Walks every pixel,
-// lerps between COLOR_FLOOR_BG (where the source was black) and
-// COLOR_FLOOR_PATTERN (where the source was white) — keeping any AA
-// edges as smooth gradients between the two colors instead of
-// hard-thresholding to one or the other.
-//
-// Must run AFTER the source PNG has loaded — call this from BootScene's
-// loader COMPLETE handler, not from generateTextures (which runs as
-// soon as it can, possibly before the asset is in the cache).
-export function recolorFloorPattern(scene: Phaser.Scene): void {
-  const src = scene.textures.get(FLOOR_PATTERN_SOURCE_KEY).getSourceImage();
-  if (!(src instanceof HTMLImageElement) && !(src instanceof HTMLCanvasElement)) {
-    throw new Error('floor pattern source not loaded — preloadFloorPattern must run first');
-  }
-  const w = src.width;
-  const h = src.height;
-  // CanvasTexture gives us a writable canvas + auto-registers as a Phaser
-  // texture under FLOOR_PATTERN_KEY, ready to be used by TileSprite.
-  const ct = scene.textures.createCanvas(FLOOR_PATTERN_KEY, w, h);
-  if (!ct) throw new Error('failed to create CanvasTexture for floor pattern');
-  const ctx = ct.getContext();
-  ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, w, h);
-  const data = img.data;
-
-  const bgR = (COLOR_FLOOR_BG >> 16) & 0xff;
-  const bgG = (COLOR_FLOOR_BG >> 8) & 0xff;
-  const bgB = COLOR_FLOOR_BG & 0xff;
-  const ptR = (COLOR_FLOOR_PATTERN >> 16) & 0xff;
-  const ptG = (COLOR_FLOOR_PATTERN >> 8) & 0xff;
-  const ptB = COLOR_FLOOR_PATTERN & 0xff;
-
-  for (let i = 0; i < data.length; i += 4) {
-    // Source is monochrome — R == G == B. Read R as the luma.
-    const t = (data[i] ?? 0) / 255;
-    data[i] = Math.round(bgR + (ptR - bgR) * t);
-    data[i + 1] = Math.round(bgG + (ptG - bgG) * t);
-    data[i + 2] = Math.round(bgB + (ptB - bgB) * t);
-    data[i + 3] = 255; // force opaque (PNG was already opaque, but be defensive)
-  }
-  ctx.putImageData(img, 0, 0);
-  ct.refresh();
-}
-
 // Bulk-register every synchronous runtime texture (bullets only). Boot scene
 // calls this from a microtask after queueing the network loads, so canvas
 // draws don't block the kick-off of XHRs and dynamic-imports.
@@ -305,7 +243,6 @@ export function recolorFloorPattern(scene: Phaser.Scene): void {
 // COMPLETE callback instead.
 export function generateTextures(scene: Phaser.Scene): void {
   generateBulletTexture(scene);
-  generatePlayerBulletTexture(scene);
   generateReportBulletTexture(scene);
   generateMissedCallTexture(scene);
   generateEmailBulletTexture(scene);
