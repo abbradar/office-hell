@@ -201,7 +201,50 @@ A rotating variant: replace the `aimed` call with `ring(t, 1, shot, 160, theta)`
 inside an inner `theta += Math.PI / 18; yield 6;` loop to sweep a single bullet
 in a circle. Add multiple bullets per ring for a fan that orbits.
 
-## 9. Mixed shapes
+## 9. Wall of 5 enemies
+
+Five enemies enter as a horizontal row, glide left-to-right while each
+fires a ring, then accelerate off the right edge after 5 seconds.
+Same per-entity `{script}` trick as the turret example, but the
+script's first phase is timed and the second swaps velocity for an
+exit dash.
+
+```js
+const enemy = bulletStyle({ color: 0xcc4466, radius: 10, shape: 'square' });
+const shot = bulletStyle({ color: 0xff9944, radius: 3 });
+
+// Five-wide row entering from the left edge. Same vx on every enemy
+// keeps them aligned as they drift across.
+const Y = 140;
+const SPACING = 56;
+const DRIFT_VX = 50;
+const EXIT_VX = 260;
+
+for (let i = 0; i < 5; i++) {
+  self.spawn(enemy, -40 + i * SPACING, Y, DRIFT_VX, 0, {
+    script: function* (e) {
+      // Phase 1 — fire a ring every 0.5 s for 5 s (10 rings).
+      for (let n = 0; n < 10 && e.alive; n++) {
+        ring(e, 8, shot, 100);
+        yield* waitSeconds(0.5);
+      }
+      // Phase 2 — dash off-screen right. The entity is auto-released
+      // by the cull margin once it crosses GAME_W.
+      e.setVelocity(EXIT_VX, 0);
+    },
+  });
+}
+
+// Boss idles while the wall does its thing.
+while (self.alive) yield 60;
+```
+
+If you want the wall to enter as a single beat (all 5 spawning at the
+same moment but visually staggered), keep the loop above. For a
+**rolling** entry where each enemy joins the wall a beat later, add
+`yield* waitSeconds(0.15);` inside the loop after each `self.spawn`.
+
+## 10. Mixed shapes
 
 Mix shapes and sizes for visual hierarchy — small fast bullets for
 fill, large slow ones for read-the-room moments.
