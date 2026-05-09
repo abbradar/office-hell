@@ -168,9 +168,28 @@ export class Player extends Entity {
     if (sheet === null) return;
     if (this.scene.physics.world.isPaused) return;
     const vx = this.body.velocity.x;
-    const dir: Direction = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
+    const vy = this.body.velocity.y;
+    let dir: Direction;
+    let action: Action;
+    if (this.walkAnim) {
+      // Cutscene mode — walking animation, vertical movement is allowed
+      // and feeds direction. Falls back to the last `facing` when
+      // stationary so a paused frame mid-cutscene doesn't snap to 'up'.
+      const movingX = Math.abs(vx) > 0.5;
+      const movingY = Math.abs(vy) > 0.5;
+      if (movingX) dir = vx > 0 ? 'right' : 'left';
+      else if (movingY) dir = vy > 0 ? 'down' : 'up';
+      else dir = this.facing;
+      action = movingX || movingY ? 'walk' : 'idle';
+    } else {
+      // Normal in-stage mode. Direction comes from horizontal input
+      // only — the player never moves vertically here, so vy isn't
+      // checked. Defaulting to 'up' keeps the MC facing forward when
+      // standing still.
+      dir = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
+      action = this.stage.running ? 'run' : vx !== 0 ? 'run' : 'idle';
+    }
     this.facing = dir;
-    const action: Action = this.stage.running ? 'run' : vx !== 0 ? 'run' : 'idle';
     const key = characterAnimKey(sheet, action, dir);
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }

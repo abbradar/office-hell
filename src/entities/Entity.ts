@@ -45,6 +45,11 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // running enemy that pauses keeps facing the way it was going instead of
   // snapping back to a default. Reset on spawn to match the initial velocity.
   facing: Direction = 'down';
+  // Cutscene flag: when true, updateAnim picks the 'walk' action while
+  // moving instead of 'run'. Used by the inter-stage water-cooler scene
+  // and any other ambient walking moment. Reset on spawn so a pooled
+  // entity reused as a normal enemy doesn't inherit the flag.
+  walkAnim = false;
   // Per-entity scratchpad for kind-specific flags (e.g. boss phase markers).
   // Reset to null on spawn so pooled entities don't inherit state from a
   // previous life. Kinds should write to `vars ??= {}` when they need a slot
@@ -153,7 +158,8 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     const v = this.body.velocity;
     const moving = Math.hypot(v.x, v.y) > ANIM_MOVE_THRESHOLD;
     if (moving) this.facing = directionFromVelocity(v.x, v.y);
-    const key = characterAnimKey(sheet, moving ? 'run' : 'idle', this.facing);
+    const action = moving ? (this.walkAnim ? 'walk' : 'run') : 'idle';
+    const key = characterAnimKey(sheet, action, this.facing);
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 

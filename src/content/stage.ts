@@ -35,6 +35,7 @@ import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
 import { internsWave } from './waves/intern';
+import { interStageWaterCooler } from './waves/interStage';
 import { introMonologue } from './waves/intro';
 import { itAdminsWave } from './waves/itAdmin';
 import { janitorsWave } from './waves/janitor';
@@ -229,6 +230,7 @@ export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: introMonologue },
   { id: 's-stage-1-part-1', name: 'Stage 1 — Part 1', script: stage1Part1 },
   { id: 's-stage-1-part-2', name: 'Stage 1 — Part 2', script: stage1Part2 },
+  { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: interStageWaterCooler },
   { id: 's-stage-2-part-1', name: 'Stage 2 — Part 1', script: stage2Part1 },
   { id: 's-stage-2-part-2', name: 'Stage 2 — Part 2', script: stage2Part2 },
   { id: 'r-interns', name: 'Interns', script: internsWave },

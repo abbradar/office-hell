@@ -273,6 +273,7 @@ export class StageManager {
     e.hasEnteredScreen = false;
     e.onDeathQueue = null;
     e.vars = null;
+    e.walkAnim = false;
 
     if (kind.sprite !== null) {
       e.setTexture(kind.sprite);
