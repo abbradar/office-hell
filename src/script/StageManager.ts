@@ -278,9 +278,12 @@ export class StageManager {
   spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts: SpawnOpts = {}): Entity {
     const e = this.free.pop() ?? this.makeEntity();
 
-    console.log(
-      `[spawn] kind=${kind.sprite} target=(${x.toFixed(1)},${y.toFixed(1)}) reusing prevKind=${e.kind.sprite} prevPos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) visible=${e.visible} alive=${e.alive}`,
-    );
+    const prevOnScreen = e.x >= 0 && e.x <= GAME_W && e.y >= 0 && e.y <= GAME_H;
+    if (prevOnScreen || e.visible || e.alive) {
+      console.warn(
+        `[spawn-suspicious] kind=${kind.sprite} target=(${x.toFixed(1)},${y.toFixed(1)}) prevKind=${e.kind.sprite} prevPos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) visible=${e.visible} alive=${e.alive} onScreen=${prevOnScreen}`,
+      );
+    }
 
     e.kind = kind;
     e.hp = opts.hp ?? kind.hp;

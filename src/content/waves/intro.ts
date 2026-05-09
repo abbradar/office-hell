@@ -126,6 +126,7 @@ function* bombSkipPoll(self: Entity): Generator<ScriptYield, void, void> {
   const scene = self.scene;
   const kb = scene.input.keyboard;
   if (!kb) return;
+  const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   let pressed = false;
   const onX = (): void => {
     pressed = true;
@@ -137,6 +138,11 @@ function* bombSkipPoll(self: Entity): Generator<ScriptYield, void, void> {
     }
   } finally {
     kb.off('keydown-X', onX);
+    // The keydown event above sees the press but doesn't clear Phaser's
+    // _justDown flag. Without this drain, Player.controlUpdate would read
+    // it on the next frame (after controls + bombs unlock) and fire a
+    // bomb on the same X press the player used to skip the intro.
+    Phaser.Input.Keyboard.JustDown(bombKey);
   }
 }
 
