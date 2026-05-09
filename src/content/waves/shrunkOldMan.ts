@@ -1,6 +1,15 @@
+import { KAEDALUS_SHORT_KEY } from '../../audio/keys';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable } from '../../script/boss';
+import {
+  BossKind,
+  becomeHittable,
+  bossShudder,
+  FLICKER_INTERVAL_FRAMES,
+  FLICKER_TOGGLES,
+  POST_FLICKER_HOLD_FRAMES,
+  pauseMusicForDefeat,
+} from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
 import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
@@ -42,6 +51,46 @@ const PHASE_C_REPEATS = 5;
 const PHASE_C_GAP = 36;
 const PHASE_C_COUNT = 9;
 const PHASE_C_SPEED = 115;
+
+// Beat between Hodges's bubble going up and the shudder starting, so
+// the line has time to read before he begins juddering.
+const DEFEAT_PRE_SHUDDER_FRAMES = 24;
+const DEFEAT_BUBBLE_FRAMES =
+  DEFEAT_PRE_SHUDDER_FRAMES + FLICKER_TOGGLES * FLICKER_INTERVAL_FRAMES + POST_FLICKER_HOLD_FRAMES + 14;
+
+// Hodges's lethal-hit script. Stage-2 part 1's KAEDALUS_LONG halts for
+// the dramatic beat; the bubble goes up, then the standard shudder
+// runs and KAEDALUS_SHORT — the next sub-stage's loop — is restarted
+// from t=0 just before die(), so part 2 can be timed against a known
+// music clock. The next sub-stage's idempotent `startMusicLoop`
+// observes KAEDALUS_SHORT already running and is a no-op.
+function* shrunkOldManDeath(self: Entity): Generator<ScriptYield, void, void> {
+  const m = pauseMusicForDefeat(KAEDALUS_SHORT_KEY);
+  self.body.setVelocity(0, 0);
+  self.body.enable = false;
+  self.say('Thirty-one years… all gone…', DEFEAT_BUBBLE_FRAMES);
+  yield DEFEAT_PRE_SHUDDER_FRAMES;
+  yield* bossShudder(self);
+  m.restart();
+  self.die();
+}
+
+class ShrunkOldManKind extends BossKind {
+  override takeDamage(self: Entity, amount: number): void {
+    if (self.hp === null) return;
+    self.hp -= amount;
+    if (self.hp <= 0) {
+      // Lock damage off for the death window — same reason as
+      // BossKind's takeDamage: a stray bullet a frame later would
+      // otherwise re-trigger runScript and double-fire the boss-death
+      // sfx.
+      self.setDamagedByClasses([]);
+      self.stage.runScript(self, shrunkOldManDeath);
+      return;
+    }
+    self.flashDamage();
+  }
+}
 
 function* shrunkOldManScript(self: Entity) {
   // Slow shuffle to anchor. BossKind makes him unhittable on spawn so
@@ -108,7 +157,7 @@ function* shrunkOldManScript(self: Entity) {
   }
 }
 
-export const shrunkOldMan = new BossKind({
+export const shrunkOldMan = new ShrunkOldManKind({
   sprite: 'geezer',
   hitboxRadius: 22,
   hp: 72,

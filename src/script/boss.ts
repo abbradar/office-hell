@@ -11,22 +11,33 @@
 // script is just another entity script — `stage.update` ticks it like
 // any other). Bullets in flight, the player, and other entities all
 // keep moving normally.
+//
+// Mid-bosses that need a richer defeat (final words, music halt for a
+// dramatic beat, etc.) compose `bossShudder` + `pauseMusicForDefeat`
+// inside their own kind-level `takeDamage` override; BossKind itself
+// stays minimal so end-bosses with simple "flicker and disappear"
+// behaviour don't pay for the extra config.
 
+import { getMusicTime, playMusicLoop, stopMusicLoop } from '../audio/music/loop';
 import { playBossDeath } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
 import { type DamageClass, EntityKind, type EntityKindOpts, type ScriptYield } from './types';
 
-const FLICKER_TOGGLES = 10;
-const FLICKER_INTERVAL_FRAMES = 5;
-const POST_FLICKER_HOLD_FRAMES = 6;
+// Exported so per-boss death scripts can match the timing of the
+// standard shudder when sizing pre-shudder beats / bubble lifetimes.
+export const FLICKER_TOGGLES = 10;
+export const FLICKER_INTERVAL_FRAMES = 5;
+export const POST_FLICKER_HOLD_FRAMES = 6;
 
-function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
+// The standard boss-death visual: stop motion, disable the body, play
+// the death sfx, flicker out, hold. Doesn't call die() — callers do
+// that after any post-shudder work (e.g. restarting music for the next
+// sub-stage). Use as the visual building block in a per-boss death
+// script that prefaces the shudder with a bubble or a real dialogue.
+// Idempotent w.r.t. body.setVelocity / body.enable, so it composes
+// cleanly with pre-shudder beats that already locked the body down.
+export function* bossShudder(self: Entity): Generator<ScriptYield, void, void> {
   playBossDeath();
-  // Stop motion + take the body out of the collision matrix so the boss
-  // can't pour damage into the player during the still-visible portion
-  // of the flicker. die() will set body.enable = false again at the end
-  // (idempotent) but doing it up front matters because the animation
-  // runs across many frames.
   self.body.setVelocity(0, 0);
   self.body.enable = false;
   for (let i = 0; i < FLICKER_TOGGLES; i++) {
@@ -35,9 +46,32 @@ function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
   }
   self.setVisible(false);
   yield POST_FLICKER_HOLD_FRAMES;
-  // die() flips alive=false and fires onDeath callbacks — that's what
-  // wakes any `{ until: boss }` parked wave script. Doing it last is the
-  // whole point of the helper.
+}
+
+// Mid-boss helper: stop the active music for a defeat beat, hand back
+// a closure that re-starts the loop at `restartKey` from t=0. The
+// caller decides exactly when to call `restart()` — typically right
+// before `self.die()` so the next sub-stage observes a music clock
+// that's already ticking from zero. When no track is playing
+// (practice-menu runs that didn't start a stage track), the snapshot
+// makes both ops no-ops, so the same death script behaves correctly
+// whether it runs from the live stage or a standalone wave drill.
+export function pauseMusicForDefeat(restartKey: string): { restart: () => void } {
+  const wasPlaying = getMusicTime() !== null;
+  if (wasPlaying) stopMusicLoop();
+  return {
+    restart: () => {
+      if (wasPlaying) playMusicLoop(restartKey);
+    },
+  };
+}
+
+// Default death script for end-bosses — bare shudder + die. Mid-bosses
+// supply their own death script (composed from `bossShudder` plus
+// whatever narrative beat the boss has) and swap it in via `runScript`
+// from a `takeDamage` override.
+function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
+  yield* bossShudder(self);
   self.die();
 }
 
