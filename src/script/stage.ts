@@ -177,14 +177,30 @@ export function* suspendRunning(
 
 // Yield until the current track's clock reaches `t` (seconds, from the
 // track's start). Blocks until music is ticking — a wait following a
-// music switch naturally pauses through the load gap. The actual wait
-// rides on `untilMusicTime`, which schedules a single `delayedCall`
-// against the music clock and keeps ticking through dialogue freezes
-// (music plays through them too), so a freeze parked over the seam
-// doesn't shift the wakeup.
+// music switch naturally pauses through the load gap. Decomposes into
+// `realSeconds` waits: compute the gap to target music time, sleep
+// that many wall-clock seconds, then re-check the music clock on
+// wakeup. Most calls fire once; the loop only re-runs when the music
+// clock drifted behind (e.g. ESC pause moved the track start forward
+// mid-wait). Returns immediately if the track stops mid-wait.
 export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, void> {
   yield* awaitMusicTicking();
-  yield { untilMusicTime: t, yieldReason: `audio time ${t}s reached` };
+  yield* waitForMusicTimeReach(t, `audio time ${t}s reached`);
+}
+
+// Inner loop shared by `waitAudioTimeAtLeast` and the loop-boundary
+// path in `waitTrackEnded`. The `reason` is stamped on every
+// `realSeconds` yield so the HUD shows the caller's intent (e.g.
+// "audio time 8s reached" vs. "loop ended") rather than a generic
+// wall-clock label.
+function* waitForMusicTimeReach(t: number, reason: string): Generator<ScriptYield, void, void> {
+  while (true) {
+    const m = getMusicTime();
+    if (m === null) return;
+    const gap = t - m.time;
+    if (gap <= 0) return;
+    yield { realSeconds: gap, yieldReason: reason };
+  }
 }
 
 // Yield until the active one-shot track's natural completion. Loops
@@ -230,7 +246,7 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
     const iterations = Math.floor(elapsedInLoop / info.loopDuration) + 1;
     nextBoundary = info.introDuration + iterations * info.loopDuration;
   }
-  yield { untilMusicTime: nextBoundary, yieldReason: 'loop ended' };
+  yield* waitForMusicTimeReach(nextBoundary, 'loop ended');
 }
 
 // --- world-state waits ----------------------------------------------------
