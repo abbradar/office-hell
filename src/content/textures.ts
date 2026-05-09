@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
+import floorPatternUrl from '../assets/sprites/floor_pattern.png';
 import officeFloorUrl from '../assets/sprites/office hell floor.png';
 import officeWallUrl from '../assets/sprites/office_hell_wall.png';
-import floorPatternUrl from '../assets/sprites/floor_pattern.png';
 import { BULLET_RADIUS } from '../config';
 import {
   COLOR_BULLET_DEFAULT,

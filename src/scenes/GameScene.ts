@@ -150,19 +150,14 @@ export class GameScene extends Phaser.Scene {
     // `tilePosition` with half the overhang on each axis — that way the
     // diamond pattern sits centred in the visible area instead of being
     // chopped off the left edge.
-    this.bg = this.add
-      .tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, OFFICE_FLOOR_KEY)
-      .setDepth(-10);
+    this.bg = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, OFFICE_FLOOR_KEY).setDepth(-10);
     this.bg.tilePositionX = 8;
     this.bg.tilePositionY = 6;
 
     // Walls: an 18×1 wall-column slice tiled vertically down each side.
     // TileSprite repeats the source texture along its size; the slice
     // is 1px tall so the wall is built up row-by-row across GAME_H.
-    this.add
-      .tileSprite(0, 0, WALL_W, GAME_H, OFFICE_WALL_KEY)
-      .setOrigin(0, 0)
-      .setDepth(-9);
+    this.add.tileSprite(0, 0, WALL_W, GAME_H, OFFICE_WALL_KEY).setOrigin(0, 0).setDepth(-9);
     this.add
       .tileSprite(GAME_W - WALL_W, 0, WALL_W, GAME_H, OFFICE_WALL_KEY)
       .setOrigin(0, 0)
