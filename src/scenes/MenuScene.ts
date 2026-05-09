@@ -75,7 +75,8 @@ export class MenuScene extends Phaser.Scene {
     });
     setLargeHit(practiceText, GAME_W * 0.6, 80);
 
-    const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.72, '▷ CREDITS', {
+    const creditsTemplate = isTouchDevice ? '▷ CREDITS' : '▷ CREDITS  <credits>';
+    const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.72, creditsTemplate, {
       ...FONT_DIALOGUE_LG,
       color: COLOR_TEXT_PRIMARY_STR,
     });

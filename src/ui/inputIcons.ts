@@ -35,6 +35,7 @@ import keyboardArrowUp from '../assets/icons/keyboard-vector/keyboard_arrow_up_o
 // `arrows_all` only ships in filled form (no outline variant in the pack).
 import keyboardArrowsAll from '../assets/icons/keyboard-vector/keyboard_arrows_all.svg';
 import keyboardArrowsHorizontal from '../assets/icons/keyboard-vector/keyboard_arrows_horizontal_outline.svg';
+import keyboardC from '../assets/icons/keyboard-vector/keyboard_c_outline.svg';
 import keyboardEnter from '../assets/icons/keyboard-vector/keyboard_enter_outline.svg';
 // `back` is bound to Escape — the kenney pack ships no SVG variant for
 // it, so this is a hand-authored matching keycap with an "ESC" label.
@@ -63,6 +64,7 @@ export type InputAction =
   | 'confirm' // Z / Enter
   | 'back' // Escape
   | 'practice' // T (main-menu shortcut)
+  | 'credits' // C (main-menu shortcut)
   | 'advanceDialogue'; // Z / Space
 
 export type InputIcon = {
@@ -96,6 +98,7 @@ export const KEYBOARD_ICONS: Record<InputAction, InputIconRef> = {
   confirm: kb('z', keyboardZ),
   back: kb('escape', keyboardEscape),
   practice: kb('t', keyboardT),
+  credits: kb('c', keyboardC),
   advanceDialogue: kb('z', keyboardZ),
 };
 
