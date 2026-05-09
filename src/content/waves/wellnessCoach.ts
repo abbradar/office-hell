@@ -1,9 +1,9 @@
 import { STAGE1_METAL_LOOP_KEY, STAGE1_METAL_OPENING_KEY } from '../../audio/keys';
 import { shoot } from '../../audio/sfx/events';
-import { GAME_H, GAME_W } from '../../config';
+import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
-import { aimed, cluster, moveTo } from '../../script/patterns';
+import { aimed, moveTo } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
@@ -15,13 +15,15 @@ import { reportBullet } from './reportBullet';
 // phase's HP pool is depleted, then a short flash-and-clear transition
 // flips her into the next attack:
 //
-//   1. Anxious chatter — targeted bunches at the player + random rings
+//   1. Anxious chatter — alternating: a volley of bullet bunches (one
+//      aimed at the player, the rest in random directions) and a ring
 //      bursting somewhere on screen, repeating "Does it bother you?".
 //   2. Breathing — inbound ring "inhale", then an outbound "exhale" of
-//      a circle of evenly-spaced bullet streams whose headings wiggle
-//      sinusoidally. Per-stream wiggle parameters are randomised at
-//      exhale start; the player navigates the gaps between the
-//      snake-like trails.
+//      a circle of evenly-spaced bullet streams that snake sideways
+//      along a parametric sine path. Per-stream amplitude (in pixels)
+//      and frequency are randomised at exhale start; peak-to-peak
+//      swing reaches ~half the screen, so streams cross visibly and
+//      the gaps the player threads keep moving.
 //   3. Personality test — random-direction reports, no homing, weave
 //      the gaps.
 //   4. Vitamins — narrow aimed pill barrages.
@@ -43,6 +45,10 @@ const PHASE_HP = 100;
 const ANXIOUS_BUNCH_COUNT = 6;
 const ANXIOUS_BUNCH_SPEED = 200;
 const ANXIOUS_BUNCH_SPREAD_PX = 18;
+// Random-direction bunches fired alongside the player-aimed one on
+// each cluster tick. The aimed bunch keeps pressure honest; the rest
+// spray the field so the boss reads as flailing/anxious.
+const ANXIOUS_RANDOM_CLUSTERS = 3;
 const ANXIOUS_RING_COUNT = 12;
 const ANXIOUS_RING_SPEED = 95;
 const ANXIOUS_GAP = 28;
@@ -67,22 +73,25 @@ const IN_RING_GAP = 38;
 const IN_TO_OUT_GAP = 28;
 
 // Exhale: a circle of bullet streams. Each stream fires one bullet per
-// tick along its base radial; per-bullet scripts wiggle the heading
-// sinusoidally so each stream traces a snake-like trail outward instead
-// of a clean ray. Per-stream amplitude / frequency / phase are rerolled
-// each exhale so two adjacent breaths don't look identical.
+// tick along its base radial; per-bullet scripts ride a parametric
+// sine path — forward at EXHALE_BULLET_SPEED along the base direction,
+// drifting sideways by EXHALE_WIGGLE_AMP_* pixels. Per-stream
+// amplitude / frequency / phase are rerolled each exhale so two
+// adjacent breaths don't look identical.
 const EXHALE_STREAMS = 10;
 const EXHALE_TICKS = 20;
 const EXHALE_TICK_GAP = 7;
 const EXHALE_BULLET_SPEED = 160;
-// ±~9° at the upper bound — well below the inter-stream half-spacing
-// (360°/10 / 2 = 18°), so adjacent streams never visually merge.
-const EXHALE_WIGGLE_AMP_MIN = Math.PI / 30;
-const EXHALE_WIGGLE_AMP_MAX = Math.PI / 20;
-// Radians per script-tick. Two-rad-ish range gives anything from a slow
-// ribbon to a tight zigzag.
-const EXHALE_WIGGLE_FREQ_MIN = 0.2;
-const EXHALE_WIGGLE_FREQ_MAX = 0.34;
+// Lateral amplitude in pixels (peak excursion from the base radial).
+// Upper bound ≈ GAME_H / 4, so peak-to-peak swing covers roughly half
+// the screen height. Adjacent streams cross visibly at this amplitude
+// — that's the point: the gaps move and the player has to weave.
+const EXHALE_WIGGLE_AMP_MIN = 100;
+const EXHALE_WIGGLE_AMP_MAX = 160;
+// Radians per script-tick. Tuned so a typical bullet sees roughly one
+// full wave during its on-screen lifetime (period ~2-3.5s at 60Hz).
+const EXHALE_WIGGLE_FREQ_MIN = 0.03;
+const EXHALE_WIGGLE_FREQ_MAX = 0.05;
 const PHASE_GAP = 36;
 
 const IN_SAY = 'Slowly\nbreath in...';
@@ -148,6 +157,7 @@ function scatterReports(self: Entity, count: number, speed: number): void {
 // share one of these so the trail reads as one coherent wiggling line.
 type ExhaleStream = {
   baseAngle: number;
+  // Lateral amplitude in pixels — peak excursion from the base radial.
   amp: number;
   // Radians per script-tick.
   freq: number;
@@ -161,15 +171,26 @@ type ExhaleStream = {
 // rather than vars-driven because the bullet's first body runs
 // synchronously inside `spawn` (before the caller could mutate vars),
 // so the params have to ride in via the script identity itself.
+//
+// Trajectory is parametric: forward at EXHALE_BULLET_SPEED along
+// `baseAngle`, plus a sinusoidal sideways drift of amplitude `amp`.
+// We set velocity = base + perp * amp * ω * cos(ωt + φ) every tick;
+// integrating gives lateral position = amp * sin(...) — an exact sine
+// wave whose peak is `amp` pixels regardless of how big amp gets.
 function makeExhaleBulletScript(stream: ExhaleStream, launchTick: number): EntityScript {
   return function* (self: Entity) {
-    const v = self.body.velocity;
-    const speed = Math.hypot(v.x, v.y);
+    const baseVx = Math.cos(stream.baseAngle) * EXHALE_BULLET_SPEED;
+    const baseVy = Math.sin(stream.baseAngle) * EXHALE_BULLET_SPEED;
+    // Perpendicular unit vector (90° CCW of base).
+    const perpX = -Math.sin(stream.baseAngle);
+    const perpY = Math.cos(stream.baseAngle);
+    // Peak lateral velocity: amp * ω, where ω = freq * SCRIPT_FPS rad/sec.
+    const lateralVScale = stream.amp * stream.freq * SCRIPT_FPS;
     let localTick = 0;
     while (self.alive) {
       const phase = stream.phaseOffset + (launchTick + localTick) * stream.freq;
-      const angle = stream.baseAngle + Math.sin(phase) * stream.amp;
-      self.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      const lateralV = lateralVScale * Math.cos(phase);
+      self.body.setVelocity(baseVx + perpX * lateralV, baseVy + perpY * lateralV);
       localTick++;
       yield 1;
     }
@@ -185,6 +206,31 @@ function ringAt(self: Entity, x: number, y: number, count: number, speed: number
   for (let i = 0; i < count; i++) {
     const a = baseAngle + i * step;
     self.spawn(bullet, x, y, Math.cos(a) * speed, Math.sin(a) * speed);
+  }
+}
+
+// Spawn one anxious "bunch": a tight pack of ANXIOUS_BUNCH_COUNT
+// bullets all flying along `angle`, scattered across a small disk
+// around the boss so the volley reads as one heavy clump rather than
+// a fanned line.
+function spawnAnxiousBunch(self: Entity, angle: number): void {
+  const vx = Math.cos(angle) * ANXIOUS_BUNCH_SPEED;
+  const vy = Math.sin(angle) * ANXIOUS_BUNCH_SPEED;
+  for (let i = 0; i < ANXIOUS_BUNCH_COUNT; i++) {
+    const r = Math.random() * ANXIOUS_BUNCH_SPREAD_PX;
+    const a = Math.random() * Math.PI * 2;
+    self.spawn(bullet, self.x + Math.cos(a) * r, self.y + Math.sin(a) * r, vx, vy);
+  }
+}
+
+// Fire a volley of bunches: one aimed at the player, plus several in
+// random directions. Single shoot() so the SFX doesn't stack on top of
+// itself — the visual volume already sells the burst.
+function anxiousClusterVolley(self: Entity): void {
+  shoot();
+  spawnAnxiousBunch(self, self.angleToPlayer());
+  for (let i = 0; i < ANXIOUS_RANDOM_CLUSTERS; i++) {
+    spawnAnxiousBunch(self, Math.random() * Math.PI * 2);
   }
 }
 
@@ -218,7 +264,7 @@ function* anxiousPhase(self: Entity): Generator<ScriptYield, void, void> {
   while (phaseRunning(self)) {
     if (tick % ANXIOUS_SAY_REPEAT_TICKS === 0) self.say(ANXIOUS_SAY, ANXIOUS_SAY_FRAMES);
     if (tick % 2 === 0) {
-      cluster(self, ANXIOUS_BUNCH_COUNT, bullet, ANXIOUS_BUNCH_SPEED, ANXIOUS_BUNCH_SPREAD_PX);
+      anxiousClusterVolley(self);
     } else {
       const { x, y } = pickAnxiousRingPos(self);
       ringAt(self, x, y, ANXIOUS_RING_COUNT, ANXIOUS_RING_SPEED, Math.random() * Math.PI * 2);
