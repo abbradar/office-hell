@@ -44,7 +44,7 @@ export class BubbleManager {
       .text(0, 0, text, {
         ...FONT_DIALOGUE_SM,
         color: TEXT_COLOR,
-        fontStyle: 'bold',
+        // fontStyle: 'bold',
       })
       .setOrigin(0.5);
 
@@ -88,8 +88,15 @@ export class BubbleManager {
       cy = b.target.y + OFFSET_Y + b.height / 2;
       tailUp = true;
     }
-    b.container.setPosition(cx, cy);
-    drawBubbleShape(b.graphics, b.width, b.height, b.target.x - cx, tailUp);
+    // Snap to integer pixels: target.x/y are physics-integrated and almost
+    // always fractional, which makes the inner Text texture sample at
+    // sub-pixel offsets — under pixelArt: true that's nearest-neighbour and
+    // glyph edges smear. Rounding makes the bubble jitter by ≤1px as the
+    // target moves, which is invisible at this scale, and keeps text crisp.
+    const px = Math.round(cx);
+    const py = Math.round(cy);
+    b.container.setPosition(px, py);
+    drawBubbleShape(b.graphics, b.width, b.height, b.target.x - px, tailUp);
   }
 
   update(): void {

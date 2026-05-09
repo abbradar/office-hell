@@ -152,20 +152,36 @@ export class BootScene extends Phaser.Scene {
       window.addEventListener('pointerup', onGesture);
       window.addEventListener('keydown', onGesture);
 
-      // When the viewport changes shape (fullscreen toggling on/off, address
-      // bar hide/show, orientation flip) we want the canvas's logical aspect
-      // to match the new viewport so Scale.FIT fills it edge-to-edge instead
-      // of letterboxing.
+      // Two things happen on every viewport change (fullscreen toggle,
+      // address-bar show/hide, orientation flip, desktop window drag):
       //
-      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after*
-      // its own getParentBounds() call has refreshed `scale.parentSize`, so
-      // reading parentSize here gives the live post-fullscreen viewport.
-      // ENTER_FULLSCREEN fires inside the DOM fullscreenchange handler before
-      // the browser has settled the new layout — body/parent bounds are
-      // still stale at that point.
+      // 1. Recompute the canvas height. On touch we extend the canvas
+      //    below the playfield to accommodate the control band so the
+      //    band always reaches the screen bottom; the height depends on
+      //    the parent aspect.
+      // 2. Recompute the integer display zoom. Because we run with
+      //    Scale.NONE (see main.ts), Phaser doesn't auto-scale the
+      //    canvas — we pick the largest integer multiple of the game
+      //    size that still fits the parent. Integer-only avoids the
+      //    fractional-scale text/sprite distortion that pixelArt:true +
+      //    NEAREST sampling produces under Scale.FIT.
       //
-      // Guard: only call resize when the height actually changes, otherwise
-      // our resize() triggers another RESIZE → infinite loop.
+      // RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after* its
+      // own getParentBounds() refreshes `scale.parentSize`, so reading
+      // parentSize here gives the live post-fullscreen viewport.
+      //
+      // Guard: setGameSize / setZoom both call refresh() which re-fires
+      // RESIZE; only mutate when the value actually changes, otherwise
+      // we recurse forever.
+      let appliedZoom = 0;
+      const applyIntegerZoom = (pw: number, ph: number): void => {
+        const z = Math.max(1, Math.min(Math.floor(pw / this.scale.width), Math.floor(ph / this.scale.height)));
+        if (z !== appliedZoom) {
+          appliedZoom = z;
+          this.scale.setZoom(z);
+        }
+      };
+
       this.scale.on(Phaser.Scale.Events.RESIZE, () => {
         const pw = this.scale.parentSize.width;
         const ph = this.scale.parentSize.height;
@@ -173,14 +189,20 @@ export class BootScene extends Phaser.Scene {
         const next = computeCanvasH(pw, ph);
         if (next !== this.scale.height) {
           // setGameSize, not resize: resize() is documented for the NONE
-          // scale mode and doesn't refresh the FIT aspect ratio, so display
-          // size ends up computed against the *previous* aspect (canvas
-          // letterboxes inside the parent). setGameSize calls
-          // displaySize.setAspectRatio() before refresh(), giving us a
-          // proper aspect-correct fit.
+          // scale mode but doesn't update gameSize's aspect ratio, leaving
+          // the canvas geometry stale. setGameSize calls
+          // displaySize.setAspectRatio() before refresh().
           this.scale.setGameSize(GAME_W, next);
         }
+        applyIntegerZoom(pw, ph);
       });
+
+      // Initial zoom — Phaser's first RESIZE may have fired before our
+      // listener was attached, so prime the zoom now from the current
+      // parentSize. Subsequent changes go through the listener.
+      const pw0 = this.scale.parentSize.width;
+      const ph0 = this.scale.parentSize.height;
+      if (pw0 && ph0) applyIntegerZoom(pw0, ph0);
     });
   }
 
