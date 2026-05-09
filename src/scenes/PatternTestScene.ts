@@ -20,6 +20,7 @@ import { GAME_H, GAME_W } from '../config';
 import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
+import { displayState } from '../render/displayState';
 import { bindLogicalCamera } from '../render/logicalCamera';
 import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
 import { StageManager } from '../script/StageManager';
@@ -435,15 +436,20 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   private repositionCodeEditor(): void {
+    // Convert logical (EDITOR_LEFT, EDITOR_TOP) to canvas-pixel coords.
+    // Under Scale.RESIZE the canvas is screen-sized and the world content
+    // lives in a centered logical-aspect rect described by displayState
+    // (worldOffsetX/Y + worldScale). The textarea is a DOM overlay outside
+    // the WebGL canvas, so it has to be placed in the canvas's bounding
+    // rect using those numbers.
     const canvas = this.game.canvas;
     const rect = canvas.getBoundingClientRect();
-    const sx = rect.width / canvas.width;
-    const sy = rect.height / canvas.height;
-    const left = rect.left + EDITOR_LEFT * sx;
-    const top = rect.top + EDITOR_TOP * sy;
-    const width = (GAME_W - EDITOR_LEFT * 2) * sx;
-    const height = EDITOR_HEIGHT * sy;
-    const fontPx = Math.max(11, Math.round(13 * Math.min(sx, sy)));
+    const s = displayState.worldScale;
+    const left = rect.left + displayState.worldOffsetX + EDITOR_LEFT * s;
+    const top = rect.top + displayState.worldOffsetY + EDITOR_TOP * s;
+    const width = (GAME_W - EDITOR_LEFT * 2) * s;
+    const height = EDITOR_HEIGHT * s;
+    const fontPx = Math.max(11, Math.round(13 * s));
     this.codeEditor.style.left = `${left}px`;
     this.codeEditor.style.top = `${top}px`;
     this.codeEditor.style.width = `${width}px`;

@@ -25,6 +25,22 @@ export function bindLogicalCamera(scene: Phaser.Scene): void {
   apply();
   scene.cameras.main.setPostPipeline(SHARP_BILINEAR_PIPELINE);
 
+  // Force-boot the freshly-attached post-pipeline. PostFXPipeline boots
+  // lazily on its first `postBatch`, but `preBatch` (which binds the
+  // post-FX render target so the camera's draws go into an FBO instead
+  // of straight to canvas) skips the bind when `currentRenderTarget` is
+  // null — and `currentRenderTarget` isn't set until boot. Result: the
+  // very first frame of every scene transition renders the camera's
+  // content directly to the visible canvas at logical 1:1 (top-left
+  // glitch frame). bootFX() runs the WebGLPipeline.boot setup which
+  // populates `currentRenderTarget`, so the first preBatch correctly
+  // redirects to the FBO.
+  for (const p of scene.cameras.main.postPipelines) {
+    type Bootable = { hasBooted?: boolean; bootFX?: () => void };
+    const fx = p as unknown as Bootable;
+    if (fx.bootFX && !fx.hasBooted) fx.bootFX();
+  }
+
   scene.game.events.on('display-resize', apply);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     scene.game.events.off('display-resize', apply);
