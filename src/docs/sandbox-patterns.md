@@ -168,7 +168,40 @@ while (self.alive) {
 }
 ```
 
-## 8. Mixed shapes
+## 8. Turrets
+
+Stationary "emitter" entities spawned at fixed positions, each running
+its own firing loop via a per-bullet `{script}` SpawnOpt. The boss
+plants them, then idles while they do the work. Staggered starts keep
+them from volleying in lockstep.
+
+```js
+const turret = bulletStyle({ color: 0x88aaff, radius: 7, shape: 'square' });
+const shot = bulletStyle({ color: 0xffd96a, radius: 3 });
+
+const TURRET_Y = 80;
+for (let i = 0; i < 3; i++) {
+  const tx = 80 + i * 120;        // three across the top of the playfield
+  self.spawn(turret, tx, TURRET_Y, 0, 0, {
+    script: function* (t) {
+      yield i * 24;                // stagger by ~0.4 s per turret
+      while (t.alive) {
+        aimed(t, 3, shot, 180, Math.PI / 8);   // 3-bullet fan, 22.5° spread
+        yield* waitSeconds(1.2);
+      }
+    },
+  });
+}
+
+// Boss itself idles while the turrets shoot.
+while (self.alive) yield 60;
+```
+
+A rotating variant: replace the `aimed` call with `ring(t, 1, shot, 160, theta)`
+inside an inner `theta += Math.PI / 18; yield 6;` loop to sweep a single bullet
+in a circle. Add multiple bullets per ring for a fan that orbits.
+
+## 9. Mixed shapes
 
 Mix shapes and sizes for visual hierarchy — small fast bullets for
 fill, large slow ones for read-the-room moments.
