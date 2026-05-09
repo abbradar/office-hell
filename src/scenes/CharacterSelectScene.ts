@@ -3,6 +3,7 @@ import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
 import { addElevatorBackdrop, ELEVATOR_CLOSE_ANIM, ELEVATOR_FRAME_OPEN } from '../content/elevator';
 import { isTouchDevice } from '../input/device';
+import { bindLogicalCamera } from '../render/logicalCamera';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -69,6 +70,7 @@ export class CharacterSelectScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 

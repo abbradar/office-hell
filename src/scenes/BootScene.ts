@@ -10,9 +10,41 @@ import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/ch
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import { generateTextures, preloadBackgrounds, preloadPlayerBullet, registerDoorsFrames } from '../content/textures';
 import { isTouchDevice } from '../input/device';
+import { displayState } from '../render/displayState';
+import { bindLogicalCamera } from '../render/logicalCamera';
 import { preloadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
 import { COLOR_ACCENT_GOLD, COLOR_PANEL_BORDER, COLOR_TEXT_DIM_STR, COLOR_WALL_STR } from '../ui/palette';
+
+// Recompute the world-to-screen geometry shared by every scene.
+// Every gameplay scene's main camera is sized to the *logical* canvas
+// (GAME_W × logicalH); the SharpBilinearPipeline upscales that camera's
+// captured render to fill the screen. displayState records the scale and
+// offset every other surface (UI overlays, screenToLogical pointer maps)
+// derives its math from.
+export function recomputeDisplay(scene: Phaser.Scene): void {
+  const sw = scene.scale.width;
+  const sh = scene.scale.height;
+  if (!sw || !sh) return;
+  const logicalH = computeCanvasH(sw, sh);
+  // Fit by the binding dimension. Most viewports are taller-than-logical-
+  // aspect (portrait phones extended via computeCanvasH; desktop widescreens
+  // hit the height limit) so width fits with side bars. Narrow desktop
+  // windows where canvas aspect < logical aspect would overflow the
+  // logical content horizontally if we always fit-by-height — pick the
+  // tighter fit.
+  const sByH = sh / logicalH;
+  const sByW = sw / GAME_W;
+  const s = Math.min(sByH, sByW);
+  const displayedW = GAME_W * s;
+  const displayedH = logicalH * s;
+  const offsetX = Math.max(0, Math.round((sw - displayedW) / 2));
+  const offsetY = Math.max(0, Math.round((sh - displayedH) / 2));
+  displayState.worldScale = s;
+  displayState.worldOffsetX = offsetX;
+  displayState.worldOffsetY = offsetY;
+  displayState.logicalH = logicalH;
+}
 
 export class BootScene extends Phaser.Scene {
   // Set in showLoadingUI() during preload(). Phaser guarantees preload runs
@@ -24,6 +56,11 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    // Prime displayState before the loading bar renders so the BootScene's
+    // own camera comes up correctly — bindLogicalCamera reads logicalH off
+    // displayState. Without this the loading bar lands in the upper-left
+    // logical-rect of the screen-sized canvas.
+    recomputeDisplay(this);
     // The loading screen is all `preload()` does now — the synchronous
     // bullet/trash/corridor texture generation moved into `content/textures`,
     // which runs as its own promise in `create()` so network requests get
@@ -32,6 +69,27 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Override Phaser's canvas→world pointer transform so pointer.x / .y
+    // arrive in *logical* coordinates everywhere — including setInteractive
+    // hit tests, which read pointer.x directly. Without this, the canvas
+    // (Scale.RESIZE → screen-pixel size) and the world (logical, fed
+    // through SharpBilinearPipeline) live in different coordinate spaces
+    // and every `obj.setInteractive(...)` would fail when the canvas is
+    // bigger than logical area. Now both are in logical space, so the
+    // existing menu hit areas (rectangles in logical pixels) work
+    // unchanged. Custom pointer handlers also receive logical coords —
+    // no per-call screenToLogical conversion needed.
+    const baseTransformX = this.scale.transformX.bind(this.scale);
+    const baseTransformY = this.scale.transformY.bind(this.scale);
+    this.scale.transformX = (pageX: number): number => {
+      const canvasX = baseTransformX(pageX);
+      return (canvasX - displayState.worldOffsetX) / displayState.worldScale;
+    };
+    this.scale.transformY = (pageY: number): number => {
+      const canvasY = baseTransformY(pageY);
+      return (canvasY - displayState.worldOffsetY) / displayState.worldScale;
+    };
+
     initBuses(this.sound);
     setSoundManager(this.sound);
     setMusicManager(this.sound);
@@ -151,39 +209,41 @@ export class BootScene extends Phaser.Scene {
       window.addEventListener('pointerup', onGesture);
       window.addEventListener('keydown', onGesture);
 
-      // When the viewport changes shape (fullscreen toggling on/off, address
-      // bar hide/show, orientation flip) we want the canvas's logical aspect
-      // to match the new viewport so Scale.FIT fills it edge-to-edge instead
-      // of letterboxing.
+      // On viewport changes (fullscreen toggle, address-bar show/hide,
+      // orientation flip, desktop window drag) we update the canvas to
+      // the new parent size and recompute displayState so every scene's
+      // post-FX upscale targets the right output dims.
       //
-      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after*
-      // its own getParentBounds() call has refreshed `scale.parentSize`, so
-      // reading parentSize here gives the live post-fullscreen viewport.
-      // ENTER_FULLSCREEN fires inside the DOM fullscreenchange handler before
-      // the browser has settled the new layout — body/parent bounds are
-      // still stale at that point.
+      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE
+      // *after* its own getParentBounds() refresh, so reading parentSize
+      // here gives the live post-fullscreen viewport. ENTER_FULLSCREEN
+      // fires inside the DOM fullscreenchange handler before the browser
+      // has settled the new layout.
       //
-      // Guard: only call resize when the height actually changes, otherwise
-      // our resize() triggers another RESIZE → infinite loop.
+      // Guard: only setGameSize when the value actually changes,
+      // otherwise we recurse forever (setGameSize -> RESIZE -> ...).
       this.scale.on(Phaser.Scale.Events.RESIZE, () => {
         const pw = this.scale.parentSize.width;
         const ph = this.scale.parentSize.height;
         if (!pw || !ph) return;
-        const next = computeCanvasH(pw, ph);
-        if (next !== this.scale.height) {
-          // setGameSize, not resize: resize() is documented for the NONE
-          // scale mode and doesn't refresh the FIT aspect ratio, so display
-          // size ends up computed against the *previous* aspect (canvas
-          // letterboxes inside the parent). setGameSize calls
-          // displaySize.setAspectRatio() before refresh(), giving us a
-          // proper aspect-correct fit.
-          this.scale.setGameSize(GAME_W, next);
+        if (pw !== this.scale.width || ph !== this.scale.height) {
+          this.scale.setGameSize(pw, ph);
         }
+        recomputeDisplay(this);
+        // Notify each running scene so it can resize its camera viewport
+        // and reposition any screen-anchored UI. Each scene listens for
+        // its own RESIZE event from displayState (we just emit on the
+        // game registry).
+        this.game.events.emit('display-resize');
       });
     });
   }
 
   private showLoadingUI(): void {
+    // Loading bar lives in logical pixel space — pin the camera to it
+    // and route through the sharp-bilinear post-FX so the bar fills the
+    // height correctly even before any other scene has started.
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
 
     const cx = GAME_W / 2;

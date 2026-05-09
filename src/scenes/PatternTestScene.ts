@@ -20,6 +20,7 @@ import { GAME_H, GAME_W } from '../config';
 import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
+import { bindLogicalCamera } from '../render/logicalCamera';
 import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
 import { StageManager } from '../script/StageManager';
 import {
@@ -339,6 +340,7 @@ export class PatternTestScene extends Phaser.Scene {
   }
 
   create(): void {
+    bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 
