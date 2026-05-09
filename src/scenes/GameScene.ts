@@ -21,8 +21,6 @@ import {
 import type { Entity } from '../entities/Entity';
 import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
-import { displayState } from '../render/displayState';
-import { bindLogicalCamera } from '../render/logicalCamera';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -54,27 +52,19 @@ const BOMB_BUTTON_X = GAME_W / 2;
 // On touch devices with a control band, the move pads hug the canvas
 // bottom (lower half clips off-screen — the corner position works well
 // for a thumb at the edge). Without a band (desktop), they fall back to
-// the original in-playfield position. Coords are in *logical* pixels
-// (cameras.main viewport is pinned to GAME_W × logicalH); the band
-// height comes from displayState which BootScene's resize handler keeps
-// in sync with the canvas aspect.
-function touchButtonY(): number {
-  const logicalH = displayState.logicalH;
-  return logicalH > GAME_H ? logicalH - 60 : GAME_H - 60;
+// the original in-playfield position.
+function touchButtonY(scale: Phaser.Scale.ScaleManager): number {
+  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 60;
 }
 
 // With a control band, the bomb button sits at the canvas bottom (same y
 // as the move pads) — the centre column (x ≈ 90..310) is clear of either
 // move circle so the bomb ring is fully visible without overlapping.
 // Without a band (desktop), it tucks above the move pad inside the playfield.
-function bombButtonY(): number {
-  const logicalH = displayState.logicalH;
-  return logicalH > GAME_H ? logicalH - 60 : GAME_H - 220;
+function bombButtonY(scale: Phaser.Scale.ScaleManager): number {
+  return scale.height > GAME_H ? scale.height - 60 : GAME_H - 220;
 }
 
-// Pointer coords arrive in *logical* space — BootScene overrides
-// scale.transformX/Y so Phaser's canvas→world conversion goes all the
-// way to logical pixels. Distance check is plain.
 function anyHeldInCircle(pointers: Phaser.Input.Pointer[], cx: number, cy: number, r: number): boolean {
   const r2 = r * r;
   for (const p of pointers) {
@@ -175,31 +165,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   isLeftHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(), TOUCH_BUTTON_RADIUS);
+    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
   }
 
   isRightHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(), TOUCH_BUTTON_RADIUS);
+    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(this.scale), TOUCH_BUTTON_RADIUS);
   }
 
   create(): void {
     stopMusicLoop();
 
-    // Pin cameras.main to logical resolution and route its output
-    // through SharpBilinear post-FX. World content (sprites, walls,
-    // HUD text) is authored in logical (0..GAME_W, 0..logicalH) coords
-    // and the post-FX upscales the captured logical-resolution FBO to
-    // fill the screen with sharp-bilinear sampling — no wobble at any
-    // non-integer ratio.
-    bindLogicalCamera(this);
-
     // Scene-level pointer listener auto-cleans on shutdown. Pointer
-    // coords arrive in logical space (BootScene's transformX/Y override),
-    // so a plain distance check against the logical bomb-button centre is
-    // enough.
+    // coords are already in game space (Phaser's scale manager handles
+    // the canvas-fit transform), so a plain distance check is enough.
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       const dx = pointer.x - BOMB_BUTTON_X;
-      const dy = pointer.y - bombButtonY();
+      const dy = pointer.y - bombButtonY(this.scale);
       if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.bombPending = true;
     });
 
@@ -239,10 +220,7 @@ export class GameScene extends Phaser.Scene {
     // Mask the touch-control band so bullets that drift below the playfield
     // (within CULL_MARGIN before being culled) don't peek through behind the
     // buttons. Depth 50 sits above entities (default 0) and below HUD (99+).
-    // Band height is the logical-canvas overrun beyond GAME_H — the touch
-    // band lives in logical space (it rides the world FBO through the
-    // sharp-bilinear blit just like the playfield does).
-    const bandH = displayState.logicalH - GAME_H;
+    const bandH = this.scale.height - GAME_H;
     if (bandH > 0) {
       this.add.rectangle(0, GAME_H, GAME_W, bandH, COLOR_WALL).setOrigin(0, 0).setDepth(50);
     }
@@ -320,8 +298,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isTouchDevice) {
-      const moveY = touchButtonY();
-      const bombY = bombButtonY();
+      const moveY = touchButtonY(this.scale);
+      const bombY = bombButtonY(this.scale);
       this.add
         .circle(0, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
         .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)

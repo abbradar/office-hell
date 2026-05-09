@@ -1,49 +1,36 @@
 import Phaser from 'phaser';
+import { computeCanvasH } from './canvasSize';
 import { GAME_W, SCRIPT_FPS } from './config';
-import { SHARP_BILINEAR_PIPELINE, SharpBilinearPipeline } from './render/SharpBilinearPipeline';
 import { BootScene } from './scenes/BootScene';
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
 // by the top/side safe-area insets (notch, rounded corners), so body
-// width/height already excludes those. We size the visible canvas to that
-// rectangle so the WebGL framebuffer matches the screen pixel grid 1:1 —
-// the upscale from logical (400×canvasH) to canvas (screen) is done by the
-// SharpBilinearPipeline applied to the UIScene's display image, not by CSS
-// or Phaser's scale manager. The bottom is intentionally not inset so the
-// touch control band reaches the physical screen bottom.
+// width/height already excludes those — using it here means Scale.FIT fills
+// the safe rectangle edge-to-edge instead of letterboxing inside it. The
+// bottom is intentionally not inset, so the control band reaches the
+// physical screen bottom (home indicator overlapping a button is fine).
 const bodyRect = document.body.getBoundingClientRect();
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   // Phaser's parent (#viewport) is an inner div; #game is the fullscreen
   // target. Padding on #game:fullscreen shrinks #viewport so the canvas
-  // clears the notch/bezels.
+  // clears the notch/bezels. Outside fullscreen, #viewport sizes to the
+  // canvas (no padding in play), so layout is unchanged.
   parent: 'viewport',
-  // Initial canvas size = parent rect = screen-pixel size. BootScene's
-  // RESIZE handler maintains this on viewport changes.
-  width: Math.max(GAME_W, Math.round(bodyRect.width || window.innerWidth)),
-  height: Math.max(1, Math.round(bodyRect.height || window.innerHeight)),
+  width: GAME_W,
+  height: computeCanvasH(bodyRect.width, bodyRect.height),
   backgroundColor: '#10101a',
   pixelArt: true,
   scale: {
-    // Scale.RESIZE: canvas tracks the parent at 1:1 screen pixels. The
-    // logical-to-screen upscale is done inside WebGL by the
-    // SharpBilinearPipeline applied to the UIScene's display image. The
-    // earlier Scale.FIT path (fractional CSS scaling under pixelArt:true)
-    // produced 1-vs-2-screen-pixel stem wobble at non-integer ratios;
-    // sharp-bilinear via a render texture sidesteps that.
-    mode: Phaser.Scale.RESIZE,
-    autoCenter: Phaser.Scale.NO_CENTER,
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
     // Use #game itself as the fullscreen element. Default behaviour creates
     // a wrapper div, moves the canvas into it, and fullscreens the wrapper —
-    // which leaves Phaser's `parent` (#game) empty and collapsed to 0×0,
-    // so the canvas doesn't resize.
+    // which leaves Phaser's `parent` (#game) empty and collapsed to 0×0, so
+    // FIT computes against zero bounds and the canvas doesn't resize.
     fullscreenTarget: 'game',
   },
-  // Register the sharp-bilinear pipeline so any GameObject can attach it
-  // via `obj.setPipeline(SHARP_BILINEAR_PIPELINE)`. Used by UIScene to
-  // render the world FBO at non-integer scale without wobble.
-  pipeline: { [SHARP_BILINEAR_PIPELINE]: SharpBilinearPipeline } as unknown as Phaser.Types.Core.PipelineConfig,
   physics: {
     default: 'arcade',
     arcade: { debug: false },
