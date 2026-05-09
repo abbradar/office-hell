@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { initBuses } from '../audio/buses';
 import { MENU_LOOP_KEY } from '../audio/keys';
-import { playMusicLoop, setMusicManager } from '../audio/music/loop';
+import { installAutoPauseOnBlur, playMusicLoop, setMusicManager } from '../audio/music/loop';
 import { configureVoiceCaps, preloadAudio } from '../audio/preload';
 import { setSoundManager } from '../audio/sfx/pool';
 import { computeCanvasH } from '../canvasSize';
@@ -106,6 +106,14 @@ export class BootScene extends Phaser.Scene {
     // `pauseMusic()`), so blur-pause and ESC-pause go through the same
     // path and behave consistently across desktop and iOS.
     this.sound.pauseOnBlur = false;
+
+    // Pause the active music track on window blur / tab hide and resume
+    // it on focus. Without this, Phaser's per-sound loop machinery (which
+    // reschedules a new buffer source on every update tick at the loop
+    // boundary) goes stale while rAF is throttled in a hidden tab — the
+    // menu loop can audibly restart from the beginning, or two source
+    // nodes can overlap and double up, when focus returns.
+    installAutoPauseOnBlur(this.game);
 
     // Queue the heavy stuff (character sheets + gameplay audio) and kick the
     // loader. Phaser is happy to run a second pass after preload — the

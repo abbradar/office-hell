@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import { missedCallBullet } from './missedCallBullet';
 
@@ -48,23 +48,32 @@ export const colleague = new EntityKind({
 });
 
 // Demo wave: alternating sides at varying heights so the player has to track
-// them across the screen.
+// them across the screen. Each spawn picks the door slot closest to its
+// design height — every entry / exit lands at a door panel rather than a
+// blank wall. We align a door near the middle of the design range
+// (180–360) before suspending so one panel reliably sits in the centre
+// band; lower-band spawns then fall to whichever other door slot is
+// visible. Without this snap the random pre-wave scroll could put both
+// visible panels above or below the design range and the encounter
+// would compress into a single y.
+const COLLEAGUE_BAND_Y = 270;
 export function* colleaguesWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'colleagues');
+  yield* alignDoor(self, COLLEAGUE_BAND_Y);
   yield* suspendRunning(self, function* () {
-    self.spawn(colleague, -30, 220, 0, 0);
+    self.spawn(colleague, sideSpawnX(-1), doorY(self, 220), 0, 0);
     yield 80;
-    self.spawn(colleague, GAME_W + 30, 280, 0, 0);
+    self.spawn(colleague, sideSpawnX(1), doorY(self, 280), 0, 0);
     yield 100;
-    self.spawn(colleague, -30, 200, 0, 0);
-    self.spawn(colleague, GAME_W + 30, 340, 0, 0);
+    self.spawn(colleague, sideSpawnX(-1), doorY(self, 200), 0, 0);
+    self.spawn(colleague, sideSpawnX(1), doorY(self, 340), 0, 0);
     yield 120;
-    self.spawn(colleague, -30, 260, 0, 0);
+    self.spawn(colleague, sideSpawnX(-1), doorY(self, 260), 0, 0);
     yield 70;
-    self.spawn(colleague, GAME_W + 30, 180, 0, 0);
-    self.spawn(colleague, -30, 360, 0, 0);
+    self.spawn(colleague, sideSpawnX(1), doorY(self, 180), 0, 0);
+    self.spawn(colleague, sideSpawnX(-1), doorY(self, 360), 0, 0);
     yield 110;
-    self.spawn(colleague, GAME_W + 30, 240, 0, 0);
-    self.spawn(colleague, -30, 320, 0, 0);
+    self.spawn(colleague, sideSpawnX(1), doorY(self, 240), 0, 0);
+    self.spawn(colleague, sideSpawnX(-1), doorY(self, 320), 0, 0);
   });
 }

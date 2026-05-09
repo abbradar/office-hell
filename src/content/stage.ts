@@ -62,14 +62,12 @@ const INTER_WAVE_GAP = 3;
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
   // Don't open the encounter while leftovers are still on screen. Sweep
-  // enemies + in-flight bullets, brief beat, then bring on the boss. He
-  // spawns unhittable (damagedByClass override) — his own script handles
-  // entry, dialogue, and re-enabling damage after the dialogue ends.
+  // enemies + in-flight bullets, brief beat, then bring on the boss.
+  // BossKind makes all bosses spawn unhittable; the boss's own script
+  // handles entry, dialogue, and calls becomeHittable() once it's done.
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
-    const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-      damagedByClass: [],
-    });
+    const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
   });
 }

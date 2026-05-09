@@ -99,7 +99,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     };
 
     this.add
-      .text(GAME_W / 2, 70, 'CHOOSE A SHIFT WORKER', {
+      .text(GAME_W / 2, 70, "WHO'S CRUNCHING?", {
         ...FONT_MENU,
         color: COLOR_ACCENT_GOLD_STR,
       })

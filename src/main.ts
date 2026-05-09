@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { GAME_W, SCRIPT_FPS } from './config';
-import { SHARP_BILINEAR_PIPELINE, SharpBilinearPipeline } from './render/SharpBilinearPipeline';
+// Side-effect import: overrides the global `text` factory so all
+// `scene.add.text(...)` calls produce OverlayText instances that draw onto
+// the high-resolution overlay canvas (see render/textOverlay.ts).
+import './render/OverlayText';
+import { installTextOverlay } from './render/textOverlay';
 import { BootScene } from './scenes/BootScene';
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
@@ -64,6 +68,11 @@ const game = new Phaser.Game({
   input: { activePointers: 8 },
   scene: [BootScene],
 });
+
+// Sibling overlay canvas for crisp text. Phaser appends its canvas during
+// async boot, not synchronously from the constructor — wait for READY so
+// `game.canvas.parentElement` resolves to the live #viewport, not null.
+game.events.once(Phaser.Core.Events.READY, () => installTextOverlay(game));
 
 // Expose the game for in-browser debugging + automated tests (the
 // playwright stress test reads `__game.loop.actualFps` and pokes into

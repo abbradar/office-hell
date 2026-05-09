@@ -67,6 +67,15 @@ let trackStartCtxTime: number | null = null;
 // gated on audio time would skip ahead on resume.
 let pausedAtCtxTime: number | null = null;
 
+// Two independent reasons we may be paused. The actual `sound.pause()` call
+// happens once when either flag flips on with both clear; the actual
+// `sound.resume()` call happens once when both flags are clear again. This
+// way GameScene's user-pause (manual) and the window-blur auto-pause can
+// stack without fighting: blurring during the pause overlay doesn't double-
+// pause, and focusing while the overlay is up doesn't accidentally resume.
+let manualPaused = false;
+let autoPaused = false;
+
 const DEFAULT_VOL = 0.5;
 
 export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {}): void {
@@ -291,16 +300,16 @@ export function stopMusicLoop(): void {
   current = null;
   trackStartCtxTime = null;
   pausedAtCtxTime = null;
+  manualPaused = false;
+  autoPaused = false;
 }
 
-// Pause the active music in place. Used by the ESC pause menu so the score
-// stops while the overlay is up. Calls Phaser's per-sound `pause()` on the
-// active intro / loop sounds; the AudioContext keeps advancing (Phaser's
-// sound-manager update calls `context.resume()` every frame, so suspending
-// the context wouldn't stick), so on resume we shift `trackStartCtxTime`
-// forward by the pause duration to keep `getMusicTime()` aligned with the
-// actual music position.
-export function pauseMusic(): void {
+// Calls Phaser's per-sound `pause()` on the active intro / loop sounds; the
+// AudioContext keeps advancing (Phaser's sound-manager update calls
+// `context.resume()` every frame, so suspending the context wouldn't stick),
+// so on resume we shift `trackStartCtxTime` forward by the pause duration to
+// keep `getMusicTime()` aligned with the actual music position.
+function doPauseSounds(): void {
   if (!current || !musicBus) return;
   if (pausedAtCtxTime !== null) return;
   pausedAtCtxTime = musicBus.context.currentTime;
@@ -308,7 +317,7 @@ export function pauseMusic(): void {
   for (const s of current.sounds) s.pause();
 }
 
-export function resumeMusic(): void {
+function doResumeSounds(): void {
   if (!current || !musicBus) return;
   if (pausedAtCtxTime === null) return;
   const pauseDuration = musicBus.context.currentTime - pausedAtCtxTime;
@@ -316,6 +325,56 @@ export function resumeMusic(): void {
   if (trackStartCtxTime !== null) trackStartCtxTime += pauseDuration;
   if (current.intro) current.intro.resume();
   for (const s of current.sounds) s.resume();
+}
+
+// Pause the active music in place. Used by the ESC pause menu so the score
+// stops while the overlay is up. Idempotent against itself and stacks with
+// the window-blur auto-pause — calling it while the window is blurred just
+// keeps the music paused after focus returns.
+export function pauseMusic(): void {
+  if (manualPaused) return;
+  manualPaused = true;
+  doPauseSounds();
+}
+
+export function resumeMusic(): void {
+  if (!manualPaused) return;
+  manualPaused = false;
+  if (!autoPaused) doResumeSounds();
+}
+
+// Wire the active music to the window's blur/focus state so the score
+// pauses cleanly when the user tabs away. Without this, Phaser's WebAudio
+// loop machinery (which reschedules the next buffer source on every update
+// tick at the loop boundary) goes stale while rAF is throttled in a hidden
+// tab — on refocus you can hear the loop restart from offset 0, or hear
+// two source nodes overlap. Pausing the sounds explicitly tears down the
+// scheduled buffer sources so refocus replays cleanly from the same seek.
+//
+// Coexists with manual `pauseMusic`/`resumeMusic` calls (e.g. GameScene's
+// pause overlay) via the two-flag state above: blur-pausing during a manual
+// pause is a no-op, and focus-resuming while still manually-paused leaves
+// the music paused.
+export function installAutoPauseOnBlur(game: Phaser.Game): void {
+  const onBlurOrHidden = (): void => {
+    if (autoPaused) return;
+    autoPaused = true;
+    if (!manualPaused) doPauseSounds();
+  };
+  const onFocusOrVisible = (): void => {
+    if (!autoPaused) return;
+    autoPaused = false;
+    if (!manualPaused) doResumeSounds();
+  };
+  // BLUR/FOCUS for desktop window-focus changes; visibilitychange catches
+  // tab-hide on platforms (notably iOS Safari) that don't reliably fire
+  // window blur for tab switches.
+  game.events.on(Phaser.Core.Events.BLUR, onBlurOrHidden);
+  game.events.on(Phaser.Core.Events.FOCUS, onFocusOrVisible);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) onBlurOrHidden();
+    else onFocusOrVisible();
+  });
 }
 
 // Seconds since the currently-playing track began. Returns null both when no

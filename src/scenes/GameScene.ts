@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
 import { DEADZONE_Y, GAME_H, GAME_W, WALL_W } from '../config';
+import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
+import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
 import { stageKaedalus } from '../content/kaedalusStage';
 import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
@@ -39,18 +41,9 @@ import { makePrompt } from '../ui/prompt';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 
-// Doors layer: three sets of doors evenly spaced down the playfield,
-// scrolling in lockstep with the floor and wrapping back up off-screen.
-// Cycle includes a DOOR_H buffer above and below the visible area so the
-// hand-off (door top at GAME_H → door top at -DOOR_H) happens while the
-// door is fully off-canvas — no pop in the middle of the screen. Spacing
-// is the cycle divided by the count, which means at any moment 2 or 3
-// doors are visible and the gap between consecutive visible doors is
-// always the same (CYCLE / DOOR_COUNT).
-const DOOR_H = 80;
-const DOOR_COUNT = 3;
-const DOOR_CYCLE = GAME_H + DOOR_H;
-const DOOR_SPACING = DOOR_CYCLE / DOOR_COUNT;
+// Door layout constants live in src/content/doors.ts so stage scripts
+// can compute door y values from the same formula. See that module for
+// the cycle / spacing rationale.
 
 const HEADER_H = 28;
 
@@ -152,6 +145,12 @@ export class GameScene extends Phaser.Scene {
   // game-over transition. Idempotent: keeps update() from re-firing the
   // sequence on every subsequent frame while the animation plays out.
   private deathStarted = false;
+  // Continue overlay shown when HP hits 0 in the real stage. Holds the
+  // freeze (stage.freeze + paused music) until the player picks
+  // continue (revive + death-bomb) or exit-to-menu. Cleared when either
+  // path runs; subsequent deaths re-show it. Null in practice / test /
+  // music modes — those fall through to startDeathSequence.
+  private continueOverlay: Phaser.GameObjects.Container | null = null;
   // Edge-triggered touch bomb input — matches keyboard JustDown(X)
   // semantics. Set on a pointerdown inside the bomb circle and drained
   // by consumeBombPress. Tracking only pointerdown (not pointermove)
@@ -357,18 +356,25 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.hud = this.add
-      .text(8, HEADER_H + 4, '', { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
+      .text(WALL_W + 8, HEADER_H + 4, '', { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
       .setScrollFactor(0)
       .setDepth(100);
 
     // Debug HUD (track / t / next / blocked) shown for the real stage and
     // every test/music stage. Test/music modes get the green tint as a
     // "you're in test mode" cue; real-stage version is greyer so it recedes.
+    // x is nudged past the wall column so it sits inside the playfield
+    // rather than getting clipped by the side wall. Depth sits below every
+    // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
+    // dialogue=200) so any of them draw on top of the debug line.
     const debugTinted = this.testMode || this.musicMode !== null;
     this.debugHud = this.add
-      .text(8, HEADER_H + 20, '', { ...FONT_DEBUG, color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR })
+      .text(WALL_W + 8, HEADER_H + 20, '', {
+        ...FONT_DEBUG,
+        color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
+      })
       .setScrollFactor(0)
-      .setDepth(100);
+      .setDepth(10);
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
@@ -461,6 +467,82 @@ export class GameScene extends Phaser.Scene {
     this.pauseOverlay = null;
   }
 
+  private allowsContinue(): boolean {
+    return !this.practiceWave && !this.testMode && this.musicMode === null;
+  }
+
+  private showContinueOverlay(): void {
+    if (this.continueOverlay) return;
+    this.stage.freeze();
+    pauseMusic();
+
+    const c = this.add.container(0, 0).setDepth(200);
+    const dim = this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, COLOR_PANEL, 0.85);
+    c.add(dim);
+    const title = this.add
+      .text(GAME_W / 2, GAME_H * 0.38, 'CONTINUE?', { ...FONT_TITLE, color: COLOR_ACCENT_RED_STR })
+      .setOrigin(0.5);
+    c.add(title);
+    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<confirm>  CONTINUE\n<back>  QUIT', {
+      ...FONT_MENU,
+      color: COLOR_TEXT_PRIMARY_STR,
+      align: 'center',
+    });
+    c.add(hint);
+    this.continueOverlay = c;
+
+    const kb = this.input.keyboard;
+    if (!kb) return;
+    kb.on('keydown-Z', this.handleContinueConfirm, this);
+    kb.on('keydown-ESC', this.handleContinueExit, this);
+  }
+
+  private dismissContinueOverlay(): void {
+    this.continueOverlay?.destroy();
+    this.continueOverlay = null;
+    const kb = this.input.keyboard;
+    if (!kb) return;
+    kb.off('keydown-Z', this.handleContinueConfirm, this);
+    kb.off('keydown-ESC', this.handleContinueExit, this);
+  }
+
+  private handleContinueConfirm(event: KeyboardEvent): void {
+    if (event.repeat) return;
+    if (!this.continueOverlay) return;
+    this.dismissContinueOverlay();
+    this.revivePlayerWithDeathBomb();
+  }
+
+  private handleContinueExit(event: KeyboardEvent): void {
+    if (event.repeat) return;
+    if (!this.continueOverlay) return;
+    // Don't bother dismissing the overlay — scene.start tears the whole
+    // scene down, taking the container with it.
+    this.scene.start('Menu');
+  }
+
+  private revivePlayerWithDeathBomb(): void {
+    const p = this.player;
+    p.alive = true;
+    p.hp = this.playerKind.hp;
+    p.body.enable = true;
+    p.setVelocity(0, 0);
+    p.setVisible(true);
+    p.setAlpha(1);
+    p.clearTint();
+    if (p.anims.isPaused) p.anims.resume();
+    p.updateAnim();
+    p.render();
+
+    // Drop any pointerdown that landed on the bomb circle while the
+    // overlay was up so unfreezing doesn't immediately burn a bomb.
+    this.consumeBombPress();
+    this.stage.unfreeze();
+    resumeMusic();
+
+    activateDeathBomb(p, this.stage);
+  }
+
   override update(time: number, delta: number): void {
     // Death check first — placement matters because of Phaser 3's frame order.
     //
@@ -483,7 +565,12 @@ export class GameScene extends Phaser.Scene {
     // end-of-update check would be fine — but Phaser 3's order is the other
     // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
-      if (!this.deathStarted) this.startDeathSequence();
+      if (this.continueOverlay !== null || this.deathStarted) return;
+      // Continue prompt only in the real stage — practice / test / music
+      // modes either keep the player invincible or never decrement HP, so
+      // a death there is anomalous and falls through to the death sequence.
+      if (this.allowsContinue()) this.showContinueOverlay();
+      else this.startDeathSequence();
       return;
     }
 
@@ -506,6 +593,10 @@ export class GameScene extends Phaser.Scene {
         this.bg.tilePositionY -= advance;
         this.bgScrollY += advance;
       }
+      // Mirror the scroll onto the stage so script helpers (alignDoor,
+      // pickDoorCenterY) read the same number that drives the door
+      // rasterisation below.
+      this.stage.bgScrollY = this.bgScrollY;
       // Doors ride the floor: each slot's y is its phase offset plus the
       // shared scroll, wrapped through DOOR_CYCLE so the trio cycles
       // through the canvas with no gaps. Subtract DOOR_H so the wrap
@@ -517,7 +608,7 @@ export class GameScene extends Phaser.Scene {
       // rows and the door panels would flicker in and out. Rounding once
       // up front feeds both paths (and both halves of each slot) the
       // same integer.
-      const phase = this.bgScrollY % DOOR_CYCLE;
+      const doorYs = computeDoorYs(this.bgScrollY);
 
       // Refresh the walls layer: blit the tiled walls into the RT, then
       // erase each slot's two panel bboxes (one per side). The bbox
@@ -527,7 +618,7 @@ export class GameScene extends Phaser.Scene {
       this.wallsRt.clear();
       this.wallsRt.draw(this.wallsTile, 0, 0);
       this.doorSlots.forEach((slot, i) => {
-        const y = Math.round(((i * DOOR_SPACING + phase) % DOOR_CYCLE) - DOOR_H);
+        const y = doorYs[i] ?? 0;
         slot.left.y = y;
         slot.right.y = y;
         this.wallsRt.erase(BG_DOORS_BBOX_KEY, 0, y);

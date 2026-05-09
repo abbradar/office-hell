@@ -127,9 +127,7 @@ function* monsterRpgBody(self: Entity) {
   yield* startMusicLoop(MONSTER_FINAL_BOSS_KEY);
 
   markWave(self, 'boss 2');
-  const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-    damagedByClass: [],
-  });
+  const boss2 = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
   yield { until: boss2 };
 
   markWave(self, 'end');

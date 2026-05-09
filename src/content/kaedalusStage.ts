@@ -100,9 +100,7 @@ function* kaedalusBody(self: Entity) {
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
 
   markWave(self, 'boss');
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-    damagedByClass: [],
-  });
+  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
   yield { until: boss };
 
   markWave(self, 'end');

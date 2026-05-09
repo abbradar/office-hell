@@ -1,6 +1,6 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind } from '../../script/boss';
+import { BossKind, becomeHittable } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
 import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
@@ -44,8 +44,9 @@ const PHASE_C_COUNT = 9;
 const PHASE_C_SPEED = 115;
 
 function* shrunkOldManScript(self: Entity) {
-  // Slow shuffle to anchor — spawned unhittable, so the player can't melt him
-  // before he's said his piece. Damage is re-enabled after the dialogue.
+  // Slow shuffle to anchor. BossKind makes him unhittable on spawn so
+  // the player can't melt him before he's said his piece; becomeHittable
+  // below opts back into damage after the dialogue.
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
   yield 30;
 
@@ -77,7 +78,7 @@ function* shrunkOldManScript(self: Entity) {
     self.stage.bossName = null;
   });
 
-  self.setDamagedByClasses(['enemy']);
+  becomeHittable(self);
   self.say('Just a few old tasks…', 110);
   yield 60;
 
@@ -120,14 +121,12 @@ export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, vo
   markWave(self, 'mr. hodges');
   // Same opening beat as the final-boss wave: don't bring him on while
   // leftover enemies are still drifting around, sweep stragglers, brief
-  // pause for funereal tone, then he shuffles in. Spawned unhittable so
-  // player bullets pass through during entrance + dialogue; the script
-  // re-enables damage after he's done speaking.
+  // pause for funereal tone, then he shuffles in. BossKind keeps him
+  // unhittable on spawn; his script calls becomeHittable after the
+  // dialogue.
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
-    const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0, {
-      damagedByClass: [],
-    });
+    const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0);
     yield { until: boss };
   });
 }

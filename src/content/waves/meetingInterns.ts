@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -131,13 +131,18 @@ export const meetingIntern = new EntityKind({
 // Four interns converge: two from the top, one from each side, planting
 // at the corners of an upper-band rectangle so their arrows roll in down
 // overlapping lanes. Phase rotates around the four so each arrow lands
-// on its own beat instead of arriving simultaneously.
+// on its own beat instead of arriving simultaneously. The two side
+// entries route through whichever door is closest to SIDE_Y, with a
+// pre-suspend `alignDoor` snapping a panel into that band so the design
+// y holds.
+const MEETING_SIDE_Y = 220;
 export function* meetingInternsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'meeting interns');
+  yield* alignDoor(self, MEETING_SIDE_Y);
   yield* suspendRunning(self, function* () {
     const TOP_Y = 110;
-    const SIDE_Y = 220;
     const SIDE_INSET = 80;
+    const sideY = doorY(self, MEETING_SIDE_Y);
     // Phases 1 and 3 (one top, one side) sprinkle plain aimed bullets
     // between their camera barrages so the encounter isn't a pure
     // formation-dodge — there's always a stray round to track.
@@ -154,11 +159,11 @@ export function* meetingInternsWave(self: Entity): Generator<ScriptYield, void, 
       script: makeMeetingInternScript(GAME_W * 0.7, TOP_Y, 1, true),
     });
     yield 30;
-    self.spawn(meetingIntern, -30, SIDE_Y, 0, 0, {
-      script: makeMeetingInternScript(SIDE_INSET, SIDE_Y, 2, false),
+    self.spawn(meetingIntern, sideSpawnX(-1), sideY, 0, 0, {
+      script: makeMeetingInternScript(SIDE_INSET, sideY, 2, false),
     });
-    self.spawn(meetingIntern, GAME_W + 30, SIDE_Y, 0, 0, {
-      script: makeMeetingInternScript(GAME_W - SIDE_INSET, SIDE_Y, 3, true),
+    self.spawn(meetingIntern, sideSpawnX(1), sideY, 0, 0, {
+      script: makeMeetingInternScript(GAME_W - SIDE_INSET, sideY, 3, true),
     });
   });
 }

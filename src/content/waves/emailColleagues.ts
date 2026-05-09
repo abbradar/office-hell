@@ -1,7 +1,6 @@
-import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { emailBullet } from './checkEmail';
 
@@ -24,9 +23,6 @@ const VOLLEY_GAP = 60;
 const EMAILS_PER_VOLLEY = 3;
 const EMAIL_SPEED = 110;
 const EMAIL_SPREAD = Math.PI / 9;
-
-const SPAWN_LEFT_X = -30;
-const SPAWN_RIGHT_X = GAME_W + 30;
 
 // `side` is travel direction: +1 spawns at left edge moving right; -1 spawns
 // at right edge moving left. Aimed volleys track the player either way.
@@ -79,27 +75,34 @@ export const emailColleague = new EntityKind({
 // content but starting from the opposite side: right pair first, then
 // left pair. Colleagues hold position for their volleys instead of
 // drifting across so the player reads the spawns as discrete posts.
+//
+// All entries route through whichever door slot is closest to the design
+// y; aligning a door into the upper band before suspending keeps the
+// 210/220 spawns reliably on a panel, with the 290 spawns falling to
+// the next visible slot.
+const EMAIL_OPENER_UPPER_Y = 250;
 export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'email colleagues');
+  yield* alignDoor(self, EMAIL_OPENER_UPPER_Y);
   yield* suspendRunning(self, function* () {
     const PASS_DELAY = 60;
     const PAIR_SPACING = 70;
     const SIDE_GAP = 110;
 
     // Pass 1 — two left-side colleagues, staggered heights.
-    self.spawn(emailColleague, SPAWN_LEFT_X, 210, 0, 0, { script: stationaryLeftScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 210), 0, 0, { script: stationaryLeftScript });
     yield 130;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 290, 0, 0, { script: stationaryLeftScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 290), 0, 0, { script: stationaryLeftScript });
     yield PASS_DELAY;
 
     // Pass 2 — right pair first (opposite side from pass 1), then left pair.
-    self.spawn(emailColleague, SPAWN_RIGHT_X, 220, 0, 0, { script: stationaryRightScript });
+    self.spawn(emailColleague, sideSpawnX(1), doorY(self, 220), 0, 0, { script: stationaryRightScript });
     yield PAIR_SPACING;
-    self.spawn(emailColleague, SPAWN_RIGHT_X, 290, 0, 0, { script: stationaryRightScript });
+    self.spawn(emailColleague, sideSpawnX(1), doorY(self, 290), 0, 0, { script: stationaryRightScript });
     yield SIDE_GAP;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 220, 0, 0, { script: stationaryLeftScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 220), 0, 0, { script: stationaryLeftScript });
     yield PAIR_SPACING;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 290, 0, 0, { script: stationaryLeftScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 290), 0, 0, { script: stationaryLeftScript });
   });
 }
 
@@ -107,26 +110,34 @@ export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void,
 // within a few frames of each other, so the player has to commit to a vertical
 // lane between two converging volleys. Pairs are spaced further apart than
 // the in-pair beat. Slotted after vacation photos in the stage script.
+//
+// Drift colleagues fly straight across the corridor at a fixed y, so the
+// entry door on one side and the exit door on the other share the same
+// panel — both halves of a door slot sit at the same y. Aligning a door
+// at the middle of the trio (250) keeps the centre pair on a real door;
+// the outer pairs fall to whichever slot is closest.
+const EMAIL_PINCH_MID_Y = 250;
 export function* emailColleagues3(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'email colleagues 3');
+  yield* alignDoor(self, EMAIL_PINCH_MID_Y);
   yield* suspendRunning(self, function* () {
     const PAIR_BEAT = 12;
     const BETWEEN_PAIRS = 90;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 200, 0, 0);
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 200), 0, 0);
     yield PAIR_BEAT;
-    self.spawn(emailColleague, SPAWN_RIGHT_X, 200, 0, 0, {
+    self.spawn(emailColleague, sideSpawnX(1), doorY(self, 200), 0, 0, {
       script: rightScript,
     });
     yield BETWEEN_PAIRS;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 250, 0, 0);
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 250), 0, 0);
     yield PAIR_BEAT;
-    self.spawn(emailColleague, SPAWN_RIGHT_X, 250, 0, 0, {
+    self.spawn(emailColleague, sideSpawnX(1), doorY(self, 250), 0, 0, {
       script: rightScript,
     });
     yield BETWEEN_PAIRS;
-    self.spawn(emailColleague, SPAWN_LEFT_X, 300, 0, 0);
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 300), 0, 0);
     yield PAIR_BEAT;
-    self.spawn(emailColleague, SPAWN_RIGHT_X, 300, 0, 0, {
+    self.spawn(emailColleague, sideSpawnX(1), doorY(self, 300), 0, 0, {
       script: rightScript,
     });
   });

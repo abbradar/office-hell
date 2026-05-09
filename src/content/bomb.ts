@@ -25,6 +25,13 @@ export const BOMB_DURATION_MS = BOMB_FREEZE_MS + BOMB_EXPLODE_MS + BOMB_LINGER_M
 // centred while the player has dodged to a side.
 const BOMB_RADIUS = GAME_W / 2;
 
+// Death-bomb (continue rescue): tighter radius — only what was about to
+// kill the player should clear, not the whole field — paired with a much
+// longer invincibility window so the player has time to reorient before
+// engaging again.
+const DEATH_BOMB_RADIUS = GAME_W / 4;
+const DEATH_BOMB_INVINCIBLE_MS = 3500;
+
 // Passive-aggressive office-speak the player snaps out as they "get angry"
 // and nuke the field. One picked at random per bomb — keeps repeated bombing
 // from feeling robotic.
@@ -59,27 +66,10 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const bark = BOMB_BARKS[idx]!;
   player.say(bark, BARK_FRAMES);
 
-  // Snapshot before iterating: freezeBullet removes entries from the group
-  // mid-loop (so the bullet can't damage the player while frozen), and
-  // Phaser's getChildren() returns a live reference — mutating it while
-  // iterating would skip every other match.
-  const candidates = stage.damages.player.getChildren().slice();
-  const bullets: { e: Entity; d: number }[] = [];
-  const r2 = BOMB_RADIUS * BOMB_RADIUS;
-  for (const child of candidates) {
-    const e = child as Entity;
-    if (!e.alive) continue;
-    // Skip enemies — only the projectiles ("documents/calls/etc") are
-    // affected. Bullet kinds use hp=null; living enemies always have hp
-    // set, so this cleanly partitions them without an explicit kind list.
-    if (e.hp !== null) continue;
-    const dx = e.x - cx;
-    const dy = e.y - cy;
-    const d2 = dx * dx + dy * dy;
-    if (d2 > r2) continue;
-    freezeBullet(stage, e);
-    bullets.push({ e, d: Math.sqrt(d2) });
-  }
+  const bullets = findBulletsInRadius(stage, cx, cy, BOMB_RADIUS);
+  // freezeBullet removes entries from damages.player; we already snapshotted
+  // inside findBulletsInRadius so the iteration here is safe.
+  for (const { e } of bullets) freezeBullet(stage, e);
 
   // Punch the camera so the freeze feels like an impact, not a stutter.
   scene.cameras.main.shake(BOMB_FREEZE_MS + 250, 0.005);
@@ -107,6 +97,52 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
       for (const { e } of bullets) if (e.alive) e.die();
     },
   });
+}
+
+// Continue-rescue bomb: no bark, no shockwave VFX, no camera shake. Just
+// pop bullets in a tighter radius and grant a longer invincibility window
+// so the revived player isn't immediately killed again by whatever was
+// already on top of them. Caller is responsible for actually reviving the
+// player (alive flag, body, hp); this function only handles the rescue
+// effect itself.
+export function activateDeathBomb(player: Player, stage: StageManager): void {
+  const scene = stage.scene;
+  const cx = player.x;
+  const cy = player.y;
+
+  player.pushInvincible();
+  scene.time.delayedCall(DEATH_BOMB_INVINCIBLE_MS, () => player.popInvincible());
+
+  for (const { e } of findBulletsInRadius(stage, cx, cy, DEATH_BOMB_RADIUS)) e.die();
+}
+
+// Snapshot of every live player-damaging projectile within `radius` of
+// (cx, cy), with each entry's distance from the centre. Snapshots the
+// damages.player group up front so callers can mutate it during iteration
+// (freeze a bullet, kill it, etc.) without skipping siblings — Phaser's
+// getChildren() returns a live array. Only projectile-kind entities are
+// matched (`hp === null`); living enemies always have hp set so this
+// partitions cleanly without a kind list.
+export function findBulletsInRadius(
+  stage: StageManager,
+  cx: number,
+  cy: number,
+  radius: number,
+): { e: Entity; d: number }[] {
+  const candidates = stage.damages.player.getChildren().slice();
+  const bullets: { e: Entity; d: number }[] = [];
+  const r2 = radius * radius;
+  for (const child of candidates) {
+    const e = child as Entity;
+    if (!e.alive) continue;
+    if (e.hp !== null) continue;
+    const dx = e.x - cx;
+    const dy = e.y - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > r2) continue;
+    bullets.push({ e, d: Math.sqrt(d2) });
+  }
+  return bullets;
 }
 
 function freezeBullet(stage: StageManager, bullet: Entity): void {

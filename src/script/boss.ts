@@ -14,7 +14,7 @@
 
 import { playBossDeath } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
-import { EntityKind, type ScriptYield } from './types';
+import { type DamageClass, EntityKind, type EntityKindOpts, type ScriptYield } from './types';
 
 const FLICKER_TOGGLES = 10;
 const FLICKER_INTERVAL_FRAMES = 5;
@@ -41,7 +41,22 @@ function* bossDeathScript(self: Entity): Generator<ScriptYield, void, void> {
   self.die();
 }
 
+// Bosses always spawn unhittable — the player should never be able to
+// chip damage off during the entry slide or pre-fight dialogue. The
+// kind's `damagedByClass` is forced to `[]` at construction and the
+// requested classes are stashed as `hittableDamagedBy`; the boss script
+// opts in by calling `becomeHittable(self)` after the intro. This
+// removes the need for every wave spawn site to remember a per-call
+// `damagedByClass: []` override and removes the matching foot-gun where
+// a script forgets to flip damage on at all (the original Coach bug).
 export class BossKind extends EntityKind {
+  readonly hittableDamagedBy: DamageClass[];
+
+  constructor(opts: EntityKindOpts) {
+    super({ ...opts, damagedByClass: [] });
+    this.hittableDamagedBy = opts.damagedByClass;
+  }
+
   override takeDamage(self: Entity, amount: number): void {
     if (self.hp === null) return;
     self.hp -= amount;
@@ -57,4 +72,15 @@ export class BossKind extends EntityKind {
     }
     self.flashDamage();
   }
+}
+
+// Flip a boss into its hittable state — i.e. apply the damage classes
+// the kind was originally constructed with. Call after the entry +
+// dialogue intro is done.
+export function becomeHittable(self: Entity): void {
+  const kind = self.kind;
+  if (!(kind instanceof BossKind)) {
+    throw new Error(`becomeHittable called on non-boss kind: ${kind.sprite}`);
+  }
+  self.setDamagedByClasses(kind.hittableDamagedBy);
 }

@@ -140,13 +140,12 @@ function* testStageBody(self: Entity) {
   yield* waitTrackEnded();
   yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
 
-  // Boss spawn + wait-for-death. The boss's own script (bossScript in
-  // kinds.ts) handles entry, dialogue, becoming hittable, and the
-  // attack loop. We yield until the boss entity dies.
+  // Boss spawn + wait-for-death. BossKind keeps the boss unhittable on
+  // spawn; bossScript in kinds.ts handles entry, dialogue, calling
+  // becomeHittable, and the attack loop. We yield until the boss entity
+  // dies.
   markWave(self, 'boss');
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0, {
-    damagedByClass: [],
-  });
+  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
   yield { until: boss };
 
   markWave(self, 'end');

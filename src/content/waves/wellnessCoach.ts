@@ -1,9 +1,10 @@
 import { shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
+import { BossKind, becomeHittable } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
 import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { pillBullet } from './pillBullet';
 import { reportBullet } from './reportBullet';
@@ -104,6 +105,9 @@ function scatterReports(self: Entity, count: number, speed: number): void {
 }
 
 function* coachScript(self: Entity) {
+  // BossKind keeps her unhittable on spawn so the player can't melt her
+  // before she's said her piece; becomeHittable below opts back into
+  // damage after the dialogue.
   yield* moveTo(self, ENTRY_X, ENTRY_Y, ENTRY_SPEED);
 
   const ch = self.stage.player.character;
@@ -124,6 +128,8 @@ function* coachScript(self: Entity) {
   self.onDeath(() => {
     self.stage.bossName = null;
   });
+
+  becomeHittable(self);
 
   while (self.alive) {
     // Phase 1 — Inhale: rings converge on the coach from beyond the screen.
@@ -167,7 +173,7 @@ function* coachScript(self: Entity) {
   }
 }
 
-export const wellnessCoach = new EntityKind({
+export const wellnessCoach = new BossKind({
   sprite: 'coach1',
   hitboxRadius: 22,
   hp: 400,
@@ -178,6 +184,9 @@ export const wellnessCoach = new EntityKind({
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
+  // Field clean + brief beat, then she enters. BossKind keeps her
+  // unhittable on spawn; her script calls becomeHittable after the
+  // dialogue.
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0);

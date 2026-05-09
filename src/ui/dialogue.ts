@@ -137,6 +137,15 @@ export class DialogueManager {
     return this.current !== null;
   }
 
+  // Programmatic dismissal — same teardown as a player advance off the
+  // last line. Used when a script that owned the dialogue is dropped
+  // mid-flight (e.g. a race winner cancels the in-flight skippable
+  // section); the dialog UI would otherwise hang on screen waiting for a
+  // Z press that has nothing left to advance.
+  cancel(): void {
+    if (this.current) this.finish();
+  }
+
   start(opts: DialogueOpts, onDone: () => void): void {
     if (this.current) this.finish();
     if (opts.lines.length === 0) {
