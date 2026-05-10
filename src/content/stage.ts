@@ -4,7 +4,6 @@ import {
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
   STAGE1_RETRO_OPENING_KEY,
-  STAGE2_METAL_LOOP_KEY,
   STAGE2_METAL_OPENING_KEY,
 } from '../audio/keys';
 import { GAME_W } from '../config';
@@ -59,15 +58,20 @@ const INTER_WAVE_GAP = 3;
 
 function* bossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
-  // Idempotent in live flow (stage2Part2 already switched to stage-2
-  // metal at the KAEDALUS_SHORT seam); switches in from menu music when
-  // run from the practice menu.
-  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
   // Don't open the encounter while leftovers are still on screen. Sweep
   // enemies + in-flight bullets, brief beat, then bring on the boss.
   // BossKind makes all bosses spawn unhittable; the boss's own script
   // handles entry, dialogue, and calls becomeHittable() once it's done.
   yield* prepareForBoss(self);
+  // Music handover lives here so the boss fight plays identically from
+  // every entry point — the live stage flow, the "Stage 2 — Part 2"
+  // practice slot, and the standalone "Final Boss — The Boss" practice
+  // entry. Wait the previous track to its loop boundary (no-op if none
+  // is playing), then loop the metal opening under the boss's entry +
+  // dialog. The boss script flips this over to the proper intro→loop
+  // sequence right after the dialog dismisses.
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE2_METAL_OPENING_KEY);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
@@ -229,12 +233,11 @@ export function* stage2Part2(self: Entity): Generator<ScriptYield, void, void> {
   yield* self.stage.separateWave(fridayPartyWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
 
-  markWave(self, 'music: metal (stage 2)');
-  yield* waitTrackEnded();
-  // bossWave does the actual `startMusicWithIntro(stage-2 metal)` itself
-  // (idempotent in live flow, switches in from menu music in practice);
-  // the seam wait above keeps the live switch on a clean musical seam.
-
+  // Music handover (waitTrackEnded + open-on-loop) is owned by
+  // bossWave itself — see kinds.ts → bossScript for the matching
+  // intro→loop switch after dialog. Lets the practice-menu "Final
+  // Boss" entry, the "Stage 2 — Part 2" entry, and the live flow run
+  // identical code.
   yield* self.stage.separateWave(bossWave(self));
 }
 
