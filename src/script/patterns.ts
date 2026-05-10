@@ -1,7 +1,7 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
-import { INERT_KIND, type EntityKind, type ScriptYield } from './types';
+import { type EntityKind, INERT_KIND, type ScriptYield } from './types';
 
 // True once the entity's center is past any screen edge — i.e. it's at least
 // half hidden. Suppress firing in that case so off-screen exits don't keep
@@ -518,11 +518,7 @@ export function lineStroke(
       const scene = e.stage.scene;
       const cx = (x1 + x2) / 2;
       const cy = (y1 + y2) / 2;
-      const line = scene.add
-        .line(cx, cy, 0, 0, 0, 0, color, 1)
-        .setOrigin(0.5, 0.5)
-        .setLineWidth(width)
-        .setDepth(1);
+      const line = scene.add.line(cx, cy, 0, 0, 0, 0, color, 1).setOrigin(0.5, 0.5).setLineWidth(width).setDepth(1);
       for (let i = 1; i <= grow; i++) {
         const t = i / grow;
         const alpha = 0.3 + 0.5 * t;
