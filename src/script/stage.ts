@@ -120,6 +120,14 @@ export function* race(...iters: Array<Generator<ScriptYield, void, void>>): Gene
   yield { race: iters };
 }
 
+// Run the given generators in parallel; resume the parent only after
+// every one of them has finished. Mirror of `race`, but join semantics.
+// An empty array resolves on the next frame (matching the runner's
+// empty-all behaviour).
+export function* all(...iters: Array<Generator<ScriptYield, void, void>>): Generator<ScriptYield, void, void> {
+  yield { all: iters };
+}
+
 // Run `inner` with a hard time budget. After `seconds` of game time
 // (physics frames), whichever finishes first wins; the other is
 // cancelled. The waitSeconds racer holds the timeout — if it wins,
@@ -268,6 +276,103 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
     nextBoundary = info.introDuration + iterations * info.loopDuration;
   }
   yield* waitForMusicTimeReach(nextBoundary, 'loop ended');
+}
+
+// --- beatmap-driven patterns ---------------------------------------------
+
+// One entry in a beatmap. `t` is the music timestamp (seconds from
+// track start) at which `fire` should run; `fire` is a sync callback
+// the runtime invokes against the active boss/enemy. Beatmaps are
+// authored as plain arrays so a song's structure stays declarative.
+export type BeatmapBeat = {
+  t: number;
+  fire: (self: Entity, index: number) => void;
+};
+
+// Walk a beatmap, firing each beat's callback at its target music
+// timestamp. Synchronised to `getMusicTime()` via `waitAudioTimeAtLeast`
+// so layers stay locked to the track even across small frame hitches.
+//
+// Beats whose `t` is already in the past at call time are skipped.
+// That's the load-bearing detail when phases re-enter a beatmap mid-
+// song: a layer that starts in phase 2 should not instant-fire every
+// beat from t=0. Compare each beat to the *current* music clock, not
+// the call-site's "now".
+//
+// When no music is playing (practice mode running a wave standalone
+// without its parent stage's track), `runBeatmap` falls back to
+// relative `waitSeconds` gaps so the pattern remains tunable. The
+// fallback loses absolute sync — it's a sanity pass, not a substitute
+// for hearing the track.
+export function* runBeatmap(
+  self: Entity,
+  beats: readonly BeatmapBeat[],
+): Generator<ScriptYield, void, void> {
+  const musicTicking = getMusicTime() !== null;
+  let prev = 0;
+  for (let i = 0; i < beats.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounded by beats.length
+    const beat = beats[i]!;
+    if (musicTicking) {
+      const now = getMusicTime();
+      if (now !== null && beat.t < now.time) continue;
+      yield* waitAudioTimeAtLeast(beat.t);
+    } else {
+      const gap = beat.t - prev;
+      if (gap > 0) yield* waitSeconds(gap);
+      prev = beat.t;
+    }
+    beat.fire(self, i);
+  }
+}
+
+// Park the calling generator until `self.hp` drops below `threshold`.
+// One physics-frame poll per tick; HP only changes on collision so
+// the cost is negligible. Used as a phase-end racer:
+//   yield* race(...layers, untilHpBelow(self, max * 0.5));
+// the racer wins as soon as the boss crosses the threshold, race()
+// cancels every layer cleanly, the next phase's race() starts fresh.
+export function* untilHpBelow(self: Entity, threshold: number): Generator<ScriptYield, void, void> {
+  while ((self.hp ?? 0) > threshold) yield 1;
+}
+
+// HP gate that snaps the resolution to the next bar boundary of the
+// active music track. Use for phase transitions that should land on
+// a musical downbeat instead of the moment HP crossed the threshold.
+// `barSeconds` is the duration of one bar in the track (= 4 * BEAT_S);
+// `bars` lets you snap to a wider phrase boundary (1 = next bar, 4 =
+// next 4-bar phrase). Returns immediately after `untilHpBelow` if no
+// music is playing — the snap is a no-op without a clock.
+export function* untilHpBelowQuantisedToBar(
+  self: Entity,
+  threshold: number,
+  barSeconds: number,
+  bars = 1,
+): Generator<ScriptYield, void, void> {
+  yield* untilHpBelow(self, threshold);
+  const m = getMusicTime();
+  if (m === null) return;
+  const stride = barSeconds * bars;
+  const targetTime = Math.ceil(m.time / stride) * stride;
+  yield* waitAudioTimeAtLeast(targetTime);
+}
+
+// HP-OR-music phase termination. Resolves on the earlier of:
+//  - HP dropping below `hpThreshold`
+//  - music time reaching `maxAudioSeconds`
+// Used for phases scheduled against a fixed-length track (no loop
+// repeats): the music boundary forces progression even if the player
+// can't damage fast enough, mirroring the Touhou spell-card-timer
+// model.
+export function* untilPhaseEnd(
+  self: Entity,
+  hpThreshold: number,
+  maxAudioSeconds: number,
+): Generator<ScriptYield, void, void> {
+  yield* race(
+    untilHpBelow(self, hpThreshold),
+    waitAudioTimeAtLeast(maxAudioSeconds),
+  );
 }
 
 // --- world-state waits ----------------------------------------------------

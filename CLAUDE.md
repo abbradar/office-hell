@@ -57,6 +57,7 @@ src/
 |---|---|
 | **Stage architecture** — generator-based stage scripts, wait helpers, race primitive, music-time gates, debug HUD | [src/docs/stage-design.md](src/docs/stage-design.md) |
 | **Pattern sandbox cookbook** — example bullet patterns, multi-phase bullets, helper cheat sheet | [src/docs/sandbox-patterns.md](src/docs/sandbox-patterns.md) |
+| **Final boss music** — 113-BPM intro + loop track analysis, beat math, energy contour | [src/docs/final-boss-music.md](src/docs/final-boss-music.md) |
 | Stress test results — bullet rendering headroom, scenario numbers, reproduction recipe | [src/docs/stress-test-results.md](src/docs/stress-test-results.md) |
 | Audio system reference (external, aspirational) | [src/docs/dead-grid-audio-implementation-guide.md](src/docs/dead-grid-audio-implementation-guide.md) |
 

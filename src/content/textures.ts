@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import bgDoorsUrl from '../assets/bg/doors.png';
 import bgFloorUrl from '../assets/bg/floor.png';
 import bgWallsUrl from '../assets/bg/walls.png';
+import blueExplosionUrl from '../assets/bullets/blue_explosion.png';
 import cameraBulletUrl from '../assets/bullets/camera.png';
 import chartCellUrl from '../assets/bullets/chartCell.png';
 import drinkBulletUrl from '../assets/bullets/drink.png';
@@ -10,11 +11,16 @@ import missedCallUrl from '../assets/bullets/missedCall.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
 import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
+import redExplosionUrl from '../assets/bullets/red_explosion.png';
 import reportBulletUrl from '../assets/bullets/report.png';
+import menuLogoUrl from '../assets/images/office hell text logo2.png';
 import bombExplosionUrl from '../assets/misc/bomb_explosion.png';
 import waterDispenserUrl from '../assets/misc/water_dispenser.png';
 import { BULLET_RADIUS } from '../config';
-import { COLOR_BULLET_DEFAULT } from '../ui/palette';
+import { COLOR_ACCENT_RED, COLOR_BULLET_DEFAULT } from '../ui/palette';
+
+const COLOR_BULLET_YELLOW = 0xfddc4a;
+const COLOR_BULLET_ORANGE = 0xff8a2a;
 
 // Runtime-generated textures. Each function draws into a fresh Graphics,
 // registers a single texture by key, and destroys the Graphics. Callers
@@ -74,6 +80,14 @@ export function preloadWaterDispenser(scene: Phaser.Scene): void {
   scene.load.image(PROP_WATER_DISPENSER_KEY, waterDispenserUrl);
 }
 
+// Main-menu logo — hand-drawn gothic "OFFICE HELL" text used in place of
+// the FONT_TITLE banner the menu used to render. 149×152 PNG with
+// transparent corners (content bbox ~120×98 centered in the canvas).
+export const MENU_LOGO_KEY = 'menu_logo';
+export function preloadMenuLogo(scene: Phaser.Scene): void {
+  scene.load.image(MENU_LOGO_KEY, menuLogoUrl);
+}
+
 // Bomb explosion spritesheet — 5×2 lattice of 96×91 cells, source
 // `explosion1.png` (rows 2 and 3 of the original explosions sheet,
 // pre-cropped to keep the dust-scatter band at full height). Frame
@@ -93,6 +107,64 @@ export function preloadBombExplosion(scene: Phaser.Scene): void {
     frameHeight: BOMB_FRAME_H,
   });
 }
+// Blue-explosion spritesheet — 112×14 strip of 7 frames at 16×14 each,
+// spark → grow → peak → ring → expanded ring → broken ring → scatter.
+// The source asset was re-packed into a uniform grid (centered per
+// frame) from the original variable-width export, and the two
+// scatter frames in the source were composited into a single final
+// frame so the wave reads as one tail state, not two near-identical
+// twitches. Used by the `lineExplosion` pattern in
+// script/patterns.ts.
+export const BLUE_EXPLOSION_KEY = 'blue_explosion';
+export const BLUE_EXPLOSION_ANIM = 'blue-explosion';
+export const BLUE_EXPLOSION_FRAME_W = 16;
+export const BLUE_EXPLOSION_FRAME_H = 14;
+export const BLUE_EXPLOSION_FRAMES = 7;
+// One sprite frame per N physics frames. 2 frames = 30 fps, fast and
+// punchy. The `lineExplosion` pattern paces its spawns to the same
+// step so the propagation looks like one continuous wavefront.
+export const BLUE_EXPLOSION_FRAME_DURATION_FRAMES = 2;
+
+export function preloadBlueExplosion(scene: Phaser.Scene): void {
+  scene.load.spritesheet(BLUE_EXPLOSION_KEY, blueExplosionUrl, {
+    frameWidth: BLUE_EXPLOSION_FRAME_W,
+    frameHeight: BLUE_EXPLOSION_FRAME_H,
+  });
+}
+
+export function registerBlueExplosionAnim(scene: Phaser.Scene): void {
+  if (scene.anims.exists(BLUE_EXPLOSION_ANIM)) return;
+  // Phaser animation duration is in ms; convert from physics frames.
+  const durationMs = (BLUE_EXPLOSION_FRAMES * BLUE_EXPLOSION_FRAME_DURATION_FRAMES * 1000) / 60;
+  scene.anims.create({
+    key: BLUE_EXPLOSION_ANIM,
+    frames: scene.anims.generateFrameNumbers(BLUE_EXPLOSION_KEY, {
+      start: 0,
+      end: BLUE_EXPLOSION_FRAMES - 1,
+    }),
+    duration: durationMs,
+    repeat: 0,
+  });
+}
+
+// Red-explosion spritesheet — 128×14 strip of 8 frames at 16×14
+// each, packed from the variable-width-source export with brightness-
+// centroid alignment so every frame's bright core lines up on the
+// same column. Used by `lineExplosion` with the `redExplosion` kind
+// (see content/kinds.ts) — slower, sparser variant of the propagating
+// shockwave, suitable for an alternate boss layer.
+export const RED_EXPLOSION_KEY = 'red_explosion';
+export const RED_EXPLOSION_FRAME_W = 16;
+export const RED_EXPLOSION_FRAME_H = 14;
+export const RED_EXPLOSION_FRAMES = 8;
+
+export function preloadRedExplosion(scene: Phaser.Scene): void {
+  scene.load.spritesheet(RED_EXPLOSION_KEY, redExplosionUrl, {
+    frameWidth: RED_EXPLOSION_FRAME_W,
+    frameHeight: RED_EXPLOSION_FRAME_H,
+  });
+}
+
 export function registerBombAnims(scene: Phaser.Scene): void {
   // Durations are wired to the bomb timing in content/bomb.ts —
   // EXPAND matches BOMB_EXPLODE_MS, FADE matches BOMB_LINGER_MS — so
@@ -118,6 +190,18 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
   g.fillStyle(COLOR_BULLET_DEFAULT, 1);
   g.fillCircle(r, r, r);
   g.generateTexture('bullet', d, d);
+  g.clear();
+  g.fillStyle(COLOR_ACCENT_RED, 1);
+  g.fillCircle(r, r, r);
+  g.generateTexture('redBullet', d, d);
+  g.clear();
+  g.fillStyle(COLOR_BULLET_YELLOW, 1);
+  g.fillCircle(r, r, r);
+  g.generateTexture('yellowBullet', d, d);
+  g.clear();
+  g.fillStyle(COLOR_BULLET_ORANGE, 1);
+  g.fillCircle(r, r, r);
+  g.generateTexture('orangeBullet', d, d);
   g.destroy();
 }
 

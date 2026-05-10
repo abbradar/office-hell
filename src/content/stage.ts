@@ -6,8 +6,6 @@ import {
   STAGE1_RETRO_03_LOOP_KEY,
   STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
-  STAGE2_RETRO_03_LOOP_KEY,
-  STAGE2_RETRO_03_OPENING_KEY,
 } from '../audio/keys';
 import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
@@ -320,15 +318,12 @@ function* fromFridayParty(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'music: stage-2 retro-03');
-  // Wait the previous track to its loop boundary (no-op if none is
-  // playing — the live chain enters from kaedalus-short, the
-  // standalone practice entry from menu music) so the retro-03 opening
-  // lands on a clean seam. The opening plays once, then hands off to
-  // the main loop for the rest of the encounter.
-  yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE2_RETRO_03_OPENING_KEY, STAGE2_RETRO_03_LOOP_KEY);
-
+  markWave(self, 'final boss');
+  // Boss music start has moved into theBossScript: it now fires after
+  // the opening dialog dismisses so the beat grid anchors to track
+  // start rather than to the dialog-end timestamp. Whatever the
+  // chain (or practice entry) was playing keeps looping under the
+  // boss entry + dialog and is replaced when the fight begins.
   yield* self.stage.separateWave(theBossWave(self));
   yield* fromOutro(self);
 }

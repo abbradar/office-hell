@@ -1,6 +1,12 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
+import { blueExplosion, redExplosion } from '../content/kinds';
+import {
+  BLUE_EXPLOSION_FRAME_DURATION_FRAMES,
+  BLUE_EXPLOSION_FRAME_W,
+  RED_EXPLOSION_FRAMES,
+} from '../content/textures';
 import { type EntityKind, INERT_KIND, type ScriptYield } from './types';
 
 // True once the entity's center is past any screen edge — i.e. it's at least
@@ -531,5 +537,193 @@ export function lineStroke(
       line.destroy();
       e.die();
     },
+  });
+}
+
+// Propagating shockwave of explosion sprites along a line from
+// (x1,y1) to (x2,y2). Each tile is a `blueExplosion` entity placed
+// at a fixed position; the pattern drives the *sprite frame* of
+// every active tile manually each tick.
+//
+// Algorithm — every tick advances frames on existing tiles; spawns
+// happen every `framesPerSpawn` ticks:
+//
+//   framesPerSpawn = 1 (default — front + tail tightly chained):
+//     tick 0:  spawn tile 0, frame 0
+//     tick 1:  tile 0 → frame 1; spawn tile 1, frame 0
+//     tick 2:  tile 0 → frame 2; tile 1 → frame 1; spawn tile 2, frame 0
+//     …
+//
+//   framesPerSpawn = 3 (each tile holds 3 frames in place before the
+//                       next position joins):
+//     tick 0:  spawn tile 0, frame 0
+//     tick 1:  tile 0 → frame 1
+//     tick 2:  tile 0 → frame 2
+//     tick 3:  tile 0 → frame 3; spawn tile 1, frame 0
+//     tick 4:  tile 0 → frame 4; tile 1 → frame 1
+//     …
+//
+// A tile dies after it advances past the last animation frame.
+// Direction-agnostic — "from down to up" is just
+// `lineExplosion(self, x, GAME_H-50, x, 50)`.
+//
+// All tiles are damaging while alive (each tile's hitbox is the
+// entity's `hitboxRadius`). The propagating front is the player's
+// telegraph; the trailing tail is the danger zone.
+export function* lineExplosion(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  opts?: {
+    // Distance between consecutive tile positions, in pixels.
+    // Default = sprite width + 6 px so adjacent tiles have a small
+    // visible gap between them.
+    stepPx?: number;
+    // Wavefront propagation speed in pixels per second — i.e. how
+    // fast the leading edge advances. Convenience over `stepFrames`:
+    // internally rewrites `stepFrames` to hit the requested speed
+    // given the chosen `stepPx` + `framesPerSpawn`. Ignored when
+    // `stepFrames` is set explicitly.
+    speedPxPerSec?: number;
+    // Physics frames between sprite-frame ticks. Default = each
+    // animation frame's intended duration. Each tile shows each of
+    // its sprite frames for exactly `stepFrames` physics frames.
+    // Explicit `stepFrames` overrides `speedPxPerSec`.
+    stepFrames?: number;
+    // How many sprite-frame ticks each tile holds *in place* before
+    // the next position spawns. Default 1 (front spawns every tick,
+    // every existing tile lags one frame behind its neighbour).
+    // Set to 3 to give each tile a 3-frame head-start in place
+    // before the next tile joins — the trailing tiles spread out
+    // visibly with 3 sprite frames between adjacent positions
+    // instead of 1, and the wavefront speed drops proportionally
+    // unless `speedPxPerSec` compensates.
+    framesPerSpawn?: number;
+    // Override the spawned entity kind. Must be a spritesheet kind
+    // with at least `frameCount` frames. Default is `blueExplosion`.
+    kind?: EntityKind;
+    // Number of sprite frames in the kind's spritesheet. Default
+    // 7 (matches `blueExplosion` after the uniform-grid re-pack +
+    // scatter merge).
+    frameCount?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  const stepPx = opts?.stepPx ?? BLUE_EXPLOSION_FRAME_W + 6;
+  const framesPerSpawn = Math.max(1, Math.round(opts?.framesPerSpawn ?? 1));
+  // Resolution order for tick spacing:
+  //   1. explicit `stepFrames`           — exact, integer
+  //   2. derived from `speedPxPerSec`    — wavefront moves `stepPx`
+  //                                        every `framesPerSpawn`
+  //                                        ticks; back out the
+  //                                        per-tick frame budget
+  //                                        from that
+  //   3. animation's per-frame duration  — keeps each sprite frame
+  //                                        on screen the intended
+  //                                        time
+  const stepFrames =
+    opts?.stepFrames ??
+    (opts?.speedPxPerSec !== undefined
+      ? Math.max(1, Math.round((stepPx * SCRIPT_FPS) / (opts.speedPxPerSec * framesPerSpawn)))
+      : BLUE_EXPLOSION_FRAME_DURATION_FRAMES);
+  const kind = opts?.kind ?? blueExplosion;
+  const frameCount = opts?.frameCount ?? 7;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return;
+
+  // Fixed stride from (x1,y1); positions land every stepPx along the
+  // line. The last position may sit slightly short of (x2,y2) when
+  // the distance isn't a clean multiple of stepPx — that's the right
+  // trade-off vs interpolating, which would compress the spacing.
+  const positions = Math.max(1, Math.floor(dist / stepPx) + 1);
+  const ux = dx / dist;
+  const uy = dy / dist;
+
+  // Per-position slot: the active entity at that position, and the
+  // sprite frame it currently shows. `null` once the tile has died
+  // or before it has been spawned.
+  type Slot = { entity: Entity; frame: number } | null;
+  const slots: Slot[] = new Array(positions).fill(null);
+
+  shoot();
+  // Total ticks: last tile spawns at tick (positions-1)*framesPerSpawn
+  // and lives for `frameCount` more ticks before dying.
+  const totalTicks = (positions - 1) * framesPerSpawn + frameCount;
+
+  for (let tick = 0; tick < totalTicks; tick++) {
+    // 1. Advance frame on every active slot. A slot whose new frame
+    //    is past the last animation frame is killed and cleared.
+    for (let p = 0; p < positions; p++) {
+      const slot = slots[p];
+      if (!slot) continue;
+      slot.frame++;
+      if (slot.frame >= frameCount) {
+        if (slot.entity.alive) slot.entity.die();
+        slots[p] = null;
+      } else {
+        slot.entity.setFrame(slot.frame);
+      }
+    }
+
+    // 2. Spawn the next tile every `framesPerSpawn` ticks. The
+    //    position index is the tick count divided by the spawn
+    //    cadence — only valid when the tick lands on a spawn beat
+    //    AND there's still a position to fill.
+    if (tick % framesPerSpawn === 0) {
+      const i = tick / framesPerSpawn;
+      if (i < positions) {
+        const px = x1 + ux * i * stepPx;
+        const py = y1 + uy * i * stepPx;
+        const entity = self.spawn(kind, px, py, 0, 0);
+        entity.setFrame(0);
+        slots[i] = { entity, frame: 0 };
+      }
+    }
+
+    yield stepFrames;
+  }
+
+  // Cleanup — any tile still alive at the end (shouldn't happen if
+  // totalTicks is right) gets killed defensively.
+  for (const slot of slots) {
+    if (slot && slot.entity.alive) slot.entity.die();
+  }
+}
+
+// Same algorithm as `lineExplosion`, pre-baked with the
+// `redExplosion` sprite + a slower / sparser default profile:
+// wide spacing between tiles (60 px), long frame hold (9 phys frames
+// per sprite frame), and five frames in place before the next spawn.
+// Effective wavefront speed at defaults ≈ 80 px/s — a deliberate,
+// ominous march vs. the blue variant's quick snap.
+//
+// All `lineExplosion` opts are accepted; user-supplied values
+// override the wrapper's defaults.
+export function* lineRedExplosion(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  opts?: {
+    stepPx?: number;
+    speedPxPerSec?: number;
+    stepFrames?: number;
+    framesPerSpawn?: number;
+    kind?: EntityKind;
+    frameCount?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  yield* lineExplosion(self, x1, y1, x2, y2, {
+    kind: redExplosion,
+    frameCount: RED_EXPLOSION_FRAMES,
+    stepPx: 60,
+    stepFrames: 9,
+    framesPerSpawn: 5,
+    ...opts,
   });
 }

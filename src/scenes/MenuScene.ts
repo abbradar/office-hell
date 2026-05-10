@@ -4,11 +4,12 @@ import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
+import { MENU_LOGO_KEY } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
-import { FONT_DIALOGUE_LG, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { FONT_DIALOGUE_LG, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
-import { COLOR_ACCENT_GOLD_STR, COLOR_ACCENT_RED_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
+import { COLOR_ACCENT_GOLD_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -45,12 +46,12 @@ export class MenuScene extends Phaser.Scene {
     const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED);
     this.scheduleRumble(elevator);
 
-    this.add
-      .text(GAME_W / 2, GAME_H * 0.28, 'OFFICE HELL', {
-        ...FONT_TITLE,
-        color: COLOR_ACCENT_RED_STR,
-      })
-      .setOrigin(0.5);
+    // Hand-drawn gothic logo replaces the FONT_TITLE banner. 2× scale
+    // brings the 149×152 source up to ~298×304, filling the elevator
+    // backdrop's frame more dramatically; the anchor lifts to
+    // GAME_H × 0.22 so the bigger logo stays clear of the START prompt
+    // at GAME_H × 0.5.
+    this.add.image(GAME_W / 2, GAME_H * 0.22, MENU_LOGO_KEY).setOrigin(0.5).setScale(2);
 
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
     const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {

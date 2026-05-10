@@ -430,6 +430,122 @@ long for a "stay out of this lane" wall.
 
 ---
 
+## 14. Line explosion (propagating shockwave)
+
+A line of `blueExplosion` sprite tiles where the wavefront marches
+forward and each trailing tile keeps cycling its sprite animation
+in place. Every tick the pattern advances the sprite frame on every
+active tile; spawns happen every `framesPerSpawn` ticks (default 1):
+
+```
+framesPerSpawn = 1 (default — front + tail tightly chained):
+  tick 0:  spawn tile 0, frame 0
+  tick 1:  tile 0 → frame 1; spawn tile 1, frame 0
+  tick 2:  tile 0 → frame 2; tile 1 → frame 1; spawn tile 2, frame 0
+  ...
+
+framesPerSpawn = 3 (each tile holds 3 frames in place before the next
+                    position joins):
+  tick 0:  spawn tile 0, frame 0
+  tick 1:  tile 0 → frame 1
+  tick 2:  tile 0 → frame 2
+  tick 3:  tile 0 → frame 3; spawn tile 1, frame 0
+  tick 4:  tile 0 → frame 4; tile 1 → frame 1
+  ...
+```
+
+Tiles die after they advance past the last animation frame. Every
+tile is damaging while alive — the leading edge is the player's
+visual telegraph, the trailing tail is the no-fly zone.
+
+```js
+// Vertical wave from bottom to top of the field, default speed.
+yield* lineExplosion(self, 200, 480, 200, 100);
+```
+
+The line is direction-agnostic — pass any two endpoints and the wave
+walks from the first to the second.
+
+```js
+// Diagonal sweep, slower (250 px/s).
+yield* lineExplosion(self, 20, 80, 380, 600, { speedPxPerSec: 250 });
+
+// Horizontal sweep right → left, wider gap between tiles (32 px).
+yield* lineExplosion(self, GAME_W - 20, 240, 20, 240, { stepPx: 32 });
+
+// Each tile holds for 3 sprite frames before the next spawn — the
+// tail spreads out with 3 frames between adjacent positions.
+yield* lineExplosion(self, 200, 480, 200, 100, { framesPerSpawn: 3 });
+
+// Slow, drawn-out wave — wavefront speed is preserved across
+// framesPerSpawn, so combining the two parameters tunes the visual
+// "thickness" of the tail without changing how fast the front moves.
+yield* lineExplosion(self, 40, 320, 360, 320, {
+  speedPxPerSec: 200,
+  framesPerSpawn: 3,
+});
+
+// Pair of crossing waves — first cancels into nothing while the
+// second is still walking. Race them in parallel via {all:}.
+yield {
+  all: [
+    lineExplosion(self, 40, 200, 360, 200),
+    lineExplosion(self, 360, 320, 40, 320, { speedPxPerSec: 350 }),
+  ],
+};
+```
+
+Knobs:
+
+- `stepPx` — distance between consecutive tile positions. Default =
+  sprite width (16) + 6 px padding = **22 px**. Lower for denser
+  walls, higher for spaced-out beads.
+- `speedPxPerSec` — wavefront propagation speed in pixels per
+  second. Convenience over `stepFrames`; internally rewrites
+  `stepFrames = round(stepPx · 60 / (speed · framesPerSpawn))` so
+  the wavefront speed stays correct regardless of `framesPerSpawn`.
+- `stepFrames` — physics frames between sprite-frame ticks
+  (overrides `speedPxPerSec` when set). Each tile shows each of its
+  sprite frames for exactly `stepFrames` physics frames.
+- `framesPerSpawn` — how many sprite-frame ticks each tile holds in
+  place before the next position spawns. Default 1. Set higher to
+  spread the tail out — at `framesPerSpawn = 3`, adjacent tiles lag
+  3 sprite frames behind each other instead of 1.
+- `frameCount` — number of sprite frames in the animation. Default
+  7 (matches `blueExplosion`). Lower = shorter tail.
+- `kind` — alternative spritesheet kind (must have ≥ `frameCount`
+  frames). Default is `blueExplosion`.
+
+### Red-explosion variant
+
+`lineRedExplosion(self, x1, y1, x2, y2, opts?)` is a thin wrapper
+that pre-bakes the `redExplosion` sprite (8-frame red-orange burst)
+with a deliberate slow-march default: `stepPx: 60`, `stepFrames: 9`,
+`framesPerSpawn: 5`. Effective wavefront speed ≈ **80 px/s** vs.
+the blue variant's ~660 px/s. Tile lifetime is 1.2 s each, so the
+trail lingers visibly.
+
+```js
+// Slow red sweep bottom → top.
+yield* lineRedExplosion(self, 200, 480, 200, 100);
+
+// Override any default — same opts surface as `lineExplosion`.
+yield* lineRedExplosion(self, 40, 200, 360, 200, {
+  speedPxPerSec: 200,   // bump the front speed
+});
+```
+
+Total run time: `(positions + frameCount - 1) × stepFrames` physics
+frames. For the default 22 px stride and ~480 px/s, a 380-px line
+runs in ~1.0 s — a quick wave that leaves the field after the
+trailing scatter fades.
+
+The pattern is a generator — `yield*` it. To overlap multiple lines,
+wrap them in `{ all: [...] }` (join, see §11) or `{ race: [...] }`
+(cancel losers).
+
+---
+
 ## Helper reference (cheat sheet)
 
 ```ts
@@ -440,6 +556,12 @@ arc(self, count, kind, speed, fromRad, toRad)
 lineStroke(self, x1, y1, x2, y2, kind, lifeFrames,
            { damaging?, spacing?, color?, width? })   // damaging: true → lethal bullets;
                                                      // damaging: false → animated warning
+lineExplosion(self, x1, y1, x2, y2,                  // generator — yield* it
+              { stepPx?, speedPxPerSec?, stepFrames?,  // shockwave of animated tiles
+                framesPerSpawn?, frameCount?, kind? }) // marching forward; each tile lethal
+lineRedExplosion(self, x1, y1, x2, y2, opts?)        // red sprite, slow-march defaults
+                                                     // (stepPx 60, stepFrames 9,
+                                                     // framesPerSpawn 5; same opts as above)
 
 // Compositional grid → mover → wave:
 squareGrid({ cols, rows, x0, y0, dx, dy })           → Point[]

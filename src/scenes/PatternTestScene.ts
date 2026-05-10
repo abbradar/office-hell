@@ -26,7 +26,9 @@ import {
   aimed,
   arc,
   hexGrid,
+  lineExplosion,
   lineGrid,
+  lineRedExplosion,
   lineStroke,
   move,
   moveTo,
@@ -84,6 +86,8 @@ const STATIC_HELPERS = {
   wave,
   tiledScroll,
   lineStroke,
+  lineExplosion,
+  lineRedExplosion,
   moveTo,
   walkOffScreen,
   bullet,
@@ -107,6 +111,8 @@ export type BulletStyleOpts = {
 const DEFAULT_CODE = `// Helpers in scope:
 //   ring/aimed/spread/arc(self, count, kind, speed, ...)
 //   lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, { damaging?, spacing?, color?, width? })
+//   yield* lineExplosion(self, x1, y1, x2, y2, { stepPx?, speedPxPerSec?, stepFrames?, framesPerSpawn?, kind?, frameCount? })
+//   yield* lineRedExplosion(self, x1, y1, x2, y2, opts?)   // red sprite, slow march defaults (stepPx 60, stepFrames 9, framesPerSpawn 5)
 //   moveTo, walkOffScreen
 //
 // Compositional grid → mover → wave:
@@ -129,14 +135,17 @@ const DEFAULT_CODE = `// Helpers in scope:
 //     radius: hitbox + glyph px   (default 3)
 //     shape:  'circle'|'square'|'diamond'  (default 'circle')
 
-const red = bulletStyle({ color: 0xff5577, radius: 4 });
-const blue = bulletStyle({ color: 0x66bbff, radius: 4, shape: 'diamond' });
-
+// Demo: side-by-side bottom → top waves.
+//   x=140 — quick blue (default).
+//   x=260 — slow red march (lineRedExplosion: stepPx 60, stepFrames 9,
+//           framesPerSpawn 5 → wavefront ~80 px/s, large gaps, 1.2s
+//           per tile lifetime).
 while (true) {
-  ring(self, 12, red, 130);
-  yield* waitSeconds(0.25);
-  ring(self, 12, blue, 130, Math.PI / 12);
-  yield* waitSeconds(0.25);
+  yield* lineExplosion(self, 140, 480, 140, 100);
+  yield* waitSeconds(0.5);
+
+  yield* lineRedExplosion(self, 260, 480, 260, 100);
+  yield* waitSeconds(1.5);
 }
 `;
 
