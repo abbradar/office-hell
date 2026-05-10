@@ -1,19 +1,8 @@
-import { STAGE2_METAL_LOOP_KEY, STAGE2_METAL_OPENING_KEY } from '../../audio/keys';
-import { getCurrentTrackInfo } from '../../audio/music/loop';
-import { GAME_W, SCRIPT_FPS } from '../../config';
+import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
 import { moveTo, ring } from '../../script/patterns';
-import {
-  clearBullets,
-  markWave,
-  prepareForBoss,
-  race,
-  startMusicWithIntro,
-  suspendRunning,
-  waitAudioTimeAtLeast,
-  waitSeconds,
-} from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, suspendRunning, waitSeconds } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -23,15 +12,8 @@ const BOSS_ENTRY_SPEED = 110;
 const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
 
-// 113 BPM matches the metal track's tempo. One beat at 60 Hz simulation
-// = 60 / 113 × SCRIPT_FPS ≈ 31.86 frames; rounded to 32 puts the ring
-// spawns on the song's downbeat. The pre-fight ring spam fires once per
-// beat for that "the boss is firing on the music" feel.
-const RING_FRAMES_PER_BEAT = Math.round((60 / 113) * SCRIPT_FPS);
-
-// Coach Becky has 400 HP; the final boss is balanced at 1.5× that to
-// give the metal-loop fight a longer, more punishing feel without
-// dragging into the second loop iteration on a perfect run.
+// Coach Becky has 400 HP; the final boss is balanced at 1.5× that for
+// a longer, more punishing feel.
 const BOSS_HP = 600;
 
 function* theBossScript(self: Entity) {
@@ -47,9 +29,8 @@ function* theBossScript(self: Entity) {
   yield BOSS_HOLD_BEFORE_TALK;
 
   // Pre-fight dialogue. The opening track is already looping under us
-  // (theBossWave started it before the dialog) so the dialog plays
-  // under the intro motif on loop — tension without committing to the
-  // main melody.
+  // (theBossWave started it before the dialog) and stays in that loop
+  // through the fight.
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
@@ -71,15 +52,10 @@ function* theBossScript(self: Entity) {
     self.stage.bossName = null;
   });
 
-  // Switch off the looping intro and into the real intro→loop sequence.
-  // The intro plays once more as a pre-roll into the main melody; we
-  // race the boss's pre-fight ring spam against the intro duration so
-  // the heavy patterns kick in exactly when the loop takes over.
-  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
+  // The opening keeps looping under the fight (started by `fromTheBoss`
+  // before the wave) — there's no separate main melody to switch into.
   becomeHittable(self);
   self.say('Shrink the workforce!', 110);
-  const introDuration = getCurrentTrackInfo()?.introDuration ?? 0;
-  // yield* race(simpleRingSpam(self), waitAudioTimeAtLeast(introDuration));
 
   const BPM_STEP = 60 / 113;
   let spiralAngle = 0;
@@ -92,16 +68,6 @@ function* theBossScript(self: Entity) {
     ring(self, 64, bullet, spiralSpeed, spiralAngle);
     spiralAngle += 0.01;
     yield* waitSeconds(BPM_STEP);
-  }
-}
-
-// Pre-fight ramp-up: a single bullet ring on every 113-BPM beat. Runs
-// forever while the boss is alive; the caller races this against the
-// intro duration so it's cancelled the moment the main loop hits.
-function* simpleRingSpam(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.alive) {
-    ring(self, 12, bullet, 130);
-    yield RING_FRAMES_PER_BEAT;
   }
 }
 
@@ -137,11 +103,10 @@ export const theBoss = new BossKind({
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
-  // Music setup (loop the metal opening under the boss's entry +
-  // dialog, with a leading seam wait) is owned by the chain function
+  // Music setup (loop the retro-03 opening under the entire encounter,
+  // with a leading seam wait) is owned by the chain function
   // (`fromTheBoss`) — both the live chain and the standalone practice
-  // entry route through it. theBossScript later flips this over to
-  // the proper intro→loop sequence right after the dialog dismisses.
+  // entry route through it.
   // Don't open the encounter while leftovers are still on screen. Sweep
   // enemies + in-flight bullets, brief beat, then bring on the boss.
   // BossKind makes all bosses spawn unhittable; theBossScript handles

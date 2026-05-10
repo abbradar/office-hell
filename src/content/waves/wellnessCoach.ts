@@ -493,7 +493,7 @@ export const wellnessCoach = new WellnessCoachKind({
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
-  // Music setup (switch to metal opening → loop) is owned by the chain
+  // Music setup (switch to retro-03 opening → loop) is owned by the chain
   // function (`fromWellnessCoach`) — both the live chain and the
   // standalone practice entry route through it so the music is correct
   // before the wave body runs.

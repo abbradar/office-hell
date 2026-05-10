@@ -8,11 +8,11 @@ import drinkBulletUrl from '../assets/bullets/drink.png';
 import emailBulletUrl from '../assets/bullets/email.png';
 import missedCallUrl from '../assets/bullets/missedCall.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
+import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
 import reportBulletUrl from '../assets/bullets/report.png';
-import bombExplosionUrl from '../assets/sprites/bomb_explosion.png';
-import playerBulletUrl from '../assets/sprites/player_bullet.png';
-import waterDispenserUrl from '../assets/sprites/water_dispenser.png';
+import bombExplosionUrl from '../assets/misc/bomb_explosion.png';
+import waterDispenserUrl from '../assets/misc/water_dispenser.png';
 import { BULLET_RADIUS } from '../config';
 import { COLOR_BULLET_DEFAULT } from '../ui/palette';
 

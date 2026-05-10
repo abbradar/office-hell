@@ -1,12 +1,12 @@
 import {
   KAEDALUS_LONG_KEY,
   KAEDALUS_SHORT_KEY,
-  STAGE1_METAL_LOOP_KEY,
-  STAGE1_METAL_OPENING_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
+  STAGE1_RETRO_03_LOOP_KEY,
+  STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
-  STAGE2_METAL_OPENING_KEY,
+  STAGE2_RETRO_03_OPENING_KEY,
 } from '../audio/keys';
 import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
@@ -139,7 +139,7 @@ function* fromGymBro(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromMoreCharts(self);
 }
 
-// === Stage 1 part 2 — retro-02 → metal → wellness coach ===
+// === Stage 1 part 2 — retro-02 → retro-03 → wellness coach ===
 //
 // Wave block = 11+8+8+11 = 38s + 3 × 3s gaps = 47s, against the 49s
 // part-2 budget. Meeting interns ends on a visible retreat motion,
@@ -149,7 +149,7 @@ function* fromGymBro(self: Entity): Generator<ScriptYield, void, void> {
 // tighten the wave or extend the slot. After the block,
 // `waitTrackEnded` snaps to the next retro-02 loop boundary at-or-
 // after the block ends; wellnessCoachWave then does the actual
-// `startMusicWithIntro(metal)` switch.
+// `startMusicWithIntro(retro-03)` switch.
 //
 // The leading `startMusicLoop(retro-02)` is idempotent — no-op in
 // live flow (retro-02 is already playing from gymBro) and switches
@@ -191,11 +191,11 @@ function* fromMeetingInterns(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromWellnessCoach(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'music: metal');
-  // In the live chain this is the actual switch from retro-02 → metal
+  markWave(self, 'music: retro-03');
+  // In the live chain this is the actual switch from retro-02 → retro-03
   // (caller waited for the retro-02 seam first); from a standalone
   // practice entry it switches in from menu music.
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+  yield* startMusicWithIntro(STAGE1_RETRO_03_OPENING_KEY, STAGE1_RETRO_03_LOOP_KEY);
 
   yield* self.stage.separateWave(wellnessCoachWave(self));
   yield* fromWaterCooler(self);
@@ -203,7 +203,7 @@ function* fromWellnessCoach(self: Entity): Generator<ScriptYield, void, void> {
 
 // === Inter-stage water cooler — silent ===
 //
-// The water-cooler scene plays without music; we cut the stage-1 metal
+// The water-cooler scene plays without music; we cut the stage-1 retro-03
 // loop here regardless of how we entered (live chain after the boss
 // dies, or standalone practice). The next from<Wave> spins up its own
 // music when gameplay resumes.
@@ -217,7 +217,7 @@ function* fromWaterCooler(self: Entity): Generator<ScriptYield, void, void> {
 //
 // `startMusicLoop` (no intro fanfare; the stage-1 retro opening
 // played at game start and re-firing an opening here would feel like
-// a restart) snaps the previous loop — metal from the stage-1 end-
+// a restart) snaps the previous loop — retro-03 from the stage-1 end-
 // boss fight — back down to kaedalus-long. Three evening-shift waves
 // (IT admin, sales-and-client, janitors), switch to kaedalus-short
 // at the music seam, then hand off to Hodges. Untimed for now —
@@ -262,10 +262,10 @@ function* fromShrunkOldMan(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromHrTrio(self);
 }
 
-// === Stage 2 part 2 — kaedalus-short → metal → The Boss ===
+// === Stage 2 part 2 — kaedalus-short → retro-03 → The Boss ===
 //
 // Three remaining late-day waves (HR trio, oversleeper, Friday-
-// party) before the metal cut and his entrance. Untimed for now.
+// party) before the retro-03 cut and his entrance. Untimed for now.
 // In the live chain, kaedalus-short is already running by the time
 // we get here — Hodges's death script switched it in mid-shudder
 // (pauseMusicForDefeat in shrunkOldMan.ts). The leading
@@ -293,15 +293,14 @@ function* fromFridayParty(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'music: stage-2 metal');
+  markWave(self, 'music: stage-2 retro-03');
   // Wait the previous track to its loop boundary (no-op if none is
   // playing — the live chain enters from kaedalus-short, the
-  // standalone practice entry from menu music) so the metal opening
-  // lands on a clean seam. Then loop the opening under the boss's
-  // entry + dialog — theBossScript later flips to the proper
-  // intro→loop sequence right after the dialog dismisses.
+  // standalone practice entry from menu music) so the retro-03 opening
+  // lands on a clean seam. The opening keeps looping for the entire
+  // boss encounter — there's no separate main-melody loop to switch into.
   yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE2_METAL_OPENING_KEY);
+  yield* startMusicLoop(STAGE2_RETRO_03_OPENING_KEY);
 
   yield* self.stage.separateWave(theBossWave(self));
   yield* fromOutro(self);
@@ -325,7 +324,7 @@ function* fromIntro(self: Entity): Generator<ScriptYield, void, void> {
 // fromOutro is the chain tail — no `yield*` to a successor, control
 // returns to whichever runner started the chain. Live (stageBody)
 // follows with `scene.start('End')`; practice (makeWaveStage) follows
-// with `waitScreenClear` + `scene.start('TestMenu')`. The metal loop
+// with `waitScreenClear` + `scene.start('TestMenu')`. The retro-03 loop
 // from the final-boss fight is cut here so the player's exit walk
 // plays in silence regardless of how we entered.
 function* fromOutro(self: Entity): Generator<ScriptYield, void, void> {
