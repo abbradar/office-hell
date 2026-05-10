@@ -314,6 +314,10 @@ export class StageManager {
     // The Arcade Body auto-tracks GameObject scale, so this also restores
     // the body's source size for the upcoming hitbox configuration below.
     e.setScale(1);
+    // Reset alpha so a pooled entity that was last spawned as a faint
+    // starter-laser cell (setAlpha < 1) doesn't render the next bullet
+    // kind ghostly grey.
+    e.setAlpha(1);
     e.setActive(true);
     // Bullets sit between floor (-10) and walls (-9) so the wall texture
     // occludes a stray bullet, and the doors' transparent middle still lets
