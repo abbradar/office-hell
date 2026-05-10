@@ -2,33 +2,18 @@ import type Phaser from 'phaser';
 import bgDoorsUrl from '../assets/bg/doors.png';
 import bgFloorUrl from '../assets/bg/floor.png';
 import bgWallsUrl from '../assets/bg/walls.png';
+import cameraBulletUrl from '../assets/bullets/camera.png';
+import chartCellUrl from '../assets/bullets/chartCell.png';
+import drinkBulletUrl from '../assets/bullets/drink.png';
+import emailBulletUrl from '../assets/bullets/email.png';
+import missedCallUrl from '../assets/bullets/missedCall.png';
+import pillBulletUrl from '../assets/bullets/pill.png';
+import questionBulletUrl from '../assets/bullets/question.png';
+import reportBulletUrl from '../assets/bullets/report.png';
 import playerBulletUrl from '../assets/sprites/player_bullet.png';
 import waterDispenserUrl from '../assets/sprites/water_dispenser.png';
 import { BULLET_RADIUS } from '../config';
-import {
-  COLOR_BULLET_DEFAULT,
-  COLOR_CAMERA_BODY,
-  COLOR_CAMERA_BORDER,
-  COLOR_CAMERA_LENS_BRIGHT,
-  COLOR_CAMERA_LENS_DARK,
-  COLOR_CAMERA_REC,
-  COLOR_CHART_CELL_BORDER,
-  COLOR_CHART_CELL_FILL,
-  COLOR_DRINK_FOAM,
-  COLOR_DRINK_GLASS,
-  COLOR_DRINK_LIQUID,
-  COLOR_EMAIL_BORDER,
-  COLOR_EMAIL_PAPER,
-  COLOR_MISSED_CALL_INNER,
-  COLOR_MISSED_CALL_OUTER,
-  COLOR_PILL_BORDER,
-  COLOR_PILL_LEFT,
-  COLOR_PILL_RIGHT,
-  COLOR_QUESTION_STAMP,
-  COLOR_QUESTION_TILE,
-  COLOR_REPORT_BORDER,
-  COLOR_REPORT_PAPER,
-} from '../ui/palette';
+import { COLOR_BULLET_DEFAULT } from '../ui/palette';
 
 // Runtime-generated textures. Each function draws into a fresh Graphics,
 // registers a single texture by key, and destroys the Graphics. Callers
@@ -98,187 +83,25 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
-// Report bullet placeholder — paper-coloured rectangle with a darker border.
-// Will be swapped for an actual paper sprite later.
-export function generateReportBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 8;
-  const h = 10;
-  g.fillStyle(COLOR_REPORT_BORDER, 1);
-  g.fillRect(0, 0, w, h);
-  g.fillStyle(COLOR_REPORT_PAPER, 1);
-  g.fillRect(1, 1, w - 2, h - 2);
-  g.generateTexture('reportBullet', w, h);
-  g.destroy();
+// Themed bullet sprites — paper, envelope, missed call, etc. The texture
+// keys here are the lookup names used by entity kinds; the filenames drop
+// the `Bullet` suffix since they all live under `assets/bullets/`.
+export function preloadBullets(scene: Phaser.Scene): void {
+  scene.load.image('reportBullet', reportBulletUrl);
+  scene.load.image('missedCall', missedCallUrl);
+  scene.load.image('emailBullet', emailBulletUrl);
+  scene.load.image('chartCell', chartCellUrl);
+  scene.load.image('questionBullet', questionBulletUrl);
+  scene.load.image('drinkBullet', drinkBulletUrl);
+  scene.load.image('pillBullet', pillBulletUrl);
+  scene.load.image('cameraBullet', cameraBulletUrl);
 }
 
-// Missed-call bullet placeholder — red square with a white core, to read as
-// "phone notification" at a glance and stand out from the round white bullet.
-// Will be swapped for an actual missed-call sprite later.
-export function generateMissedCallTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const s = 8;
-  g.fillStyle(COLOR_MISSED_CALL_OUTER, 1);
-  g.fillRect(0, 0, s, s);
-  g.fillStyle(COLOR_MISSED_CALL_INNER, 1);
-  g.fillRect(2, 2, s - 4, s - 4);
-  g.generateTexture('missedCall', s, s);
-  g.destroy();
-}
-
-// Email bullet placeholder — chunky envelope: pale paper rectangle with a
-// dark border and a V-flap on top, oversized so it reads as a heavy
-// hazard next to the round white bullets.
-export function generateEmailBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 14;
-  const h = 10;
-  g.fillStyle(COLOR_EMAIL_BORDER, 1);
-  g.fillRect(0, 0, w, h);
-  g.fillStyle(COLOR_EMAIL_PAPER, 1);
-  g.fillRect(1, 1, w - 2, h - 2);
-  g.lineStyle(1, COLOR_EMAIL_BORDER, 1);
-  g.beginPath();
-  g.moveTo(1, 1);
-  g.lineTo(w / 2, h / 2);
-  g.lineTo(w - 1, 1);
-  g.strokePath();
-  g.generateTexture('emailBullet', w, h);
-  g.destroy();
-}
-
-// Question bullet placeholder — yellow tile with a dark "?" stamped on it,
-// so streams of these read as a fusillade of unanswered questions. Distinct
-// from the round default bullet, the red missed-call square and the beige
-// report rectangle.
-export function generateQuestionBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 8;
-  const h = 10;
-  g.fillStyle(COLOR_QUESTION_TILE, 1);
-  g.fillRect(0, 0, w, h);
-  g.fillStyle(COLOR_QUESTION_STAMP, 1);
-  g.fillRect(2, 1, 4, 1); // top of '?'
-  g.fillRect(5, 2, 1, 1);
-  g.fillRect(4, 3, 1, 1); // curve down
-  g.fillRect(3, 4, 1, 2); // body
-  g.fillRect(3, 8, 2, 1); // dot
-  g.generateTexture('questionBullet', w, h);
-  g.destroy();
-}
-
-// Chart-cell bullet — small 8×8 tile with a dark border and a white interior.
-// Spawn-time `setTint` recolors the white interior; the dark border survives
-// the multiplicative tint and keeps each cell readable as a discrete block in
-// dense pie formations. Square hitbox at the entity-kind level so the
-// rectangular silhouette registers honestly.
-export function generateChartCellTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 8;
-  const h = 8;
-  g.fillStyle(COLOR_CHART_CELL_BORDER, 1);
-  g.fillRect(0, 0, w, h);
-  g.fillStyle(COLOR_CHART_CELL_FILL, 1);
-  g.fillRect(1, 1, w - 2, h - 2);
-  g.generateTexture('chartCell', w, h);
-  g.destroy();
-}
-
-// Camcorder bullet — side-view camera body with a viewfinder hump on top
-// and a glowing cyan-pupil lens on the right. Drawn lens-on-the-right so
-// callers can `setRotation(angleToPlayer)` at spawn time and the lens
-// ends up pointing at the player. Single red REC pixel sells the framing.
-export function generateCameraBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 14;
-  const h = 10;
-
-  // Body — outer dark border, inner grey fill, on the left half of the sprite.
-  g.fillStyle(COLOR_CAMERA_BORDER, 1);
-  g.fillRect(0, 2, 9, 7);
-  g.fillStyle(COLOR_CAMERA_BODY, 1);
-  g.fillRect(1, 3, 7, 5);
-
-  // Viewfinder hump on top of the body (the rear/handle end).
-  g.fillStyle(COLOR_CAMERA_BORDER, 1);
-  g.fillRect(1, 0, 3, 2);
-  g.fillStyle(COLOR_CAMERA_BODY, 1);
-  g.fillRect(2, 1, 1, 1);
-
-  // REC indicator — single red pixel inside the body.
-  g.fillStyle(COLOR_CAMERA_REC, 1);
-  g.fillRect(6, 5, 1, 1);
-
-  // Lens — concentric circles protruding from the right ("front") side.
-  g.fillStyle(COLOR_CAMERA_BORDER, 1);
-  g.fillCircle(11, 5, 3);
-  g.fillStyle(COLOR_CAMERA_LENS_DARK, 1);
-  g.fillCircle(11, 5, 2);
-  g.fillStyle(COLOR_CAMERA_LENS_BRIGHT, 1);
-  g.fillCircle(11, 5, 1);
-
-  g.generateTexture('cameraBullet', w, h);
-  g.destroy();
-}
-
-// Pill bullet — two-tone capsule (orange + cream, dark outline). Two
-// overlapping rects fake the stadium shape: the taller centre column and
-// the wider middle row leave the four corner pixels transparent so the
-// silhouette reads as a rounded capsule against the corridor. Sized 10×6
-// so it's clearly horizontal — at spawn time the firer can `setRotation`
-// to point it along its launch heading if we ever want that, but the
-// default flat orientation already reads as a vitamin.
-export function generatePillBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 10;
-  const h = 6;
-  // Border — two overlapping rects form an implicit rounded-corner outline.
-  g.fillStyle(COLOR_PILL_BORDER, 1);
-  g.fillRect(1, 0, w - 2, h);
-  g.fillRect(0, 1, w, h - 2);
-  // Left half — orange.
-  g.fillStyle(COLOR_PILL_LEFT, 1);
-  g.fillRect(2, 1, 3, h - 2);
-  g.fillRect(1, 2, 4, h - 4);
-  // Right half — cream.
-  g.fillStyle(COLOR_PILL_RIGHT, 1);
-  g.fillRect(5, 1, 3, h - 2);
-  g.fillRect(5, 2, 4, h - 4);
-  g.generateTexture('pillBullet', w, h);
-  g.destroy();
-}
-
-// Drink bullet placeholder — small cocktail glass head-on: dark glass
-// outline, pale-blue liquid body, foam highlight on top. Reads as a
-// beverage at bullet scale and stays distinct from the default bullet
-// and the warm-coloured paper/email/question bullets.
-export function generateDrinkBulletTexture(scene: Phaser.Scene): void {
-  const g = scene.add.graphics();
-  const w = 8;
-  const h = 10;
-  g.fillStyle(COLOR_DRINK_GLASS, 1);
-  g.fillRect(0, 0, w, h);
-  g.fillStyle(COLOR_DRINK_LIQUID, 1);
-  g.fillRect(1, 1, w - 2, h - 2);
-  g.fillStyle(COLOR_DRINK_FOAM, 1);
-  g.fillRect(1, 1, w - 2, 1);
-  g.generateTexture('drinkBullet', w, h);
-  g.destroy();
-}
-
-// Bulk-register every synchronous runtime texture (bullets + doors-bbox
-// silhouette). Boot scene calls this from a microtask after queueing the
-// network loads, so canvas draws don't block the kick-off of XHRs and
-// dynamic-imports.
+// Bulk-register every synchronous runtime texture (the round default
+// bullet + doors-bbox silhouette). Boot scene calls this from a microtask
+// after queueing the network loads, so canvas draws don't block the
+// kick-off of XHRs and dynamic-imports.
 export function generateTextures(scene: Phaser.Scene): void {
   generateDoorsBboxTexture(scene);
   generateBulletTexture(scene);
-  generateReportBulletTexture(scene);
-  generateMissedCallTexture(scene);
-  generateEmailBulletTexture(scene);
-  generateChartCellTexture(scene);
-  generateQuestionBulletTexture(scene);
-  generateDrinkBulletTexture(scene);
-  generatePillBulletTexture(scene);
-  generateCameraBulletTexture(scene);
 }

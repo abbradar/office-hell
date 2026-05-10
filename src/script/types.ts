@@ -117,6 +117,10 @@ export class EntityKind {
     if (self.hp === null) return;
     self.hp -= amount;
     if (self.hp <= 0) {
+      // Count enemy kills for the run-wide score. Guarded against the player
+      // (PlayerKind.takeDamage routes through super) — counting the player's
+      // own death would overlap with `hpLost` and skew the inter-stage quips.
+      if (self !== self.stage.player) self.stage.score.enemiesKilled++;
       if (this.deathScript !== null) {
         // Lock incoming damage off so a stray bullet that lands a frame
         // later can't re-enter takeDamage and double-fire the death

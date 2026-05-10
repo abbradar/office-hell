@@ -7,4 +7,5 @@ export class GameScore {
   bombsUsed = 0;
   enemiesKilled = 0;
   hpLost = 0;
+  continuesUsed = 0;
 }

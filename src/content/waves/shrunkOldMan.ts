@@ -114,7 +114,9 @@ function* shrunkOldManScript(self: Entity) {
   self.say('Just a few old tasks…', 110);
   yield 60;
 
-  while (self.alive) {
+  // Loops until the lethal hit lands, at which point takeDamage swaps
+  // this script out for shrunkOldManDeath via runScript.
+  while (true) {
     self.say('Could you finish these reports?', 100);
     for (let i = 0; i < PHASE_A_REPEATS; i++) {
       aimed(self, PHASE_A_COUNT, reportBullet, PHASE_A_SPEED, PHASE_A_SPREAD);

@@ -138,16 +138,47 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   yield* waitSeconds(SETTLE_SECONDS);
 
   // The conversation. Greeting line uses the player's actual name so
-  // it reads correctly for either MC.
+  // it reads correctly for either MC. The MC's tail-end gripes are
+  // sourced from the run-wide GameScore — counters are accumulated by
+  // the engine (enemies killed, HP lost, bombs used, continues taken)
+  // so the lines reflect how the player actually played stage 1.
+  const score = stage.score;
+  const excuses = score.enemiesKilled;
+  const angry = score.bombsUsed;
+  const hits = score.hpLost;
+  const continues = score.continuesUsed;
+  const excusesLine =
+    excuses === 1 ? 'I told one excuse today to get out.' : `I told about ${excuses} excuses today to get out.`;
+  const angryLine =
+    angry === 0
+      ? "At least I didn't get angry."
+      : angry === 1
+        ? 'I even got angry once.'
+        : `I even got angry ${angry} times.`;
+  const lines: { speaker: 'left' | 'right'; text: string }[] = [
+    { speaker: 'right', text: `Evening, ${playerCh.name}. Everyone is running mad around.` },
+    { speaker: 'left', text: 'Today is even more than usual. Are you not leaving?' },
+    { speaker: 'right', text: 'I was going to, but ran into some colleagues.' },
+    { speaker: 'left', text: 'Ah, I know the feeling.' },
+    { speaker: 'left', text: excusesLine },
+    { speaker: 'left', text: angryLine },
+  ];
+  if (hits > 0) {
+    lines.push({
+      speaker: 'left',
+      text: hits === 1 ? 'They even got me once.' : `They even got me ${hits} times.`,
+    });
+  }
+  if (continues >= 1) {
+    lines.push({
+      speaker: 'left',
+      text: continues === 1 ? 'And I thought of just quitting.' : `And I thought of just quitting ${continues} times.`,
+    });
+  }
   yield self.dialogue({
     left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
     right: { sprite: otherCh.sprite, frame: otherCh.frame, name: otherCh.name },
-    lines: [
-      { speaker: 'right', text: `Evening, ${playerCh.name}. Everyone is running mad around.` },
-      { speaker: 'left', text: 'Today is even more than usual. Are you not leaving?' },
-      { speaker: 'right', text: 'I was going to, but ran into some colleagues.' },
-      { speaker: 'left', text: 'Ah, I know the feeling.' },
-    ],
+    lines,
   });
 
   // ─── Post-dialog: other exits, floor carries player+cooler down ────

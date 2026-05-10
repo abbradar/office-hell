@@ -29,7 +29,12 @@ export const cameraBullet = new EntityKind({
 const ENTRY_SPEED = 110;
 const HOLD_FRAMES = 80;
 
-const BARRAGES = 5;
+// Four formations is what the 11s slot holds: the deepest-phase intern
+// (phase 3, side-spawned, +30f stagger) clears the bottom edge at
+// frame ~657 of 660. A fifth barrage pushes phase 3 past the slot end
+// and `sweepStragglers` kills it mid-retreat. To raise pressure,
+// tighten BARRAGE_GAP or HOLD_FRAMES instead of adding barrages.
+const BARRAGES = 4;
 // Stagger each intern's first barrage by `phase * BARRAGE_PHASE_STEP`
 // frames so the four arrows don't fire in unison; the player gets a
 // rolling drumbeat of incoming formations instead of one mass volley.

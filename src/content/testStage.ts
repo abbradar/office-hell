@@ -23,7 +23,9 @@ import {
 import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import {
+  doorY,
   markWave,
+  sideSpawnX,
   startMusicWithIntro,
   waitAudioTimeAtLeast,
   waitEnemiesClear,
@@ -32,11 +34,11 @@ import {
 } from '../script/stage';
 import { EntityKind } from '../script/types';
 import type { DialogueOpts } from '../ui/dialogue';
-import { bossOne } from './kinds';
 import { checkEmailCoworker } from './waves/checkEmail';
 import { colleague } from './waves/colleague';
-import { janitor } from './waves/janitor';
+import { JANITOR_DOOR_Y, janitor } from './waves/janitor';
 import { oversleeper } from './waves/oversleeper';
+import { theBoss } from './waves/theBoss';
 
 const PORTRAIT = { sprite: 'mc_female', frame: 0, name: 'TEST' };
 
@@ -87,8 +89,9 @@ function spawnWave2(self: Entity): void {
 }
 
 function spawnWave3(self: Entity): void {
-  self.spawn(janitor, GAME_W * 0.3, -30, 0, 0);
-  self.spawn(janitor, GAME_W * 0.7, -30, 0, 0);
+  const y = doorY(self, JANITOR_DOOR_Y);
+  self.spawn(janitor, sideSpawnX(-1), y, 0, 0);
+  self.spawn(janitor, sideSpawnX(1), y, 0, 0);
 }
 
 function spawnWave4(self: Entity): void {
@@ -141,11 +144,11 @@ function* testStageBody(self: Entity) {
   yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
 
   // Boss spawn + wait-for-death. BossKind keeps the boss unhittable on
-  // spawn; bossScript in kinds.ts handles entry, dialogue, calling
-  // becomeHittable, and the attack loop. We yield until the boss entity
-  // dies.
+  // spawn; theBossScript in waves/theBoss.ts handles entry, dialogue,
+  // calling becomeHittable, and the attack loop. We yield until the
+  // boss entity dies.
   markWave(self, 'boss');
-  const boss = self.spawn(bossOne, GAME_W / 2, -60, 0, 0);
+  const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
   yield { until: boss };
 
   markWave(self, 'end');

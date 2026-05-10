@@ -60,10 +60,15 @@ export const FONT_DIALOGUE_SM: Style = { fontFamily: SMALL_FAMILY, fontSize: '16
 export const FONT_DEBUG: Style = { fontFamily: SMALL_FAMILY, fontSize: '16px' };
 
 async function registerFont(family: string, url: string, weight: number): Promise<void> {
-  // Family is parsed as the @font-face `font-family` descriptor (<string> |
-  // <custom-ident>+). "Press Start 2P" fails the ident form because "2P"
-  // starts with a digit, so quote it to force the <string> branch.
-  const face = new FontFace(`"${family}"`, `url(${url})`, { weight: String(weight), display: 'block' });
+  // Pass the bare family — do NOT wrap it in quotes. Chromium stores
+  // [[family]] verbatim including any literal quote characters in the
+  // input, but normalises CSS lookups (so `font-family: "monogram"`
+  // resolves to `monogram` without quotes), so a quoted-form registration
+  // can never match a canvas font lookup. Firefox normalises both sides,
+  // so it tolerated the quoted form. Both browsers accept the bare string
+  // for `Press Start 2P` and canonicalise it internally — no special case
+  // needed for digit-prefixed tokens.
+  const face = new FontFace(family, `url(${url})`, { weight: String(weight), display: 'block' });
   await face.load();
   document.fonts.add(face);
 }

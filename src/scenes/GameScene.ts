@@ -584,6 +584,7 @@ export class GameScene extends Phaser.Scene {
 
   private revivePlayerWithDeathBomb(): void {
     const p = this.player;
+    this.stage.score.continuesUsed++;
     p.alive = true;
     p.hp = this.playerKind.hp;
     p.body.enable = true;
