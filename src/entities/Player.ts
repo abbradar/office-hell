@@ -7,7 +7,7 @@ import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import type { StageManager } from '../script/StageManager';
-import type { DamageClass } from '../script/types';
+import type { DamageClass, HPVars } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
 import { Entity } from './Entity';
 
@@ -148,7 +148,7 @@ export class Player extends Entity {
 
     this.stage = stage;
     this.kind = kind;
-    this.hp = kind.hp;
+    this.vars = { hp: kind.hp } satisfies HPVars;
     this.alive = true;
     this.hasEnteredScreen = true;
 

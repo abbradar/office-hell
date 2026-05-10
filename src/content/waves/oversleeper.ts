@@ -3,7 +3,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { HPEntityKind, type ScriptYield } from '../../script/types';
 import { questionBullet } from './questionBullet';
 
 // Oversleeper: a colleague who slept in and now wants you to recap the entire
@@ -71,7 +71,7 @@ function* oversleeperScript(self: Entity) {
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const oversleeper = new EntityKind({
+export const oversleeper = new HPEntityKind({
   sprite: 'overslept',
   hitboxRadius: 16,
   hp: 22,

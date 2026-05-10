@@ -1,7 +1,7 @@
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { emailBullet } from './checkEmail';
 
 // Email colleague: appears at one side, lobs a few short aimed email
@@ -128,7 +128,7 @@ const stationaryLeftShortScript = makeStationaryEmailColleagueScript(
 const stationaryLeftUpScript = makeStationaryEmailColleagueScript(1, STATIONARY_ENTRY_DX, 0, 'top');
 const stationaryLeftFarUpScript = makeStationaryEmailColleagueScript(1, STATIONARY_ENTRY_DX_FAR, 0, 'top');
 
-export const emailColleague = new EntityKind({
+export const emailColleague = new HPEntityKind({
   sprite: 'sales',
   hitboxRadius: 16,
   hp: 4,

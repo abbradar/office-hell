@@ -3,7 +3,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { drinkBullet } from './drinkBullet';
 
@@ -98,7 +98,7 @@ function makePartyMemberScript(targetY: number, fireOffset: number): EntityScrip
   };
 }
 
-export const normieManager = new EntityKind({
+export const normieManager = new HPEntityKind({
   sprite: 'partyManager',
   hitboxRadius: 16,
   hp: MANAGER_HP,
@@ -107,7 +107,7 @@ export const normieManager = new EntityKind({
   defaultScript: managerScript,
 });
 
-export const partyMember = new EntityKind({
+export const partyMember = new HPEntityKind({
   sprite: 'partyManager',
   hitboxRadius: 16,
   hp: MEMBER_HP,

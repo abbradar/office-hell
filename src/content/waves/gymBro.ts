@@ -4,6 +4,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
   advanceBossPhase,
+  becomeHittable,
   bossPhaseTransition,
   bossShudder,
   FLICKER_INTERVAL_FRAMES,
@@ -11,7 +12,6 @@ import {
   PhasedBossKind,
   POST_FLICKER_HOLD_FRAMES,
   pauseMusicForDefeat,
-  startBossPhases,
   waitPhaseDown,
 } from '../../script/boss';
 import { moveTo, ring, spread } from '../../script/patterns';
@@ -255,7 +255,29 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-function* gymBroScript(self: Entity) {
+// One-shot per-fight setup, idempotent so cold-start practice entries
+// (any phase) and the live chain (which lands here in phase 1) share
+// the same path. vars.bradInitDone is the latch — first caller wins,
+// later phases short-circuit. The phase-tracking vars themselves are
+// seeded by `PhasedBossKind.init` at spawn time.
+function gymBroSetup(self: Entity): void {
+  self.vars ??= {};
+  if (self.vars.bradInitDone) return;
+  self.vars.bradInitDone = true;
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.stage.bossName = 'Brad';
+  self.onDeath(() => {
+    self.stage.bossName = null;
+  });
+  becomeHittable(self);
+}
+
+// Phase 1 — full intro slide + dialogue + barrage. Chains into phase 2
+// via the in-script transition (shudder + "Leg day!" + slide). Cold-
+// start practice entry runs the same intro the live chain does.
+function* gymBroPhase1Script(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(self, JUMP_HOME_X, ENTRY_Y, ENTRY_SPEED);
   yield HOLD_BEFORE_TALK;
 
@@ -288,16 +310,7 @@ function* gymBroScript(self: Entity) {
     ],
   });
 
-  // Claim the HUD header now that the fight is actually starting; release it
-  // on death (covers both natural defeat and forced cleanup via release(),
-  // which calls die() too).
-  self.stage.bossName = 'Brad';
-  self.onDeath(() => {
-    self.stage.bossName = null;
-  });
-
-  // --- Phase 1 ---
-  startBossPhases(self);
+  gymBroSetup(self);
   self.say('Make me sweat!', POST_DIALOGUE_HOLD);
   yield POST_DIALOGUE_HOLD;
 
@@ -314,21 +327,36 @@ function* gymBroScript(self: Entity) {
   yield* moveTo(self, JUMP_HOME_X, JUMP_HOME_Y, PHASE_TWO_SLIDE_SPEED);
   yield 30;
 
-  // --- Phase 2 ---
   advanceBossPhase(self);
+  yield* gymBroPhase2Script(self);
+}
 
+// Phase 2 — leg-day loop. Cold-start practice entry spawns the boss
+// already positioned at the phase-2 baseline; the live chain arrives
+// via phase 1's transition with the same setup, so no positioning is
+// needed here either. `gymBroSetup` is the no-op-on-second-call latch.
+function* gymBroPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
+  gymBroSetup(self);
   yield* phaseTwoCycle(self);
 }
 
-export const gymBro = new PhasedBossKind({
-  sprite: 'gymBro',
-  hitboxRadius: 24,
-  phaseHps: [PHASE_ONE_HP, PHASE_TWO_HP],
-  damageClass: ['player'],
-  damagedByClass: ['enemy'],
-  defaultScript: gymBroScript,
-  deathScript: gymBroDeath,
-});
+function makeGymBro(startPhaseIdx = 0): PhasedBossKind {
+  return new PhasedBossKind({
+    sprite: 'gymBro',
+    hitboxRadius: 24,
+    phases: [
+      { hp: PHASE_ONE_HP, script: gymBroPhase1Script },
+      { hp: PHASE_TWO_HP, script: gymBroPhase2Script },
+    ],
+    startPhaseIdx,
+    damageClass: ['player'],
+    damagedByClass: ['enemy'],
+    deathScript: gymBroDeath,
+  });
+}
+
+export const gymBro = makeGymBro();
+export const gymBroFromPhase2 = makeGymBro(1);
 
 // Wave wrapper that mirrors the final boss's entrance pattern: clear
 // the field, beat, then drop the boss in. BossKind keeps him unhittable
@@ -343,6 +371,20 @@ export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0);
+    yield { until: boss };
+  });
+}
+
+// Practice-only entry: drop Brad straight into phase 2 (leg-day loop)
+// at the jump-baseline position. No intro slide, no dialogue. The
+// field is assumed clean (practice mode always launches into the
+// menu's "from this wave" entry with no live enemies), so the
+// pre-boss field-clean beat is skipped — `suspendRunning` is enough
+// to stop the floor and lock the wave state.
+export function* gymBroPhase2Wave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'gym bro p2');
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(gymBroFromPhase2, JUMP_HOME_X, JUMP_HOME_Y, 0, 0);
     yield { until: boss };
   });
 }

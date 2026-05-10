@@ -2,6 +2,7 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
+import { EnemyBulletEntityKind } from '../script/types';
 import { COLOR_BOMB_CORE, COLOR_BOMB_GLOW } from '../ui/palette';
 import { BOMB_EXPAND_ANIM, BOMB_EXPLOSION_KEY, BOMB_FADE_ANIM } from './textures';
 
@@ -159,13 +160,13 @@ export function activateDeathBomb(player: Player, stage: StageManager): void {
   });
 }
 
-// Snapshot of every live player-damaging projectile within `radius` of
-// (cx, cy), with each entry's distance from the centre. Snapshots the
-// damages.player group up front so callers can mutate it during iteration
-// (freeze a bullet, kill it, etc.) without skipping siblings — Phaser's
-// getChildren() returns a live array. Only projectile-kind entities are
-// matched (`hp === null`); living enemies always have hp set so this
-// partitions cleanly without a kind list.
+// Snapshot of every live enemy bullet within `radius` of (cx, cy),
+// with each entry's distance from the centre. Snapshots the
+// damages.player group up front so callers can mutate it during
+// iteration (freeze a bullet, kill it, etc.) without skipping siblings
+// — Phaser's getChildren() returns a live array. Bullet identification
+// is `kind instanceof EnemyBulletEntityKind` — the marker class every
+// player-damaging projectile kind extends.
 export function findBulletsInRadius(
   stage: StageManager,
   cx: number,
@@ -178,7 +179,7 @@ export function findBulletsInRadius(
   for (const child of candidates) {
     const e = child as Entity;
     if (!e.alive) continue;
-    if (e.hp !== null) continue;
+    if (!(e.kind instanceof EnemyBulletEntityKind)) continue;
     const dx = e.x - cx;
     const dy = e.y - cy;
     const d2 = dx * dx + dy * dy;

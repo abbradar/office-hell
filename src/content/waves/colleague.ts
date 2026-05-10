@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { missedCallBullet } from './missedCallBullet';
 
 // Colleague: a mid-screen drive-by that slides in from the side, asks for "a
@@ -75,7 +75,7 @@ const farColleagueScript = makeColleagueScript(ENTER_DX_FAR, FAR_RETREAT_HOLD);
 const midColleagueScript = makeColleagueScript(ENTER_DX_MID, MID_RETREAT_HOLD);
 const nearColleagueScript = makeColleagueScript(ENTER_DX_NEAR);
 
-export const colleague = new EntityKind({
+export const colleague = new HPEntityKind({
   sprite: 'sales',
   hitboxRadius: 16,
   hp: 8,

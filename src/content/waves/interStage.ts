@@ -110,9 +110,6 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   const otherKind = new EntityKind({
     sprite: otherCh.sprite,
     hitboxRadius: 1,
-    hp: null,
-    damageClass: [],
-    damagedByClass: [],
   });
   const other = self.spawn(otherKind, COOLER_X, -30, 0, 0);
   other.walkAnim = true;
@@ -182,9 +179,9 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
       text: continues === 1 ? 'And I thought of just quitting.' : `And I thought of just quitting ${continues} times.`,
     });
   }
-  lines.push({speaker: 'right', text: "Well, today is certainly a strange day. Try not to loose your head."});
-  lines.push({speaker: 'left', text: "You too. See you around, I guess?"});
-  lines.push({speaker: 'right', text: "If there will be more of those collegues."});
+  lines.push({ speaker: 'right', text: 'Well, today is certainly a strange day. Try not to loose your head.' });
+  lines.push({ speaker: 'left', text: 'You too. See you around, I guess?' });
+  lines.push({ speaker: 'right', text: 'If there will be more of those collegues.' });
   yield self.dialogue({
     left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
     right: { sprite: otherCh.sprite, frame: otherCh.frame, name: otherCh.name },

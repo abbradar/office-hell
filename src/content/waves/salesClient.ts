@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo, ring } from '../../script/patterns';
 import { markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
 
@@ -106,7 +106,7 @@ function* clientScript(self: Entity) {
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const sales = new EntityKind({
+export const sales = new HPEntityKind({
   sprite: 'sales',
   hitboxRadius: 16,
   hp: 57,
@@ -115,7 +115,7 @@ export const sales = new EntityKind({
   defaultScript: salesScript,
 });
 
-export const importantClient = new EntityKind({
+export const importantClient = new HPEntityKind({
   sprite: 'vip',
   hitboxRadius: 16,
   hp: 57,

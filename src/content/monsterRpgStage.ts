@@ -141,8 +141,5 @@ function* monsterRpgBody(self: Entity) {
 export const stageMonsterRpg = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
   defaultScript: monsterRpgBody,
 });

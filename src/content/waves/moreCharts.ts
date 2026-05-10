@@ -3,20 +3,17 @@ import { GAME_W, PLAYER_SPEED, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { EnemyBulletEntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
 import { CHART_TINTS } from '../../ui/palette';
 import { bullet } from '../kinds';
 
 // Chart-cell bullet — small tinted tile used to compose pie wedges (Slide 1).
 // Square hitbox so the corners hit honestly; the tint is applied per spawn
 // from CHART_TINTS to flag wedge identity.
-export const chartCellBullet = new EntityKind({
+export const chartCellBullet = new EnemyBulletEntityKind({
   sprite: 'chartCell',
   hitboxRadius: 3,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
 // Slide-deck colleagues come in one after another, each unveiling a chart
@@ -349,7 +346,7 @@ function* columnColleagueScript(self: Entity): Generator<ScriptYield, void, void
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const slideColleague = new EntityKind({
+export const slideColleague = new HPEntityKind({
   sprite: 'sales',
   hitboxRadius: 16,
   hp: 40,

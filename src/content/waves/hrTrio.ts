@@ -2,7 +2,7 @@ import { GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
 // HR Trio: a lead HR coordinator arrives alone with a fresh stack of CVs to
@@ -133,7 +133,7 @@ function makeHrScript(role: Role): EntityScript {
   };
 }
 
-export const hr = new EntityKind({
+export const hr = new HPEntityKind({
   sprite: 'hr',
   hitboxRadius: 16,
   hp: 22,
@@ -145,8 +145,9 @@ export function* hrTrioWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'hr trio');
   yield* suspendRunning(self, function* () {
     // Lead HR enters alone with a CV stack and the room's attention. Buffed HP
-    // so the player can't kill them before the followers arrive to make this an
-    // actual trio.
+    // override so the player can't kill them before the followers arrive to
+    // make this an actual trio — same `hr` kind, just spawned with `opts.hp`
+    // pointing at the lead HP pool.
     self.spawn(hr, GAME_W * 0.2, SPAWN_Y, 0, 0, {
       script: makeHrScript(0),
       hp: LEAD_HP,

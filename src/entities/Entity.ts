@@ -25,7 +25,6 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
 
   stage!: StageManager;
   kind: EntityKind = INERT_KIND;
-  hp: number | null = null;
   alive = false;
   // The script currently driving this entity (top of any race tree).
   // Set by `spawn` / `runScript`, cleared on `release`. Used so the
@@ -93,7 +92,14 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     return [Math.cos(a) * length, Math.sin(a) * length];
   }
 
-  spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts?: SpawnOpts): Entity {
+  spawn<TOpts extends SpawnOpts>(
+    kind: EntityKind<TOpts>,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    opts?: TOpts,
+  ): Entity {
     return this.stage.spawn(kind, x, y, vx, vy, opts);
   }
 

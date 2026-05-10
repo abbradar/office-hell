@@ -23,7 +23,15 @@ import { getMusicTime, playMusicLoop, stopMusicLoop } from '../audio/music/loop'
 import { playBossDeath } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
 import { clearBullets } from './stage';
-import { type DamageClass, EntityKind, type EntityKindOpts, type ScriptYield } from './types';
+import {
+  type DamageClass,
+  type EntityScript,
+  HPEntityKind,
+  type HPEntityKindOpts,
+  type HPSpawnOpts,
+  type HPVars,
+  type ScriptYield,
+} from './types';
 
 // Exported so per-boss death scripts can match the timing of the
 // standard shudder when sizing pre-shudder beats / bubble lifetimes.
@@ -86,17 +94,17 @@ export function* bossDeathScript(self: Entity): Generator<ScriptYield, void, voi
 // `damagedByClass: []` override and removes the matching foot-gun where
 // a script forgets to flip damage on at all (the original Coach bug).
 //
-// The death-on-zero-HP hand-off is inherited from EntityKind — the base
-// `takeDamage` runs `kind.deathScript` when hp reaches zero. BossKind
-// fills in `bossDeathScript` as the default so plain end-bosses get the
-// standard shudder for free; phase-gated bosses override `takeDamage`
-// to gate the death path on the final phase.
-export class BossKind extends EntityKind {
+// The death-on-zero-HP hand-off is inherited from HPEntityKind — the
+// base `takeDamage` runs `kind.deathScript` when hp reaches zero.
+// BossKind fills in `bossDeathScript` as the default so plain end-
+// bosses get the standard shudder for free; phase-gated bosses
+// override `takeDamage` to gate the death path on the final phase.
+export class BossKind extends HPEntityKind {
   readonly hittableDamagedBy: DamageClass[];
 
-  constructor(opts: EntityKindOpts) {
+  constructor(opts: HPEntityKindOpts) {
     super({ ...opts, damagedByClass: [], deathScript: opts.deathScript ?? bossDeathScript });
-    this.hittableDamagedBy = opts.damagedByClass;
+    this.hittableDamagedBy = opts.damagedByClass ?? [];
   }
 }
 
@@ -135,67 +143,109 @@ export function becomeHittable(self: Entity): void {
   self.setDamagedByClasses(kind.hittableDamagedBy);
 }
 
+// Per-entity vars shape for `PhasedBossKind`-spawned entities. `init`
+// seeds all three at spawn time, so cast `self.vars` to this in any
+// helper that reads / writes phase state — no defensive `??` needed.
+export type PhasedBossVars = HPVars & {
+  phaseIdx: number;
+  phaseDown: boolean;
+};
+
 // --- Phased bosses ------------------------------------------------------
 //
-// Generic machinery for bosses with multiple HP pools. The kind owns the
-// pool sizes; the runtime tracks `phaseIdx` (0-based current phase) and
-// `phaseDown` (the per-phase "this pool is empty" latch) on `self.vars`.
+// Generic machinery for bosses with multiple HP pools. Each phase is a
+// `{ hp, script }` pair: `hp` sizes the pool, `script` is the entity
+// generator that runs while that phase is active. The runtime tracks
+// `phaseIdx` (0-based current phase) and `phaseDown` (the per-phase
+// "this pool is empty" latch) on `self.vars`; the `init` hook primes
+// both for the kind's `startPhaseIdx` so a practice spawn can drop the
+// boss straight into the middle of the fight.
+//
 // The takeDamage override pins HP at zero in non-final phases and
-// raises the latch; the script reads the latch (via `phaseRunning` for
-// while-loops or `waitPhaseDown` for race-style termination), runs a
-// transition, and advances to the next pool. The final phase defers to
-// the base class so the kind's `deathScript` runs on the lethal hit.
+// raises the latch; the phase script reads the latch (via
+// `phaseRunning` for while-loops or `waitPhaseDown` for race-style
+// termination), runs a transition, and `yield*`s into the next phase
+// script — chaining all the way to the lethal phase, whose damage
+// routes to the kind's `deathScript`. Phase scripts therefore look
+// like the `from<Wave>` chain in `content/stage.ts`: each one ends
+// either by handing off to its successor or by being replaced by the
+// death script on the killing blow.
 
-export type PhasedBossOpts = Omit<EntityKindOpts, 'hp'> & {
-  // HP pool per phase, in order. The last entry is the lethal phase
-  // (damage during it routes to the death path); every earlier pool is
-  // capped at zero and signals `phaseDown` instead. Must be non-empty.
-  phaseHps: number[];
+export type BossPhase = {
+  // HP pool for this phase. The kind's last phase is the lethal one
+  // (damage routes to deathScript when this pool empties); every
+  // earlier pool is capped at zero and raises `phaseDown` instead.
+  hp: number;
+  // Entity script that runs while this phase is active. Must chain
+  // into the next phase via `yield* nextPhaseScript(self)` (or the
+  // boss-specific transition) when the latch fires; the lethal phase
+  // loops forever and is taken down by the death script swap.
+  script: EntityScript;
+};
+
+export type PhasedBossOpts = Omit<HPEntityKindOpts, 'hp' | 'defaultScript'> & {
+  phases: BossPhase[];
+  // Which phase a fresh spawn drops into. Defaults to 0 (the full
+  // fight starts at phase 1). Practice-menu entries instantiate
+  // additional kinds with startPhaseIdx > 0 so the boss skips earlier
+  // phases entirely — `init` seeds vars + hp accordingly and
+  // `defaultScript` enters the chain at `phases[startPhaseIdx].script`.
+  startPhaseIdx?: number;
 };
 
 export class PhasedBossKind extends BossKind {
-  readonly phaseHps: readonly number[];
+  readonly phases: readonly BossPhase[];
+  readonly startPhaseIdx: number;
 
   constructor(opts: PhasedBossOpts) {
-    const firstHp = opts.phaseHps[0];
-    if (firstHp === undefined) {
-      throw new Error('PhasedBossKind needs at least one phase HP entry');
+    const startIdx = opts.startPhaseIdx ?? 0;
+    const startPhase = opts.phases[startIdx];
+    if (startPhase === undefined) {
+      throw new Error(`PhasedBossKind startPhaseIdx ${startIdx} out of bounds (phases=${opts.phases.length})`);
     }
-    super({ ...opts, hp: firstHp });
-    this.phaseHps = opts.phaseHps;
+    super({
+      ...opts,
+      hp: startPhase.hp,
+      // The defaultScript is just the entry-phase script — it chains
+      // into successors via `yield*` internally, all the way to the
+      // lethal phase. Cold-starting at phase N means we drop into
+      // phases[N].script directly.
+      defaultScript: startPhase.script,
+    });
+    this.phases = opts.phases;
+    this.startPhaseIdx = startIdx;
+  }
+
+  // Seed phase tracking on every spawn so the entity lands in the
+  // right state for `startPhaseIdx`. `super.init` (HPEntityKind) seeds
+  // `vars.hp` from the kind's hp (= phases[startPhaseIdx].hp). We
+  // deliberately strip `opts.hp` before delegating — HP is owned by
+  // the active phase, so a per-spawn override would desync the phase
+  // tracking from the actual pool.
+  override init(self: Entity, opts: HPSpawnOpts): void {
+    super.init(self, { ...opts, hp: undefined });
+    const vars = self.vars as PhasedBossVars;
+    vars.phaseIdx = this.startPhaseIdx;
+    vars.phaseDown = false;
   }
 
   override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    self.vars ??= {};
-    const idx = (self.vars.phaseIdx as number | undefined) ?? 0;
-    if (idx >= this.phaseHps.length - 1) {
-      // Lethal phase — defer to EntityKind.takeDamage so the death
+    const vars = self.vars as PhasedBossVars;
+    if (vars.phaseIdx >= this.phases.length - 1) {
+      // Lethal phase — defer to HPEntityKind.takeDamage so the death
       // script fires when this pool is emptied.
       super.takeDamage(self, amount);
       return;
     }
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      self.hp = 0;
-      self.vars.phaseDown = true;
+    const next = vars.hp - amount;
+    if (next <= 0) {
+      vars.hp = 0;
+      vars.phaseDown = true;
       return;
     }
+    vars.hp = next;
     self.flashDamage();
   }
-}
-
-// Open the fight: initialise phase state and arm damage. Call once
-// after the entry dialogue, in place of a manual `becomeHittable(self)`
-// for phased bosses. Subsequent phases come up via `advanceBossPhase`.
-export function startBossPhases(self: Entity): void {
-  if (!(self.kind instanceof PhasedBossKind)) {
-    throw new Error(`startBossPhases called on non-phased kind: ${self.kind.sprite}`);
-  }
-  self.vars ??= {};
-  self.vars.phaseIdx = 0;
-  self.vars.phaseDown = false;
-  becomeHittable(self);
 }
 
 // True while the current phase's HP pool isn't depleted yet. Use as
@@ -203,18 +253,19 @@ export function startBossPhases(self: Entity): void {
 // { … }`) — when the pool empties the latch flips and the loop exits
 // on its next iteration.
 export function phaseRunning(self: Entity): boolean {
-  return self.vars?.phaseDown !== true;
+  return (self.vars as PhasedBossVars).phaseDown !== true;
 }
 
 // Race-style termination partner: yields one frame at a time until the
 // phaseDown latch is raised. Use with `race(phaseBody, waitPhaseDown(self))`
 // when the phase generator can't be polled cleanly between sub-patterns.
 export function* waitPhaseDown(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.vars?.phaseDown !== true) yield 1;
+  const vars = self.vars as PhasedBossVars;
+  while (vars.phaseDown !== true) yield 1;
 }
 
 // Bookkeeping half of a phase change: advance `phaseIdx`, refill HP
-// from the kind's pool list, clear the `phaseDown` latch, and re-arm
+// from the kind's phase list, clear the `phaseDown` latch, and re-arm
 // damage. Pair with `bossPhaseTransition` for the visual half — either
 // run them back-to-back via `nextBossPhase`, or split them around a
 // boss-specific narrative beat (a declaration bubble, a re-position).
@@ -223,15 +274,15 @@ export function advanceBossPhase(self: Entity): void {
   if (!(kind instanceof PhasedBossKind)) {
     throw new Error(`advanceBossPhase called on non-phased kind: ${kind.sprite}`);
   }
-  self.vars ??= {};
-  const next = ((self.vars.phaseIdx as number | undefined) ?? 0) + 1;
-  const nextHp = kind.phaseHps[next];
-  if (nextHp === undefined) {
-    throw new Error(`advanceBossPhase past last phase (${next}/${kind.phaseHps.length})`);
+  const vars = self.vars as PhasedBossVars;
+  const next = vars.phaseIdx + 1;
+  const nextPhase = kind.phases[next];
+  if (nextPhase === undefined) {
+    throw new Error(`advanceBossPhase past last phase (${next}/${kind.phases.length})`);
   }
-  self.vars.phaseIdx = next;
-  self.vars.phaseDown = false;
-  self.hp = nextHp;
+  vars.phaseIdx = next;
+  vars.phaseDown = false;
+  vars.hp = nextPhase.hp;
   becomeHittable(self);
 }
 

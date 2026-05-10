@@ -17,7 +17,7 @@ import { GAME_W, SCRIPT_FPS } from '../config';
 import { computeDoorYs, DOOR_H, isDoorVisible } from '../content/doors';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from './patterns';
-import type { ScriptYield } from './types';
+import { EnemyBulletEntityKind, type ScriptYield } from './types';
 
 // Set the HUD's current-wave label. Pure side-effect, not a generator —
 // callers don't `yield*` it. Writes `stage.wave`; the StageManager
@@ -322,13 +322,13 @@ export function killEnemies(self: Entity): void {
 // Symmetric counterpart to `killEnemies`: sweep every in-flight bullet
 // while leaving live enemies (and the boss) untouched. Iterates
 // `damages.player` — which holds bullets *and* enemies — and partitions
-// by `hp === null`, the same trick `bomb.ts` uses (bullet kinds have no
-// HP; enemies always do). Useful at phase transitions where the field
-// should reset but the boss should survive.
+// by the `EnemyBulletEntityKind` marker (every player-damaging
+// projectile kind extends it). Useful at phase transitions where the
+// field should reset but the boss should survive.
 export function clearBullets(self: Entity): void {
   for (const child of self.stage.damages.player.getChildren()) {
     const e = child as Entity;
-    if (e.alive && e.hp === null) e.die();
+    if (e.alive && e.kind instanceof EnemyBulletEntityKind) e.die();
   }
 }
 

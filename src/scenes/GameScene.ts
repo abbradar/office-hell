@@ -17,7 +17,7 @@ import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
 import { StageManager } from '../script/StageManager';
-import { DAMAGE_CLASSES } from '../script/types';
+import { DAMAGE_CLASSES, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import {
   COLOR_ACCENT_GOLD,
@@ -649,7 +649,7 @@ export class GameScene extends Phaser.Scene {
     const p = this.player;
     this.stage.score.continues++;
     p.alive = true;
-    p.hp = this.playerKind.hp;
+    (p.vars as HPVars).hp = this.playerKind.hp;
     p.body.enable = true;
     p.setVelocity(0, 0);
     p.setVisible(true);

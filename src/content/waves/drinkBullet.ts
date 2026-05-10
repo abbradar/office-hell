@@ -1,5 +1,5 @@
 import type { Entity } from '../../entities/Entity';
-import { EntityKind } from '../../script/types';
+import { EnemyBulletEntityKind } from '../../script/types';
 
 // Drink bullet: rides its launch heading but oscillates laterally on a sine.
 // Stream of these from a single source forms a serpent-shaped wave in space —
@@ -36,11 +36,8 @@ function* drinkBulletScript(self: Entity) {
   }
 }
 
-export const drinkBullet = new EntityKind({
+export const drinkBullet = new EnemyBulletEntityKind({
   sprite: 'drinkBullet',
   hitboxRadius: 4,
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
   defaultScript: drinkBulletScript,
 });

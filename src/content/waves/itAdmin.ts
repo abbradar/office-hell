@@ -3,7 +3,13 @@ import { DEADZONE_Y, GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { exitThroughSideDoor, markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import {
+  EnemyBulletEntityKind,
+  EntityKind,
+  type EntityScript,
+  HPEntityKind,
+  type ScriptYield,
+} from '../../script/types';
 import { bullet } from '../kinds';
 
 // IT Admin (the modern stand-in for the old "sysop"): two of them drive in
@@ -84,26 +90,19 @@ const beamWarning = new EntityKind({
   sprite: 'chartCell',
   hitboxRadius: 4,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
 });
 
 // Lethal beam. The chartCell sprite is just a placeholder we hide on
 // spawn — the visible beam is rendered into a Graphics strip by the
 // per-bullet script, and the body is resized to a tall rectangle
-// covering the full beam path. damageClass: ['player'] so the player
-// takes a hit any time they cross the strip; hp: null so it can't be
-// shot down by player fire — the script self-destructs on a timer.
-// hitboxRadius is a tiny placeholder; the script overrides body size +
-// offset on spawn.
-const beamLaser = new EntityKind({
+// covering the full beam path. EnemyBulletEntityKind so the bomb sweep
+// catches it like any other enemy projectile; the script self-destructs
+// on a timer. hitboxRadius is a tiny placeholder; the script overrides
+// body size + offset on spawn.
+const beamLaser = new EnemyBulletEntityKind({
   sprite: 'chartCell',
   hitboxRadius: 1,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
 // Fire one vertical beam from (sx, sy), extending downward past the
@@ -309,7 +308,7 @@ function makeArrowAdminScript(speech: SpeechSchedule, exitSide: -1 | 1): EntityS
   };
 }
 
-export const itAdmin = new EntityKind({
+export const itAdmin = new HPEntityKind({
   sprite: 'sysop',
   hitboxRadius: 16,
   hp: 18,

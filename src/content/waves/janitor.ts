@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
 import { alignDoor, checkStageOnce, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
 // Janitor: walks out of the uppermost wall door, plants, and fires a long
@@ -78,7 +78,7 @@ function* janitorScript(self: Entity) {
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const janitor = new EntityKind({
+export const janitor = new HPEntityKind({
   sprite: 'janitor',
   hitboxRadius: 16,
   hp: 24,

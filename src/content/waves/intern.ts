@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { doorY, exitThroughForwardDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
 // Stage-globals key gating the intern report-phrase line. The first intern
@@ -36,7 +36,7 @@ function makeInternScript(side: -1 | 1): EntityScript {
   };
 }
 
-export const intern = new EntityKind({
+export const intern = new HPEntityKind({
   sprite: 'checkEmail',
   hitboxRadius: 16,
   hp: 2,

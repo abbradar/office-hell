@@ -8,11 +8,18 @@ import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { GameScore } from './score';
 import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from './types';
-import { INERT_KIND } from './types';
+import { HPEntityKind, INERT_KIND } from './types';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
 type ScriptIter = Generator<ScriptYield, void, void>;
+
+// Shared frozen sentinel handed to `spawn` when the caller omits its
+// `opts` argument — `spawn` is on the hot path (every bullet spawn
+// flows through it) so allocating a fresh `{}` per call would churn
+// the GC for no benefit. The frozen object guards against accidental
+// mutation; reads of optional fields just return undefined.
+const EMPTY_SPAWN_OPTS = Object.freeze({}) as SpawnOpts;
 
 // Short label describing the leaf wait `v` represents — used by the
 // debug HUD when a script with `debugYieldReasons` yields. A caller-
@@ -281,7 +288,14 @@ export class StageManager {
     return e;
   }
 
-  spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts: SpawnOpts = {}): Entity {
+  spawn<TOpts extends SpawnOpts>(
+    kind: EntityKind<TOpts>,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    opts: TOpts = EMPTY_SPAWN_OPTS as TOpts,
+  ): Entity {
     const e = this.free.pop() ?? this.makeEntity();
 
     const prevFresh = e.x === 0 && e.y === 0;
@@ -293,7 +307,6 @@ export class StageManager {
     }
 
     e.kind = kind;
-    e.hp = opts.hp ?? kind.hp;
     e.alive = true;
     e.gen++;
     e.hasEnteredScreen = false;
@@ -322,9 +335,10 @@ export class StageManager {
     // Bullets sit between floor (-10) and walls (-9) so the wall texture
     // occludes a stray bullet, and the doors' transparent middle still lets
     // it show through an open doorway. Criterion is "deals damage, can't be
-    // hurt" — bullet kinds — and it must re-apply every spawn so a pooled
-    // entity reused for a different kind doesn't keep the previous depth.
-    e.setDepth(kind.hp === null && kind.damageClass.length > 0 ? -9.5 : 0);
+    // hurt" — no-HP kinds (bullets, beams) with a damageClass — and it must
+    // re-apply every spawn so a pooled entity reused for a different kind
+    // doesn't keep the previous depth.
+    e.setDepth(!(kind instanceof HPEntityKind) && kind.damageClass.length > 0 ? -9.5 : 0);
 
     // Group.add() runs a createCallback that overwrites body properties
     // (velocity, drag, gravity, etc.) with the group's defaults, so we
@@ -369,6 +383,13 @@ export class StageManager {
     // own kind). Mirrors beginAll / beginRace, which run children eagerly
     // inside the parent's processYield.
     this.active.push(e);
+
+    // Kind-level init hook — runs after per-life state is reset and the
+    // entity is on the active list, before its script starts. Empty by
+    // default; HP-bearing kinds use it to seed `vars.hp` (honouring the
+    // per-spawn `opts.hp` override), phased bosses additionally seed
+    // `vars.phaseIdx`.
+    kind.init(e, opts);
 
     // `??` would treat an explicit `null` as "missing" and fall back to
     // the kind's default; check for undefined so callers can opt out of
@@ -766,7 +787,6 @@ export class StageManager {
     e.alive = false;
     e.onDeathQueue = null;
     e.kind = INERT_KIND;
-    e.hp = null;
     e.setActive(false).setVisible(false);
     const body = e.body;
     body.setVelocity(0, 0);

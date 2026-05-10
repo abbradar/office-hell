@@ -2,7 +2,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { arc, moveTo } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
 // Vacation Photos: a clutch of colleagues just back from Italy who corner the
@@ -84,7 +84,7 @@ function makeVacationScript(role: Role): EntityScript {
   };
 }
 
-export const vacationItaly = new EntityKind({
+export const vacationItaly = new HPEntityKind({
   sprite: 'vacationItaly',
   hitboxRadius: 16,
   hp: 16,

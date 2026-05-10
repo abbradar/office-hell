@@ -29,7 +29,7 @@ import { urgentCallWave } from './waves/colleague';
 import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
-import { gymBroWave } from './waves/gymBro';
+import { gymBroPhase2Wave, gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
 import { internsWave } from './waves/intern';
 import { interStageWaterCooler } from './waves/interStage';
@@ -43,7 +43,13 @@ import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
 import { theBossWave } from './waves/theBoss';
 import { vacationPhotosWave } from './waves/vacationPhotos';
-import { COACH_NAME, wellnessCoachWave } from './waves/wellnessCoach';
+import {
+  COACH_NAME,
+  wellnessCoachPhase2Wave,
+  wellnessCoachPhase3Wave,
+  wellnessCoachPhase4Wave,
+  wellnessCoachWave,
+} from './waves/wellnessCoach';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -152,6 +158,17 @@ function* fromGymBro(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromMoreCharts(self);
 }
 
+// Practice-only continuation: enter Brad at phase 2 (the leg-day loop)
+// and continue the live chain from there. No live caller routes
+// through this — the menu picks it directly. Music + post-boss
+// continuation match `fromGymBro` exactly so the post-boss section
+// plays as it does in the real stage.
+function* fromGymBroPhase2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  yield* self.stage.separateWave(gymBroPhase2Wave(self));
+  yield* fromMoreCharts(self);
+}
+
 // === Stage 1 part 2 — retro-02 → retro-03 → wellness coach ===
 //
 // Wave block = 11+8+8+11 = 38s + 3 × 3s gaps = 47s, against the 49s
@@ -217,6 +234,30 @@ function* fromWellnessCoach(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicWithIntro(STAGE1_RETRO_03_OPENING_KEY, STAGE1_RETRO_03_LOOP_KEY);
 
   yield* self.stage.separateWave(wellnessCoachWave(self));
+  yield* fromWaterCooler(self);
+}
+
+// Practice-only continuations: enter Coach at phase 2/3/4 and continue
+// the live chain from there. Music + post-boss continuation match
+// `fromWellnessCoach` so the rest of the stage plays as it does live.
+// Skip the intro fanfare (`startMusicLoop`, not `startMusicWithIntro`) —
+// these are mid-fight entries and the opening cue would read as a
+// restart.
+function* fromWellnessCoachPhase2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase2Wave(self));
+  yield* fromWaterCooler(self);
+}
+
+function* fromWellnessCoachPhase3(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase3Wave(self));
+  yield* fromWaterCooler(self);
+}
+
+function* fromWellnessCoachPhase4(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase4Wave(self));
   yield* fromWaterCooler(self);
 }
 
@@ -379,6 +420,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-urgent-call', name: 'Urgent Call', script: fromUrgentCall },
   { id: 'r-check-email', name: 'Check Email', script: fromCheckEmail },
   { id: 'r-gym-bro', name: 'Mid-Stage Boss — Brad', script: fromGymBro },
+  { id: 'r-gym-bro-p2', name: 'Mid-Stage Boss — Brad (P2: Leg Day)', script: fromGymBroPhase2 },
   { id: 'r-more-charts', name: 'More Charts', script: fromMoreCharts },
   {
     id: 'r-vacation-photos',
@@ -391,6 +433,21 @@ export const WAVES: WaveDef[] = [
     id: 'r-wellness-coach',
     name: `Stage 1 Boss — ${COACH_NAME}`,
     script: fromWellnessCoach,
+  },
+  {
+    id: 'r-wellness-coach-p2',
+    name: `Stage 1 Boss — ${COACH_NAME} (P2: Breathing)`,
+    script: fromWellnessCoachPhase2,
+  },
+  {
+    id: 'r-wellness-coach-p3',
+    name: `Stage 1 Boss — ${COACH_NAME} (P3: Personality)`,
+    script: fromWellnessCoachPhase3,
+  },
+  {
+    id: 'r-wellness-coach-p4',
+    name: `Stage 1 Boss — ${COACH_NAME} (P4: Vitamins)`,
+    script: fromWellnessCoachPhase4,
   },
   { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: fromWaterCooler },
   { id: 'r-it-admin', name: 'IT Admin', script: fromItAdmin },
@@ -436,9 +493,6 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 export const stage = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
   defaultScript: stageBody,
 });
 
@@ -454,9 +508,6 @@ export function makeWaveStage(wave: WaveDef): EntityKind {
   return new EntityKind({
     sprite: null,
     hitboxRadius: 0,
-    hp: null,
-    damageClass: [],
-    damagedByClass: [],
     defaultScript: waveStageScript,
   });
 }
