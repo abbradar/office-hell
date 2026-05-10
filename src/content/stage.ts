@@ -17,7 +17,6 @@ import {
   startMusicLoop,
   startMusicWithIntro,
   timeWave,
-  waitEnemiesClear,
   waitScreenClear,
   waitSeconds,
   waitTrackEnded,
@@ -294,9 +293,16 @@ function* fromFridayParty(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
-  // Music handover (waitTrackEnded + open-on-loop) is owned by
-  // theBossWave itself — see waves/theBoss.ts → theBossScript for the
-  // matching intro→loop switch after dialog.
+  markWave(self, 'music: stage-2 metal');
+  // Wait the previous track to its loop boundary (no-op if none is
+  // playing — the live chain enters from kaedalus-short, the
+  // standalone practice entry from menu music) so the metal opening
+  // lands on a clean seam. Then loop the opening under the boss's
+  // entry + dialog — theBossScript later flips to the proper
+  // intro→loop sequence right after the dialog dismisses.
+  yield* waitTrackEnded();
+  yield* startMusicLoop(STAGE2_METAL_OPENING_KEY);
+
   yield* self.stage.separateWave(theBossWave(self));
   yield* fromOutro(self);
 }
@@ -319,9 +325,12 @@ function* fromIntro(self: Entity): Generator<ScriptYield, void, void> {
 // fromOutro is the chain tail — no `yield*` to a successor, control
 // returns to whichever runner started the chain. Live (stageBody)
 // follows with `scene.start('End')`; practice (makeWaveStage) follows
-// with `waitScreenClear` + `scene.start('TestMenu')`.
+// with `waitScreenClear` + `scene.start('TestMenu')`. The metal loop
+// from the final-boss fight is cut here so the player's exit walk
+// plays in silence regardless of how we entered.
 function* fromOutro(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'outro');
+  stopMusicLoop();
   yield 30;
   clearScreen(self);
   yield 30;
