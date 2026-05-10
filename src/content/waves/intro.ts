@@ -27,7 +27,7 @@ const EMAIL_NEAR_MARGIN = 16;
 // token would render as `[bomb]`, which is worse than nothing.
 // Two-line layout keeps icons on their own row above the action label so
 // keys read at full size without crowding the text.
-const ARROW_TEMPLATE = isTouchDevice ? 'TAP ◀ ▶\nTO DODGE' : '<moveHorizontal>\nDODGE!';
+const ARROW_TEMPLATE = isTouchDevice ? 'DRAG ◀ ▶\nTO DODGE' : '<moveHorizontal>\nDODGE!';
 const BOMB_TEMPLATE = isTouchDevice ? 'TAP ✱\nTO GET ANGRY' : '<bomb>\nGET ANGRY!';
 const FIRE_TEMPLATE = '<fire>\nFIRE EXCUSES!';
 // Side prompt that appears for repeat players: spend a bomb to skip the
@@ -93,7 +93,10 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
     if (kind === 'arrows') {
       const left = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
       const right = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
-      while (!(left.isDown || right.isDown || scene.isLeftHeld() || scene.isRightHeld())) yield { scriptFrames: 1 };
+      // Touch is finger-follow: any non-bomb pointer counts as a move
+      // input. controlUpdate uses the same source, so the velocity is
+      // already pointing at the finger by the time physics resumes.
+      while (!(left.isDown || right.isDown || scene.getTouchTargetX() !== null)) yield { scriptFrames: 1 };
     } else if (kind === 'bomb') {
       const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       // consumeBombPress is edge-triggered (drains the bomb-tap queue), so

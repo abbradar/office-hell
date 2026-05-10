@@ -19,6 +19,35 @@ const FIRE_OFFSET_Y = 24;
 // horizontal slice and clipping enemies on the way past is more forgiving.
 const FIRE_SIDE_OFFSET_X = 6;
 const FIRE_SIDE_VX = 40;
+// Touch target deadband, in logical pixels: incoming finger / release
+// positions are ignored if they differ from the current touchTargetX by
+// less than this. Filters out raw-pointer jitter so the player doesn't
+// twitch while the finger is held still.
+const TARGET_DEADBAND_PX = 1;
+// Touch target smoothing window: the candidate target each frame is the
+// mean of this many most-recent samples. Larger = smoother + laggier; a
+// release-snap (candidate = player.x) takes this many frames to fully
+// drain the buffer, giving an implicit deceleration as the average
+// catches up.
+const TARGET_SMOOTHING_FRAMES = 10;
+// How many frames the sideways run anim "sticks" after horizontal motion
+// stops before falling back to the forward 'up' pose. A short tap that
+// nudges the player one pixel still gets the full run flourish; a real
+// stop only reads as idle once the player has been still this long.
+const SIDEWAYS_ANIM_HOLD_FRAMES = 15;
+// Speed threshold for the in-stage anim, expressed as a fraction of
+// PLAYER_SPEED. Crossing it (in the last RUN_HOLD_FRAMES frames)
+// triggers run; any non-zero motion below → walk; exact zero → idle
+// (or sticky-hold). Velocity is measured from frame-over-frame
+// displacement of this.x, not body.velocity, so the snap branch in
+// controlUpdate (which writes x directly with vx=0) still feeds
+// through as a non-zero effective velocity.
+const RUN_VX_RATIO = 0.5;
+// How long the run anim "stays active" after the last frame at run
+// speed. Smooths the deceleration tail: a brief drop to walk-speed
+// while approaching the touch target doesn't immediately downgrade
+// the anim from run to walk.
+const RUN_HOLD_FRAMES = 10;
 
 export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
@@ -49,6 +78,35 @@ export class Player extends Entity {
   private fireKey: Phaser.Input.Keyboard.Key;
   private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
+
+  // Touch-mode movement target, in logical x. While a finger is down,
+  // tracks its x; on release, snaps to the player's current x so the
+  // player halts in place instead of coasting to the last tap point.
+  // Once set, stays set — the deadband filter above gates updates so
+  // sub-pixel jitter doesn't keep re-arming a new target. Only cleared
+  // (back to null) when keyboard input takes over or in lockControls,
+  // so a cutscene doesn't yank the player toward a stale x on resume.
+  private touchTargetX: number | null = null;
+  // Rolling buffer of raw target candidates (finger.x or release-snap),
+  // averaged each frame to smooth pointer jitter. Bounded length =
+  // TARGET_SMOOTHING_FRAMES; the oldest entry is dropped on each push.
+  // Cleared whenever touch movement is interrupted (keyboard takeover,
+  // lockControls) so a re-engagement isn't dragged toward stale samples.
+  private targetSamples: number[] = [];
+  // Frames since vx was last non-zero (in-stage mode). Reset to 0 on
+  // any horizontal motion; counted up while the player is parked.
+  // updateAnim holds the side run anim until this exceeds
+  // SIDEWAYS_ANIM_HOLD_FRAMES, then falls back to forward.
+  private framesSinceMovement = SIDEWAYS_ANIM_HOLD_FRAMES;
+  // Frames since |effVx| was last above RUN_VX_RATIO. Reset on every
+  // run-speed frame; counted up otherwise. While ≤ RUN_HOLD_FRAMES the
+  // anim stays at 'run' even if the current frame's effVx has dropped
+  // into the walk band, so deceleration tails off smoothly.
+  private framesSinceRunSpeed = RUN_HOLD_FRAMES + 1;
+  // Last frame's this.x, used by updateAnim to compute effective
+  // horizontal velocity. Seeded in the constructor so the very first
+  // updateAnim call doesn't see a (this.x − 0) jump.
+  private prevX = 0;
 
   // Counter, not a flag — a second bomb fired during an existing invincibility
   // window must extend it, not corrupt the saved damagedBy classes that the
@@ -82,6 +140,7 @@ export class Player extends Entity {
     // Initial pose so the very first rendered frame has a valid character anim;
     // subsequent frames are driven by updateAnim().
     this.facing = 'up';
+    this.prevX = this.x;
     this.updateAnim();
 
     kind.render(this);
@@ -120,6 +179,10 @@ export class Player extends Entity {
   lockControls(): void {
     this.controlsEnabled = false;
     this.setVelocityX(0);
+    // Drop any pending touch target so a cutscene that ends with the
+    // finger long-released doesn't snap the player toward a stale x.
+    this.touchTargetX = null;
+    this.targetSamples.length = 0;
   }
 
   unlockControls(): void {
@@ -179,6 +242,14 @@ export class Player extends Entity {
     // branch (idle, or walk under walkInPlace) instead of walk/run.
     const vx = this.animSuppressed ? 0 : this.body.velocity.x;
     const vy = this.animSuppressed ? 0 : this.body.velocity.y;
+    // Effective horizontal velocity from frame-over-frame displacement,
+    // captured before any branch returns so prevX stays current across
+    // walkAnim ↔ in-stage transitions. Only the in-stage branch reads
+    // it; the walkAnim path keeps using body.velocity (set explicitly
+    // by moveTo and friends).
+    const dt = this.scene.game.loop.delta / 1000;
+    const effVx = this.animSuppressed || dt <= 0 ? 0 : (this.x - this.prevX) / dt;
+    this.prevX = this.x;
     let dir: Direction;
     let action: Action;
     if (this.walkAnim) {
@@ -194,12 +265,37 @@ export class Player extends Entity {
       // player is "walking" but the world scrolls under them instead.
       action = movingX || movingY || this.walkInPlace ? 'walk' : 'idle';
     } else {
-      // Normal in-stage mode. Direction comes from horizontal input
-      // only — the player never moves vertically here, so vy isn't
-      // checked. Defaulting to 'up' keeps the MC facing forward when
-      // standing still.
-      dir = vx > 0 ? 'right' : vx < 0 ? 'left' : 'up';
-      action = this.stage.running ? 'run' : vx !== 0 ? 'run' : 'idle';
+      // Normal in-stage mode. Effective horizontal velocity (from
+      // displacement, computed above) drives the threshold pick: above
+      // RUN_VX_RATIO → run, any non-zero motion below → walk, exact
+      // zero → idle. Reading body.velocity instead of displacement
+      // would skip walk entirely because controlUpdate's snap branch
+      // writes this.x directly while leaving body.velocity at 0.
+      // The side anim is "sticky" — after motion stops it holds
+      // whatever sideways anim was last playing for
+      // SIDEWAYS_ANIM_HOLD_FRAMES before falling back to forward 'up',
+      // so a quick deceleration still gets a visible walk-out instead
+      // of flicking straight to idle on the next frame.
+      const absRatio = Math.abs(effVx) / PLAYER_SPEED;
+      if (absRatio > RUN_VX_RATIO) this.framesSinceRunSpeed = 0;
+      else this.framesSinceRunSpeed++;
+
+      if (effVx !== 0) {
+        this.framesSinceMovement = 0;
+        dir = effVx > 0 ? 'right' : 'left';
+        action = this.framesSinceRunSpeed <= RUN_HOLD_FRAMES ? 'run' : 'walk';
+      } else {
+        this.framesSinceMovement++;
+        const sideways = this.facing === 'left' || this.facing === 'right';
+        if (sideways && this.framesSinceMovement <= SIDEWAYS_ANIM_HOLD_FRAMES) {
+          // Hold the currently-playing sideways anim — don't touch
+          // facing or call play, so whatever was last set keeps
+          // looping for the rest of the hold window.
+          return;
+        }
+        dir = 'up';
+        action = this.stage.running ? 'run' : 'idle';
+      }
     }
     this.facing = dir;
     const key = characterAnimKey(sheet, action, dir);
@@ -212,16 +308,62 @@ export class Player extends Entity {
 
     if (!this.alive || !this.controlsEnabled) return;
 
-    let dir = 0;
-    if (this.leftKey.isDown || this.scene.isLeftHeld()) dir -= 1;
-    if (this.rightKey.isDown || this.scene.isRightHeld()) dir += 1;
-
     const half = this.width / 2;
     const minX = WALL_W + half;
     const maxX = GAME_W - WALL_W - half;
-    if (dir < 0 && this.x <= minX) dir = 0;
-    if (dir > 0 && this.x >= maxX) dir = 0;
-    this.setVelocityX(dir * PLAYER_SPEED);
+
+    const kbDir = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
+
+    let newVx = 0;
+    if (kbDir !== 0) {
+      // Keyboard takes priority and clears any pending touch target so a
+      // cached tap doesn't keep tugging once the player grabs the keys.
+      this.touchTargetX = null;
+      this.targetSamples.length = 0;
+      let dir = kbDir;
+      if (dir < 0 && this.x <= minX) dir = 0;
+      if (dir > 0 && this.x >= maxX) dir = 0;
+      newVx = dir * PLAYER_SPEED;
+    } else {
+      // Touch: while a finger is down, refresh the target to its x. On
+      // release the target snaps to the player's current x so the player
+      // halts where they are instead of coasting to the last tap point.
+      // Each frame's raw candidate is smoothed by averaging the last
+      // TARGET_SMOOTHING_FRAMES samples, then sub-deadband changes are
+      // dropped so steady-finger jitter doesn't re-arm a cleared target.
+      const finger = this.scene.getTouchTargetX();
+      const sample = finger !== null ? Phaser.Math.Clamp(finger, minX, maxX) : this.x;
+      this.targetSamples.push(sample);
+      if (this.targetSamples.length > TARGET_SMOOTHING_FRAMES) this.targetSamples.shift();
+      let sum = 0;
+      for (const s of this.targetSamples) sum += s;
+      const candidate = sum / this.targetSamples.length;
+
+      if (this.touchTargetX === null || Math.abs(candidate - this.touchTargetX) >= TARGET_DEADBAND_PX) {
+        this.touchTargetX = candidate;
+      }
+
+      const gap = this.touchTargetX - this.x;
+      const dt = this.scene.game.loop.delta / 1000;
+      const maxStep = PLAYER_SPEED * dt;
+      if (Math.abs(gap) <= maxStep) {
+        // Within one frame's max step. Don't try to land via a scaled
+        // gap/dt velocity — Phaser's next-frame physics dt isn't
+        // necessarily this frame's dt, and the resulting overshoot can
+        // exceed any reasonable tolerance and cause the player to
+        // ping-pong around the target. Snap this.x directly instead;
+        // body.position picks it up in preUpdate before the next
+        // integration, and vx=0 keeps physics from drifting back.
+        // touchTargetX is intentionally left set so the deadband above
+        // continues to filter sub-pixel candidate jitter; nulling it
+        // here would bypass the deadband on the very next frame and
+        // re-arm a new target from any micro-movement in `candidate`.
+        this.x = this.touchTargetX;
+      } else {
+        newVx = Math.sign(gap) * PLAYER_SPEED;
+      }
+    }
+    this.setVelocityX(newVx);
 
     this.x = Phaser.Math.Clamp(this.x, minX, maxX);
 

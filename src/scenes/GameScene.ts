@@ -66,25 +66,13 @@ const HUD_REFRESH_MS = 1000;
 
 const HEADER_H = 28;
 
-const TOUCH_BUTTON_RADIUS = 90;
 const BOMB_BUTTON_RADIUS = 50;
 const BOMB_BUTTON_X = GAME_W / 2;
 
-// On touch devices with a control band, the move pads hug the canvas
-// bottom (lower half clips off-screen — the corner position works well
-// for a thumb at the edge). Without a band (desktop), they fall back to
-// the original in-playfield position. Reads displayState.logicalH (the
-// world's logical height — GAME_H on desktop, larger on phones) rather
-// than this.scale.height, which is now in canvas-internal device pixels
-// and not comparable to GAME_H.
-function touchButtonY(): number {
-  return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 60;
-}
-
-// With a control band, the bomb button sits at the canvas bottom (same y
-// as the move pads) — the centre column (x ≈ 90..310) is clear of either
-// move circle so the bomb ring is fully visible without overlapping.
-// Without a band (desktop), it tucks above the move pad inside the playfield.
+// With a control band, the bomb button sits at the canvas bottom — the
+// rest of the band is the finger-follow movement zone (see
+// getTouchTargetX). Without a band (desktop), it tucks above the bottom
+// of the playfield.
 function bombButtonY(): number {
   return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 220;
 }
@@ -98,17 +86,6 @@ function pointerLogicalX(x: number): number {
 }
 function pointerLogicalY(y: number): number {
   return (y - displayState.offsetY) / displayState.scale;
-}
-
-function anyHeldInCircle(pointers: Phaser.Input.Pointer[], cx: number, cy: number, r: number): boolean {
-  const r2 = r * r;
-  for (const p of pointers) {
-    if (!p.isDown) continue;
-    const dx = pointerLogicalX(p.x) - cx;
-    const dy = pointerLogicalY(p.y) - cy;
-    if (dx * dx + dy * dy <= r2) return true;
-  }
-  return false;
 }
 
 export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
@@ -238,12 +215,29 @@ export class GameScene extends Phaser.Scene {
     return pending;
   }
 
-  isLeftHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, 0, touchButtonY(), TOUCH_BUTTON_RADIUS);
-  }
-
-  isRightHeld(): boolean {
-    return anyHeldInCircle(this.game.input.pointers, GAME_W, touchButtonY(), TOUCH_BUTTON_RADIUS);
+  // Finger-follow movement target: x of the most recently pressed active
+  // pointer (logical coords), or null if no movement pointer is held.
+  // Pointers currently inside the bomb circle are excluded — both because
+  // a tap there is already handled as a bomb press and because a finger
+  // resting on the bomb shouldn't yank the player to centre.
+  getTouchTargetX(): number | null {
+    let chosenX: number | null = null;
+    let chosenTime = -Infinity;
+    const bombR2 = BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
+    const bombY = bombButtonY();
+    for (const p of this.game.input.pointers) {
+      if (!p.isDown) continue;
+      const lx = pointerLogicalX(p.x);
+      const ly = pointerLogicalY(p.y);
+      const dxB = lx - BOMB_BUTTON_X;
+      const dyB = ly - bombY;
+      if (dxB * dxB + dyB * dyB <= bombR2) continue;
+      if (p.downTime > chosenTime) {
+        chosenX = lx;
+        chosenTime = p.downTime;
+      }
+    }
+    return chosenX;
   }
 
   create(): void {
@@ -370,30 +364,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (isTouchDevice) {
-      const moveY = touchButtonY();
       const bombY = bombButtonY();
-      this.add
-        .circle(0, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
-        .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
-        .setDepth(100);
-      this.add
-        .circle(GAME_W, moveY, TOUCH_BUTTON_RADIUS, COLOR_PANEL_BORDER, 0.18)
-        .setStrokeStyle(2, COLOR_PANEL_BORDER, 0.45)
-        .setDepth(100);
-      this.add
-        .text(28, moveY, '◀', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
-        .setOrigin(0.5)
-        .setAlpha(0.65)
-        .setDepth(101);
-      this.add
-        .text(GAME_W - 28, moveY, '▶', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '34px' })
-        .setOrigin(0.5)
-        .setAlpha(0.65)
-        .setDepth(101);
-
       // Bomb button — gold accent reads as "the ✱-button" without a
-      // separate label. Centred between the two corner-clipped move pads
-      // so neither thumb sits in front of it during normal play.
+      // separate label. Movement is finger-follow (see getTouchTargetX),
+      // so the rest of the touch area is implicit and unmarked.
       this.add
         .circle(BOMB_BUTTON_X, bombY, BOMB_BUTTON_RADIUS, COLOR_ACCENT_GOLD, 0.2)
         .setStrokeStyle(2, COLOR_ACCENT_GOLD, 0.6)
