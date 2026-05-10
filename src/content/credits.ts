@@ -35,7 +35,7 @@ export const SECTIONS: Section[] = [
     heading: 'ART & ICONS & SFX',
     entries: [
       { name: 'Kenney', url: 'opengameart.org/users/kenney' },
-      { name: 'Universal LPC Spritesheet Generator', url: 'github.com/LiberatedPixelCup' },
+      { name: 'Top Down Sprite Maker', url: 'flinkerflitzer.itch.io/tdsm' },
       { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
       { name: 'Furniture Office Set', url: 'stcrbcn.itch.io/furniture-office-set' },
     ],
