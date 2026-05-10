@@ -25,10 +25,10 @@ const FIRE_SIDE_VX = 40;
 // twitch while the finger is held still.
 const TARGET_DEADBAND_PX = 1;
 // Touch target smoothing window: the candidate target each frame is the
-// mean of this many most-recent samples. Larger = smoother + laggier; a
-// release-snap (candidate = player.x) takes this many frames to fully
-// drain the buffer, giving an implicit deceleration as the average
-// catches up.
+// mean of this many most-recent samples. Larger = smoother + laggier.
+// Only active while a finger is down; on release the buffer is cleared
+// so the player stops cleanly in place (see controlUpdate's release
+// branch for why feeding this.x back in here causes overshoot).
 const TARGET_SMOOTHING_FRAMES = 10;
 // How many frames the sideways run anim "sticks" after horizontal motion
 // stops before falling back to the forward 'up' pose. A short tap that
@@ -351,22 +351,32 @@ export class Player extends Entity {
       const speed = this.focused ? PLAYER_SPEED * FOCUS_SPEED_RATIO : PLAYER_SPEED;
       newVx = dir * speed;
     } else {
-      // Touch: while a finger is down, refresh the target to its x. On
-      // release the target snaps to the player's current x so the player
-      // halts where they are instead of coasting to the last tap point.
-      // Each frame's raw candidate is smoothed by averaging the last
-      // TARGET_SMOOTHING_FRAMES samples, then sub-deadband changes are
-      // dropped so steady-finger jitter doesn't re-arm a cleared target.
+      // Touch: while a finger is down, refresh the target to its x,
+      // smoothed by averaging TARGET_SMOOTHING_FRAMES recent samples and
+      // gated by a sub-deadband filter so steady-finger pointer jitter
+      // doesn't re-arm a cleared target. On release, halt in place: pin
+      // the target to the current x and drop the buffer. Feeding this.x
+      // back into the buffer instead would let it drain over the next
+      // TARGET_SMOOTHING_FRAMES frames while the player is *still
+      // moving* at PLAYER_SPEED, so the average ends up behind the
+      // player and gap flips sign — the player overshoots, reverses,
+      // and bounces around the eventual target. That bouncing reads as
+      // a visible twitch on every finger-up.
       const finger = this.scene.getTouchTargetX();
-      const sample = finger !== null ? Phaser.Math.Clamp(finger, minX, maxX) : this.x;
-      this.targetSamples.push(sample);
-      if (this.targetSamples.length > TARGET_SMOOTHING_FRAMES) this.targetSamples.shift();
-      let sum = 0;
-      for (const s of this.targetSamples) sum += s;
-      const candidate = sum / this.targetSamples.length;
+      if (finger === null) {
+        this.targetSamples.length = 0;
+        this.touchTargetX = this.x;
+      } else {
+        const sample = Phaser.Math.Clamp(finger, minX, maxX);
+        this.targetSamples.push(sample);
+        if (this.targetSamples.length > TARGET_SMOOTHING_FRAMES) this.targetSamples.shift();
+        let sum = 0;
+        for (const s of this.targetSamples) sum += s;
+        const candidate = sum / this.targetSamples.length;
 
-      if (this.touchTargetX === null || Math.abs(candidate - this.touchTargetX) >= TARGET_DEADBAND_PX) {
-        this.touchTargetX = candidate;
+        if (this.touchTargetX === null || Math.abs(candidate - this.touchTargetX) >= TARGET_DEADBAND_PX) {
+          this.touchTargetX = candidate;
+        }
       }
 
       const gap = this.touchTargetX - this.x;
