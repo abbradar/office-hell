@@ -457,18 +457,11 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
   self.body.enable = false;
 
-  const bombsAtStart = (self.vars?.bombsAtStart as number | undefined) ?? 0;
-  const used = Math.max(0, self.stage.score.bombs - bombsAtStart);
-  let line: string;
-  if (used === 0) line = "At least you didn't get angry…";
-  else if (used === 1) line = 'You even got angry a single time…';
-  else line = `You even got angry ${used} times…`;
-
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
-    lines: [{ speaker: 'right', text: line }],
+    lines: [{ speaker: 'right', text: 'Uuu, this go-home attitude is performance-toxic...' }],
   });
 
   clearBullets(self);

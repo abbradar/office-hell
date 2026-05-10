@@ -473,36 +473,71 @@ export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number):
   self.setVelocity(side * speed, 0);
 }
 
-// Variant of `exitThroughSideDoor` that always routes through the next
-// visible door downscreen of the entity (i.e. closer to the player), not
-// the closest one in either direction. Use for enemies whose entry
-// motion is "marching forward into the playfield" — sending them back
-// up through the door they came from would read as a retreat the
-// character isn't doing. Falls back to `exitThroughSideDoor` (closest
-// door) if no door is currently below the entity.
-export function* exitThroughForwardDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
-  const exitY = pickDoorCenterYForward(self, self.y);
+// Variant of `exitThroughSideDoor` where the door's quadrant relative
+// to the entity is explicit: `vertical = 'lower'` routes through the
+// next door downscreen (the one the entity reaches by walking
+// forward), `'upper'` routes through the next door upscreen (back the
+// way they came). Use for enemies whose entry motion would be
+// contradicted by an arbitrary closest-door exit — interns marching
+// in shouldn't retreat up; an NPC walking down to a meeting shouldn't
+// double back. Falls back to `exitThroughSideDoor` (closest door in
+// any direction) if no door is currently visible in the chosen
+// vertical direction.
+export function* exitThroughDoor(
+  self: Entity,
+  side: 'left' | 'right',
+  vertical: 'upper' | 'lower',
+  speed: number,
+): Generator<ScriptYield, void, void> {
+  const sideSign: -1 | 1 = side === 'left' ? -1 : 1;
+  const exitY = findClosestDoorLine(self, self.y, vertical);
   if (exitY === null) {
-    yield* exitThroughSideDoor(self, side, speed);
+    yield* exitThroughSideDoor(self, sideSign, speed);
     return;
   }
   if (Math.abs(exitY - self.y) > 1) {
     yield* moveTo(self, self.x, exitY, speed);
   }
-  self.setVelocity(side * speed, 0);
+  self.setVelocity(sideSign * speed, 0);
 }
 
-// Pick the centre y of the nearest visible door whose centre sits at
-// or below `fromY` (i.e. the next door the entity would reach by
-// continuing forward into the playfield). Returns null if every visible
-// door is above `fromY`.
-function pickDoorCenterYForward(self: Entity, fromY: number): number | null {
+// Pick the centre y of the nearest visible door on the requested side
+// of `fromY`: 'lower' means downscreen (centre at or below fromY, the
+// next door reached by walking forward), 'upper' means upscreen
+// (centre at or above fromY). Returns null if every visible door is
+// on the other side of `fromY`. Pure relative to `stage.bgScrollY`,
+// so callers can read it on the script clock without touching Phaser.
+export function findClosestDoorLine(self: Entity, fromY: number, vertical: 'upper' | 'lower'): number | null {
   let best: number | null = null;
   for (const top of computeDoorYs(self.stage.bgScrollY)) {
     if (!isDoorVisible(top)) continue;
     const center = top + DOOR_H / 2;
-    if (center < fromY) continue;
-    if (best === null || center < best) best = center;
+    if (vertical === 'lower' ? center < fromY : center > fromY) continue;
+    if (best === null) {
+      best = center;
+    } else if (vertical === 'lower' ? center < best : center > best) {
+      best = center;
+    }
   }
   return best;
+}
+
+// Walk vertically to a door line at `lineY`, then on horizontally
+// through that wall until off-screen. Awaits the full motion. Use
+// for cutscene NPCs whose exit beat is part of the staging — pair
+// with `findClosestDoorLine` to pick the y. The combat-style exit
+// helpers (`exitThroughSideDoor` / `exitThroughDoor`) instead set a
+// velocity and return so the caller can keep firing in parallel;
+// reach for those when the exit isn't a hard cutscene gate.
+export function* walkThroughDoorLine(
+  self: Entity,
+  lineY: number,
+  side: 'left' | 'right',
+  speed: number,
+): Generator<ScriptYield, void, void> {
+  if (Math.abs(lineY - self.y) > 1) {
+    yield* moveTo(self, self.x, lineY, speed);
+  }
+  const sideSign: -1 | 1 = side === 'left' ? -1 : 1;
+  yield* moveTo(self, sideSpawnX(sideSign), lineY, speed);
 }

@@ -1,7 +1,7 @@
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
-import { doorY, exitThroughForwardDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
+import { doorY, exitThroughDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { reportBullet } from './reportBullet';
 
@@ -13,13 +13,13 @@ const INTERN_REPORT_SAID = 'internReportSaid';
 // Intern: a low-stakes opener enemy. Walks in from the top, drifts toward the
 // side of the screen, lobs a couple of report bullets, and is one-shot.
 //
-// `side` is the horizontal exit direction: -1 = left, +1 = right. Exit
-// routes through the next visible door panel downscreen (the one the
-// intern would reach by continuing forward) rather than back through
-// whatever door is closest in either direction — these interns are
-// marching *into* the office, so retreating up through the door they
-// came in would contradict the entry motion.
-function makeInternScript(side: -1 | 1): EntityScript {
+// `side` is the horizontal exit direction. Exit routes through the next
+// visible door panel downscreen (the one the intern would reach by
+// continuing forward) rather than back through whatever door is closest
+// in either direction — these interns are marching *into* the office,
+// so retreating up through the door they came in would contradict the
+// entry motion.
+function makeInternScript(side: 'left' | 'right'): EntityScript {
   return function* (self: Entity) {
     self.setVelocity(0, 110);
     if (!self.stage.globals[INTERN_REPORT_SAID]) {
@@ -29,7 +29,7 @@ function makeInternScript(side: -1 | 1): EntityScript {
     yield 50;
     aimed(self, 1, reportBullet, 170);
     yield 35;
-    yield* exitThroughForwardDoor(self, side, 140);
+    yield* exitThroughDoor(self, side, 'lower', 140);
     aimed(self, 1, reportBullet, 170);
     yield 55;
     aimed(self, 1, reportBullet, 170);
@@ -50,7 +50,7 @@ export const intern = new HPEntityKind({
 export function* internLine(
   self: Entity,
   startX: number,
-  side: -1 | 1,
+  side: 'left' | 'right',
   count = 5,
   spacingFrames = 28,
 ): Generator<ScriptYield, void, void> {
@@ -123,7 +123,7 @@ const INTERN_SIDES_TARGET_Y = 90;
 export function* internsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'interns');
   yield* suspendRunning(self, function* () {
-    yield* internLine(self, GAME_W * 0.25, 1);
+    yield* internLine(self, GAME_W * 0.25, 'right');
     yield 60;
     yield* internSidesLine(self, doorY(self, INTERN_SIDES_TARGET_Y));
   });
