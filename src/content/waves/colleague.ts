@@ -40,6 +40,12 @@ const RETREAT_RINGS = 2;
 // mid ready ~25f before near, so those are the holds that line them up.
 const FAR_RETREAT_HOLD = 41;
 const MID_RETREAT_HOLD = 25;
+// Extra hold tacked onto every colleague before retreat. Pads each enemy's
+// time-on-screen by 2s so the wave fills its slot — the slot grew by 2s
+// when email-colleagues handed time over, and this is where the slack
+// went. Applied uniformly so cluster alignment (FAR/MID/NEAR holds) is
+// untouched.
+const BEFORE_RETREAT_HOLD = 120;
 
 function makeColleagueScript(depth: number, retreatHold = 0): EntityScript {
   return function* (self: Entity) {
@@ -54,6 +60,7 @@ function makeColleagueScript(depth: number, retreatHold = 0): EntityScript {
     ring(self, RING_COUNT, missedCallBullet, BULLET_SPEED, Math.random() * Math.PI * 2);
     yield BETWEEN_RINGS;
 
+    yield BEFORE_RETREAT_HOLD;
     yield retreatHold;
     self.setVelocity(-dir * RETREAT_SPEED, 0);
     for (let i = 0; i < RETREAT_RINGS; i++) {

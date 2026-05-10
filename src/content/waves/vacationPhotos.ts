@@ -24,16 +24,23 @@ const ENTRY_SPEED = 100;
 const ENTRY_Y = 110;
 
 const BARRAGES = 2;
-// 6 bubbles × SAY_FRAMES + entry (84f) + last-fire pre-gap (30f) + exit
-// cull (~44f at EXIT_SPEED) all has to fit the wave's 8s timeWave slot
-// (480f); that caps SAY_FRAMES at 64. 54 leaves ~0.9s margin and keeps
+// 6 bubbles × SAY_FRAMES + entry (84f) + last-fire pre-gap (30f + STACK_GAP)
+// + exit cull (~44f at EXIT_SPEED) all has to fit the wave's 8s timeWave
+// slot (480f); that caps SAY_FRAMES at 64. 54 leaves ~0.9s margin and keeps
 // each say above 0.9s — fine for the 3–4 word punchlines below.
 const SAY_FRAMES = 54;
 const PRE_FIRE_GAP = 30;
 // Each role talks once per SAY_CYCLE; three roles staggered by SAY_FRAMES means
 // the six bubbles play back-to-back with no overlap and no gap.
 const SAY_CYCLE = 3 * SAY_FRAMES;
-const POST_FIRE_GAP = SAY_CYCLE - PRE_FIRE_GAP;
+
+// Two stacks per barrage: a fan goes out, then a second fan a beat later, so
+// the player reads it as the colleague flicking through two stacks of photos
+// rather than one extra-dense one. STACK_GAP is short enough that both stacks
+// land while the same caption is still on screen.
+const STACK_COUNT = 2;
+const STACK_GAP = 12;
+const POST_FIRE_GAP = SAY_CYCLE - PRE_FIRE_GAP - (STACK_COUNT - 1) * STACK_GAP;
 
 const PHOTO_COUNT = 11;
 const PHOTO_SPEED = 140;
@@ -61,7 +68,10 @@ function makeVacationScript(role: Role): EntityScript {
       const intro = checkStageOnce(self, 'vacationPhotos:intro');
       self.say(intro ? 'Look — vacation photos!' : (lines[i] ?? 'Look look!'), SAY_FRAMES);
       yield PRE_FIRE_GAP;
-      arc(self, PHOTO_COUNT, reportBullet, PHOTO_SPEED, PHOTO_ARC_FROM, PHOTO_ARC_TO);
+      for (let j = 0; j < STACK_COUNT; j++) {
+        arc(self, PHOTO_COUNT, reportBullet, PHOTO_SPEED, PHOTO_ARC_FROM, PHOTO_ARC_TO);
+        if (j < STACK_COUNT - 1) yield STACK_GAP;
+      }
       // After the last fan, exit immediately rather than serving out a
       // POST_FIRE_GAP that the wave's killEnemies would just sweep over.
       if (i === BARRAGES - 1) break;

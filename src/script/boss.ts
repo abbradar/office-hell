@@ -22,6 +22,7 @@
 import { getMusicTime, playMusicLoop, stopMusicLoop } from '../audio/music/loop';
 import { playBossDeath } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
+import { clearBullets } from './stage';
 import { type DamageClass, EntityKind, type EntityKindOpts, type ScriptYield } from './types';
 
 // Exported so per-boss death scripts can match the timing of the
@@ -97,6 +98,30 @@ export class BossKind extends EntityKind {
     super({ ...opts, damagedByClass: [], deathScript: opts.deathScript ?? bossDeathScript });
     this.hittableDamagedBy = opts.damagedByClass;
   }
+}
+
+// Default visual pre-amble for a phase-gated boss switching phases:
+// lock damage off so the next pool isn't chipped while the silhouette
+// is still resetting, stop motion, flicker, sweep the in-flight
+// bullets, hold a beat. Leaves `damagedByClass` cleared on exit —
+// callers stage their per-phase setup (new hp pool, repositioning,
+// dialogue, vars flags) after this returns and finish with
+// `becomeHittable(self)` to re-arm damage. Bosses that need extra
+// beats (e.g. a phase-2 declaration bubble + slide) interleave them
+// between this helper and `becomeHittable`.
+export const PHASE_TRANSITION_FLASHES = 5;
+export const PHASE_TRANSITION_FLASH_GAP = 10;
+export const PHASE_TRANSITION_HOLD = 20;
+
+export function* bossPhaseTransition(self: Entity): Generator<ScriptYield, void, void> {
+  self.setDamagedByClasses([]);
+  self.body.setVelocity(0, 0);
+  for (let i = 0; i < PHASE_TRANSITION_FLASHES; i++) {
+    self.flashDamage();
+    yield PHASE_TRANSITION_FLASH_GAP;
+  }
+  clearBullets(self);
+  yield PHASE_TRANSITION_HOLD;
 }
 
 // Flip a boss into its hittable state — i.e. apply the damage classes

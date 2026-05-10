@@ -1,7 +1,7 @@
 import { shoot } from '../../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
+import { BossKind, becomeHittable, bossPhaseTransition, bossShudder } from '../../script/boss';
 import { aimed, moveTo } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
@@ -49,10 +49,11 @@ const PHASE_HP = 100;
 const ANXIOUS_BUNCH_COUNT = 6;
 const ANXIOUS_BUNCH_SPEED = 200;
 const ANXIOUS_BUNCH_SPREAD_PX = 18;
-// Random-direction bunches fired alongside the player-aimed one on
-// each cluster tick. The aimed bunch keeps pressure honest; the rest
-// spray the field so the boss reads as flailing/anxious.
-const ANXIOUS_RANDOM_CLUSTERS = 3;
+// Flanking bunches fanned around the player-aimed one on each cluster
+// tick: one aimed at the player plus a pair angled to either side.
+// The aimed bunch keeps pressure honest; the flankers force the
+// player to commit to a side instead of just side-stepping the lane.
+const ANXIOUS_FLANK_OFFSETS = [-0.6, -0.3, 0.3, 0.6];
 const ANXIOUS_RING_COUNT = 12;
 const ANXIOUS_RING_SPEED = 95;
 const ANXIOUS_GAP = 28;
@@ -123,12 +124,6 @@ const VIT_SPEED = 200;
 const VIT_SPREAD = Math.PI / 20;
 const VIT_SAY = 'Have you taken\nyour supplements?!';
 const VIT_SAY_FRAMES = VIT_BURSTS * VIT_BURST_GAP + 12;
-
-// --- Phase transition ---------------------------------------------------
-
-const TRANSITION_FLASHES = 5;
-const TRANSITION_FLASH_GAP = 10;
-const TRANSITION_HOLD = 20;
 
 // --- Helpers ------------------------------------------------------------
 
@@ -229,26 +224,30 @@ function spawnAnxiousBunch(self: Entity, angle: number): void {
   }
 }
 
-// Fire a volley of bunches: one aimed at the player, plus several in
-// random directions. Single shoot() so the SFX doesn't stack on top of
-// itself — the visual volume already sells the burst.
+// Fire a volley of bunches: one aimed at the player plus a fan of
+// flankers offset to either side of the aim. Single shoot() so the
+// SFX doesn't stack on top of itself — the visual volume already
+// sells the burst.
 function anxiousClusterVolley(self: Entity): void {
   shoot();
-  spawnAnxiousBunch(self, self.angleToPlayer());
-  for (let i = 0; i < ANXIOUS_RANDOM_CLUSTERS; i++) {
-    spawnAnxiousBunch(self, Math.random() * Math.PI * 2);
+  const aim = self.angleToPlayer();
+  spawnAnxiousBunch(self, aim);
+  for (const offset of ANXIOUS_FLANK_OFFSETS) {
+    spawnAnxiousBunch(self, aim + offset);
   }
 }
 
 // Pick a random spawn position for an anxious-phase ring, biased away
 // from the player and the boss so the burst is visible and dodgeable
-// rather than a point-blank hit on either. Falls back to a centre-ish
-// position after a few rejected attempts.
+// rather than a point-blank hit on either. Confined to the upper half
+// of the screen so the player's lane stays clear of point-blank ring
+// origins. Falls back to a centre-ish position after a few rejected
+// attempts.
 function pickAnxiousRingPos(self: Entity): { x: number; y: number } {
   const player = self.stage.player;
   for (let i = 0; i < 8; i++) {
     const x = 70 + Math.random() * (GAME_W - 140);
-    const y = 100 + Math.random() * (GAME_H * 0.55);
+    const y = 100 + Math.random() * (GAME_H / 2 - 100);
     if (Math.hypot(x - player.x, y - player.y) < ANXIOUS_RING_PLAYER_AVOID) continue;
     if (Math.hypot(x - self.x, y - self.y) < ANXIOUS_RING_BOSS_AVOID) continue;
     return { x, y };
@@ -352,21 +351,13 @@ function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-// Visual reset between phases: lock damage off so the next pool isn't
-// chipped while she's still flashing, judder a few times, sweep the
-// in-flight bullets so the new phase opens on a quiet field, then
-// reset HP and re-arm damage. Does NOT touch self.vars beyond clearing
-// `phaseDown` / advancing `phase` — the takeDamage gate reads them on
-// the next hit.
+// Visual reset + per-phase setup. The visual half (immortal flicker,
+// field clear) is the shared `bossPhaseTransition`; here we follow it
+// with this boss's phase bookkeeping (advance `phase`, clear
+// `phaseDown` so the takeDamage gate reads correctly on the next hit,
+// refill HP) and re-arm damage.
 function* phaseTransition(self: Entity, nextPhase: number): Generator<ScriptYield, void, void> {
-  self.setDamagedByClasses([]);
-  self.body.setVelocity(0, 0);
-  for (let i = 0; i < TRANSITION_FLASHES; i++) {
-    self.flashDamage();
-    yield TRANSITION_FLASH_GAP;
-  }
-  clearBullets(self);
-  yield TRANSITION_HOLD;
+  yield* bossPhaseTransition(self);
   self.vars ??= {};
   self.vars.phase = nextPhase;
   self.vars.phaseDown = false;

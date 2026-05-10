@@ -90,10 +90,13 @@ export type WaveDef = {
 
 // === Stage 1 part 1 — retro-01 → retro-02 seam → Brad ===
 //
-// Wave block = 9+15+12+15 = 51s of timed slots + 3 × 3s gaps = 60s,
+// Wave block = 9+13+14+15 = 51s of timed slots + 3 × 3s gaps = 60s,
 // against the 59s part-1 budget (see docs/stage-design.md → "Stage-
-// part durations"). The 15s email-colleagues slot absorbs what used
-// to be two separate 6s+8s waves with a gap. After the block,
+// part durations"). The 13s email-colleagues slot absorbs what used
+// to be two separate 6s+8s waves with a gap; the trailing pair fires
+// only a single barrage to fit the tighter slot, and the saved two
+// seconds were handed to urgent-call (12s → 14s) as pre-retreat hold.
+// After the block,
 // `waitTrackEnded` snaps the cut to the retro-01 loop boundary so
 // the music switch lands on a musical seam rather than mid-bar; then
 // gymBroWave's own `startMusicLoop(retro-02)` performs the actual
@@ -114,7 +117,7 @@ function* fromEmailColleagues(self: Entity): Generator<ScriptYield, void, void> 
   // practice entry point. No intro fanfare — mid-section.
   yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
 
-  yield* timeWave(self, 15, self.stage.separateWave(emailColleaguesWave(self)));
+  yield* timeWave(self, 13, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromUrgentCall(self);
 }
@@ -122,7 +125,7 @@ function* fromEmailColleagues(self: Entity): Generator<ScriptYield, void, void> 
 function* fromUrgentCall(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
 
-  yield* timeWave(self, 12, self.stage.separateWave(urgentCallWave(self)));
+  yield* timeWave(self, 14, self.stage.separateWave(urgentCallWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromCheckEmail(self);
 }

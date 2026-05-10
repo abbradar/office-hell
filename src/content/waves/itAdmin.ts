@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { DEADZONE_Y, GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
+import { exitThroughSideDoor, markWave, suspendRunning } from '../../script/stage';
 import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -273,7 +273,7 @@ function shootArrow(self: Entity): void {
 // of their speech schedule — only the bubbles are gated.
 type SpeechSchedule = readonly (string | null)[];
 
-function makeBeamAdminScript(speech: SpeechSchedule): EntityScript {
+function makeBeamAdminScript(speech: SpeechSchedule, exitSide: -1 | 1): EntityScript {
   return function* (self: Entity) {
     yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
@@ -290,11 +290,11 @@ function makeBeamAdminScript(speech: SpeechSchedule): EntityScript {
       yield BEAM_VOLLEY_GAP;
     }
 
-    self.setVelocity(0, EXIT_SPEED);
+    yield* exitThroughSideDoor(self, exitSide, EXIT_SPEED);
   };
 }
 
-function makeArrowAdminScript(speech: SpeechSchedule): EntityScript {
+function makeArrowAdminScript(speech: SpeechSchedule, exitSide: -1 | 1): EntityScript {
   return function* (self: Entity) {
     yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
@@ -305,7 +305,7 @@ function makeArrowAdminScript(speech: SpeechSchedule): EntityScript {
       yield ARROW_VOLLEY_GAP;
     }
 
-    self.setVelocity(0, EXIT_SPEED);
+    yield* exitThroughSideDoor(self, exitSide, EXIT_SPEED);
   };
 }
 
@@ -343,12 +343,19 @@ export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> 
     ];
     const arrowSpeech: SpeechSchedule = [null, 'Your last reset was 91 days ago.', null, null];
 
+    // Each admin exits through the closest door on their own half — the
+    // beam admin sits at x = 0.4·W (left of centre) and walks back out
+    // through the left wall, the arrow admin at x = 0.6·W exits right.
+    // Vertical leg is whatever door panel happens to be nearest their
+    // current y when their script reaches the exit (the corridor is
+    // frozen during the wave, so doors sit where they were when it
+    // started).
     self.spawn(itAdmin, GAME_W * 0.4, -30, 0, 0, {
-      script: makeBeamAdminScript(laserSpeech),
+      script: makeBeamAdminScript(laserSpeech, -1),
     });
     yield ADMIN_STAGGER;
     self.spawn(itAdmin, GAME_W * 0.6, -30, 0, 0, {
-      script: makeArrowAdminScript(arrowSpeech),
+      script: makeArrowAdminScript(arrowSpeech, +1),
     });
   });
 }

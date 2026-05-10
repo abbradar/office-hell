@@ -5,14 +5,15 @@ import type { Entity } from '../../entities/Entity';
 import {
   BossKind,
   becomeHittable,
+  bossPhaseTransition,
   bossShudder,
   FLICKER_INTERVAL_FRAMES,
   FLICKER_TOGGLES,
   POST_FLICKER_HOLD_FRAMES,
   pauseMusicForDefeat,
 } from '../../script/boss';
-import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
+import { moveTo, ring, spread } from '../../script/patterns';
+import { markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -59,9 +60,21 @@ const JUMP_HOME_X = GAME_W / 2;
 const JUMP_HOME_Y = 170;
 const PHASE_TWO_SLIDE_SPEED = 90;
 const LANDING_HOLD = 18;
-const CONE_BULLETS = 10;
+// Odd so the middle bullet of every cone wave lies exactly on the aim
+// angle — across CONE_WAVES that gives a continuous central stream
+// straight at the player while the rest of the fan brackets it.
+const CONE_BULLETS = 11;
 const CONE_SPREAD = Math.PI / 4;
 const CONE_SPEED = 190;
+const CONE_WAVES = 4;
+const CONE_WAVE_GAP = 5;
+// Random scatter sprinkled along each leg-day jump arc — one bullet at a
+// random angle every SPRAY_EVERY frames, slow enough that it just adds field
+// density rather than turning the jump into a directed threat. The
+// return-to-centre jump skips this so the rest beat stays a clear damage
+// window for the player.
+const SPRAY_EVERY = 4;
+const SPRAY_SPEED = 95;
 // Slow on purpose — the rest beat between rep sets is the player's window to
 // unload damage on a stationary, panting boss.
 const REST_RING_BULLETS = 22;
@@ -149,45 +162,47 @@ function* shoulderCurls(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-// Hula — a slow rotating shell with a faster player-aimed shell on top.
-// Ring A crawls around at a random base angle so the field has a visible
-// rotation; ring B re-aims each rep so one of its bullets flies straight at
-// the player. That guarantees the rep isn't a free pass — the player has to
-// move off the firing line — without making the whole pattern a wall of
-// aimed bullets.
+// Hula — slow rotating shells with a slow player-aimed shell on top. Each
+// shell is fired as a HULA_STACK-deep stack with phase-shifted base angles,
+// so increasing HULA_STACK fills the field with overlapping halos rather
+// than one thicker ring. Speeds stay low across both shells so the bullet
+// count can climb without raising the dodge difficulty.
+const HULA_STACK = 1;
 function* hulaSpin(self: Entity): Generator<ScriptYield, void, void> {
   const reps = 7 + Math.floor(Math.random() * 3);
   let angleA = Math.random() * Math.PI * 2;
   const dirA: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
   const stepA = Math.PI / 20 + Math.random() * (Math.PI / 12);
   const speedA = 95 + Math.random() * 35;
-  const speedB = 165 + Math.random() * 55;
+  const speedB = 110 + Math.random() * 30;
   const countA = 15 + Math.floor(Math.random() * 3);
   const countB = 15 + Math.floor(Math.random() * 3);
   for (let i = 0; i < reps; i++) {
-    ring(self, countA, bullet, speedA, angleA);
-    // Snap ring B's base angle to the player so bullet 0 of the ring is a
-    // direct shot; the rest of the ring stays evenly distributed around it.
+    for (let k = 0; k < HULA_STACK; k++) {
+      ring(self, countA, bullet, speedA, angleA + (k * 2 * Math.PI) / (countA * HULA_STACK));
+    }
     const player = self.stage.player;
     const angleB = Math.atan2(player.y - self.y, player.x - self.x);
-    ring(self, countB, bullet, speedB, angleB);
+    for (let k = 0; k < HULA_STACK; k++) {
+      ring(self, countB, bullet, speedB, angleB + (k * 2 * Math.PI) / (countB * HULA_STACK));
+    }
     angleA += dirA * stepA;
     yield 18 + Math.floor(Math.random() * 6);
   }
 }
 
-const PHASE_ONE_PATTERNS = [shoulderCurls, hulaSpin];
-
 function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
   // Single shout ("Make me sweat!") fires from the outer script before this
-  // loop runs. Sub-patterns are picked at random per cycle and each one
-  // re-rolls its own parameters internally, so two adjacent runs of the same
-  // pick still play differently. Termination is handled by the race in
-  // gymBroScript — when waitPhaseOneDown wins this generator gets dropped.
+  // loop runs. Sub-patterns alternate deterministically — hula first so the
+  // dense halo field opens the phase, then shoulder curls, then hula again,
+  // and so on. Each sub-pattern re-rolls its own parameters internally, so
+  // adjacent runs of the same pick still play differently. Termination is
+  // handled by the race in gymBroScript — when waitPhaseOneDown wins this
+  // generator gets dropped.
+  let useHula = true;
   while (true) {
-    const idx = Math.floor(Math.random() * PHASE_ONE_PATTERNS.length);
-    // biome-ignore lint/style/noNonNullAssertion: bounded by PHASE_ONE_PATTERNS.length
-    yield* PHASE_ONE_PATTERNS[idx]!(self);
+    yield* (useHula ? hulaSpin : shoulderCurls)(self);
+    useHula = !useHula;
     yield 28 + Math.floor(Math.random() * 24);
   }
 }
@@ -208,12 +223,17 @@ function* parabolicJump(
   fromY: number,
   toX: number,
   frames: number,
+  spray = false,
 ): Generator<ScriptYield, void, void> {
   for (let f = 1; f <= frames; f++) {
     const t = f / frames;
     self.body.setVelocity(0, 0);
     self.x = fromX + (toX - fromX) * t;
     self.y = fromY + JUMP_PEAK_OFFSET * 4 * t * (1 - t);
+    if (spray && f % SPRAY_EVERY === 0) {
+      const a = Math.random() * Math.PI * 2;
+      self.spawn(bullet, self.x, self.y, Math.cos(a) * SPRAY_SPEED, Math.sin(a) * SPRAY_SPEED);
+    }
     yield 1;
   }
   self.body.setVelocity(0, 0);
@@ -232,17 +252,23 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
       // ping-pongs.
       const targetX = i % 2 === 0 ? JUMP_LEFT_X : JUMP_RIGHT_X;
       playJump();
-      yield* parabolicJump(self, landX, landY, targetX, JUMP_FRAMES);
+      yield* parabolicJump(self, landX, landY, targetX, JUMP_FRAMES, true);
       playThump();
       landX = targetX;
       landY = JUMP_HOME_Y;
       // "One!" / "Two!" alternates per rep — caller asked for these two
       // shouts specifically, so we cycle them rather than counting all four.
       self.say(i % 2 === 0 ? 'One!' : 'Two!', LANDING_HOLD + 30);
-      // Aimed cone fires immediately on landing (aim is captured at call
-      // time, not tracked) — give the player a beat to read it before the
-      // next jump.
-      aimed(self, CONE_BULLETS, bullet, CONE_SPEED, CONE_SPREAD);
+      // Burst of cones fires immediately on landing — aim is captured once
+      // so all CONE_WAVES share the same direction (the player has to clear
+      // the firing line, not just sidestep one fan). The trailing gap
+      // doubles as the read-the-next-jump beat.
+      const player = self.stage.player;
+      const aim = Math.atan2(player.y - self.y, player.x - self.x);
+      for (let w = 0; w < CONE_WAVES; w++) {
+        spread(self, CONE_BULLETS, bullet, CONE_SPEED, aim, CONE_SPREAD);
+        yield CONE_WAVE_GAP;
+      }
       yield LANDING_HOLD;
     }
 
@@ -306,18 +332,7 @@ function* gymBroScript(self: Entity) {
   yield* race(phaseOneBarrage(self), waitPhaseOneDown(self));
 
   // --- Transition: shudder, clear field, leg-day declaration ---
-  self.setDamagedByClasses([]);
-  self.body.setVelocity(0, 0);
-  // Five quick flashes spread over ~50 frames so the silhouette visibly
-  // judders before the screen goes quiet.
-  for (let i = 0; i < 5; i++) {
-    self.flashDamage();
-    yield 10;
-  }
-  // clearScreen would sweep the boss too — he sits in damages.player
-  // alongside the bullets — so use the bullet-only variant.
-  clearBullets(self);
-  yield 20;
+  yield* bossPhaseTransition(self);
 
   self.say('Leg day!', 80);
   // Slide down to the jump baseline so the parabola's apex stays clear of
