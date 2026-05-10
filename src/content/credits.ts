@@ -38,6 +38,7 @@ export const SECTIONS: Section[] = [
       { name: 'Top Down Sprite Maker', url: 'flinkerflitzer.itch.io/tdsm' },
       { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
       { name: 'Furniture Office Set', url: 'stcrbcn.itch.io/furniture-office-set' },
+      { name: 'Explosions by helpcomputer', url: 'opengameart.org/content/explosions-2' },
     ],
   },
   {
