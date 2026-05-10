@@ -27,10 +27,12 @@ import {
   COLOR_PANEL,
   COLOR_PANEL_BORDER,
   COLOR_TEXT_DIM_STR,
+  COLOR_TEXT_PRIMARY,
   COLOR_TEXT_PRIMARY_STR,
   COLOR_WALL,
 } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
+import { onTap } from '../ui/tap';
 
 const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 
@@ -75,6 +77,15 @@ const BOMB_BUTTON_X = GAME_W / 2;
 // of the playfield.
 function bombButtonY(): number {
   return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 220;
+}
+
+// Pause button (touch only) sits in the lower-left, on the same row as
+// the bomb button so both thumbs find their controls at the same y. Kept
+// small so it doesn't compete with the bomb glyph for visual weight.
+const PAUSE_BUTTON_RADIUS = 24;
+const PAUSE_BUTTON_X = 32;
+function pauseButtonY(): number {
+  return displayState.logicalH > GAME_H ? displayState.logicalH - 60 : GAME_H - 30;
 }
 
 // Pointer.x / .y arrive in canvas-internal device pixels because the
@@ -225,6 +236,8 @@ export class GameScene extends Phaser.Scene {
     let chosenTime = -Infinity;
     const bombR2 = BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
     const bombY = bombButtonY();
+    const pauseR2 = PAUSE_BUTTON_RADIUS * PAUSE_BUTTON_RADIUS;
+    const pauseY = pauseButtonY();
     for (const p of this.game.input.pointers) {
       if (!p.isDown) continue;
       const lx = pointerLogicalX(p.x);
@@ -232,6 +245,9 @@ export class GameScene extends Phaser.Scene {
       const dxB = lx - BOMB_BUTTON_X;
       const dyB = ly - bombY;
       if (dxB * dxB + dyB * dyB <= bombR2) continue;
+      const dxP = lx - PAUSE_BUTTON_X;
+      const dyP = ly - pauseY;
+      if (dxP * dxP + dyP * dyP <= pauseR2) continue;
       if (p.downTime > chosenTime) {
         chosenX = lx;
         chosenTime = p.downTime;
@@ -377,6 +393,27 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setAlpha(0.95)
         .setDepth(101);
+
+      // Pause button — neutral colour so it reads as a UI control rather
+      // than a gameplay action. Toggles between pause and resume so the
+      // same thumb tap can dismiss the overlay it just opened.
+      const pauseY = pauseButtonY();
+      const pauseBtn = this.add
+        .circle(PAUSE_BUTTON_X, pauseY, PAUSE_BUTTON_RADIUS, COLOR_TEXT_PRIMARY, 0.15)
+        .setStrokeStyle(2, COLOR_TEXT_PRIMARY, 0.5)
+        .setDepth(100)
+        .setInteractive({ useHandCursor: true });
+      this.add
+        .text(PAUSE_BUTTON_X, pauseY, '❚❚', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '18px' })
+        .setOrigin(0.5)
+        .setAlpha(0.95)
+        .setDepth(101);
+      onTap(this, pauseBtn, () => {
+        if (this.state.userPaused) this.unpauseGame();
+        // Don't grab the freeze from a dialogue / continue overlay — they
+        // already own stage.paused and toggling it would resume mid-line.
+        else if (!this.stage.paused) this.pauseGame();
+      });
     }
 
     this.hud = this.add
@@ -488,12 +525,28 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_W / 2, GAME_H * 0.4, 'PAUSED', { ...FONT_TITLE, color: COLOR_ACCENT_GOLD_STR })
       .setOrigin(0.5);
     c.add(title);
-    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<back>  RESUME\n<bomb>  MENU', {
+
+    const resumeTpl = isTouchDevice ? '▶ TAP TO RESUME' : '▶ <back>  RESUME';
+    const resume = makePrompt(this, GAME_W / 2, GAME_H * 0.52, resumeTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
-      align: 'center',
     });
-    c.add(hint);
+    c.add(resume);
+
+    const menuTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <bomb>  MENU';
+    const menu = makePrompt(this, GAME_W / 2, GAME_H * 0.62, menuTpl, {
+      ...FONT_MENU,
+      color: COLOR_TEXT_PRIMARY_STR,
+    });
+    c.add(menu);
+
+    if (isTouchDevice) {
+      setOverlayHit(resume, GAME_W * 0.7, 70);
+      setOverlayHit(menu, GAME_W * 0.7, 70);
+      onTap(this, resume, () => this.unpauseGame());
+      onTap(this, menu, () => this.scene.start('Menu'));
+    }
+
     this.state.pauseOverlay = c;
   }
 
@@ -518,13 +571,36 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_W / 2, GAME_H * 0.38, 'CONTINUE?', { ...FONT_TITLE, color: COLOR_ACCENT_RED_STR })
       .setOrigin(0.5);
     c.add(title);
-    const hint = makePrompt(this, GAME_W / 2, GAME_H * 0.55, '<confirm>  CONTINUE\n<back>  QUIT', {
+
+    const continueTpl = isTouchDevice ? '▶ TAP TO CONTINUE' : '▶ <confirm>  CONTINUE';
+    const continueBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.52, continueTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
-      align: 'center',
     });
-    c.add(hint);
+    c.add(continueBtn);
+
+    const quitTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <back>  QUIT';
+    const quitBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.62, quitTpl, {
+      ...FONT_MENU,
+      color: COLOR_TEXT_PRIMARY_STR,
+    });
+    c.add(quitBtn);
+
     this.state.continueOverlay = c;
+
+    if (isTouchDevice) {
+      setOverlayHit(continueBtn, GAME_W * 0.7, 70);
+      setOverlayHit(quitBtn, GAME_W * 0.7, 70);
+      onTap(this, continueBtn, () => {
+        if (!this.state.continueOverlay) return;
+        this.dismissContinueOverlay();
+        this.revivePlayerWithDeathBomb();
+      });
+      onTap(this, quitBtn, () => {
+        if (!this.state.continueOverlay) return;
+        this.scene.start('Menu');
+      });
+    }
 
     const kb = this.input.keyboard;
     if (!kb) return;
@@ -745,4 +821,11 @@ export class GameScene extends Phaser.Scene {
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }
+}
+
+// Container origin sits at the prompt's centre, so a centred rectangle
+// gives a hit pad that extends in all four directions equally — same
+// fat-finger pattern MenuScene uses for its title-screen buttons.
+function setOverlayHit(target: Phaser.GameObjects.Container, w: number, h: number): void {
+  target.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
 }

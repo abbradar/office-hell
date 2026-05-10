@@ -6,7 +6,8 @@ import { EntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
 
-// Sales + Important Client: a mid-boss pair with distinct attack identities.
+// Sales + Important Client: a paired ordinary wave with distinct attack
+// identities.
 //   - Sales fires expanding rings of bullets — the "circle back" archetype.
 //   - Client fires aimed clouds of slightly-homing bullets (reportBullet);
 //     each bullet curves toward the player on its own, so a static dodge
@@ -14,6 +15,8 @@ import { reportBullet } from './reportBullet';
 //
 // Both scripts share PHASE_A_* and PHASE_B_* timings so the pair pulses on
 // the same beat, with the client's intro 50 frames behind to interleave.
+// One pass through Phase A → Phase B, then both retreat downward — the
+// surrounding waves (IT Admin, Janitor) also exit that way.
 
 const ENTRY_SPEED = 60;
 // Bubble manager flips a two-line bubble (h≈50 with padding) below the
@@ -27,13 +30,15 @@ const CLIENT_X = GAME_W * 0.7;
 
 const HOLD_AFTER_TALK = 60;
 
-// Shared phase pacing. Phase A: 4 volleys × 26f + 40f gap = 144f.
-// Phase B: 5 volleys × 24f + 40f gap = 160f. Same totals on both scripts.
+// Shared phase pacing. Phase A: 4 volleys × 26f = 104f. Phase B: 5 volleys ×
+// 24f = 120f. PHASE_GAP separates A and B. Same totals on both scripts.
 const PHASE_A_REPEATS = 4;
 const PHASE_A_GAP = 26;
 const PHASE_B_REPEATS = 5;
 const PHASE_B_GAP = 24;
 const PHASE_GAP = 40;
+
+const EXIT_SPEED = 240;
 
 // Sales: rings.
 const RING_COUNT_A = 18;
@@ -56,25 +61,24 @@ function* salesScript(self: Entity) {
   yield 130;
   yield HOLD_AFTER_TALK;
 
-  while (self.alive) {
-    // Phase A: standard rings, slow rotation.
-    let baseAngle = Math.random() * Math.PI * 2;
-    for (let i = 0; i < PHASE_A_REPEATS; i++) {
-      ring(self, RING_COUNT_A, bullet, RING_SPEED_A, baseAngle);
-      baseAngle += Math.PI / RING_COUNT_A;
-      yield PHASE_A_GAP;
-    }
-    yield PHASE_GAP;
-
-    // Phase B: denser, slower rings, counter-rotating.
-    baseAngle = Math.random() * Math.PI * 2;
-    for (let i = 0; i < PHASE_B_REPEATS; i++) {
-      ring(self, RING_COUNT_B, bullet, RING_SPEED_B, baseAngle);
-      baseAngle -= Math.PI / RING_COUNT_B;
-      yield PHASE_B_GAP;
-    }
-    yield PHASE_GAP;
+  // Phase A: standard rings, slow rotation.
+  let baseAngle = Math.random() * Math.PI * 2;
+  for (let i = 0; i < PHASE_A_REPEATS; i++) {
+    ring(self, RING_COUNT_A, bullet, RING_SPEED_A, baseAngle);
+    baseAngle += Math.PI / RING_COUNT_A;
+    yield PHASE_A_GAP;
   }
+  yield PHASE_GAP;
+
+  // Phase B: denser, slower rings, counter-rotating.
+  baseAngle = Math.random() * Math.PI * 2;
+  for (let i = 0; i < PHASE_B_REPEATS; i++) {
+    ring(self, RING_COUNT_B, bullet, RING_SPEED_B, baseAngle);
+    baseAngle -= Math.PI / RING_COUNT_B;
+    yield PHASE_B_GAP;
+  }
+
+  self.setVelocity(0, EXIT_SPEED);
 }
 
 function* clientScript(self: Entity) {
@@ -86,21 +90,20 @@ function* clientScript(self: Entity) {
   yield 90;
   yield HOLD_AFTER_TALK - 40;
 
-  while (self.alive) {
-    // Phase A: tight aimed clouds at the player.
-    for (let i = 0; i < PHASE_A_REPEATS; i++) {
-      aimed(self, CLOUD_COUNT_A, reportBullet, CLOUD_SPEED, CLOUD_SPREAD_A);
-      yield PHASE_A_GAP;
-    }
-    yield PHASE_GAP;
-
-    // Phase B: wider, sparser clouds — gives the homing more steering room.
-    for (let i = 0; i < PHASE_B_REPEATS; i++) {
-      aimed(self, CLOUD_COUNT_B, reportBullet, CLOUD_SPEED, CLOUD_SPREAD_B);
-      yield PHASE_B_GAP;
-    }
-    yield PHASE_GAP;
+  // Phase A: tight aimed clouds at the player.
+  for (let i = 0; i < PHASE_A_REPEATS; i++) {
+    aimed(self, CLOUD_COUNT_A, reportBullet, CLOUD_SPEED, CLOUD_SPREAD_A);
+    yield PHASE_A_GAP;
   }
+  yield PHASE_GAP;
+
+  // Phase B: wider, sparser clouds — gives the homing more steering room.
+  for (let i = 0; i < PHASE_B_REPEATS; i++) {
+    aimed(self, CLOUD_COUNT_B, reportBullet, CLOUD_SPEED, CLOUD_SPREAD_B);
+    yield PHASE_B_GAP;
+  }
+
+  self.setVelocity(0, EXIT_SPEED);
 }
 
 export const sales = new EntityKind({

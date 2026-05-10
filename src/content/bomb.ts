@@ -197,7 +197,7 @@ function freezeBullet(stage: StageManager, bullet: Entity): void {
   bullet.body.setVelocity(0, 0);
   stage.damages.player.remove(bullet);
   stage.runScript(bullet, function* (self) {
-    while (self.alive) {
+    while (true) {
       self.body.setVelocity(0, 0);
       yield 1;
     }

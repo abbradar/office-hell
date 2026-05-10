@@ -60,7 +60,6 @@ function* drinkStream(self: Entity): Generator<ScriptYield, void, void> {
   // space as bullets at successive ages occupy successive sine phases.
   const [vx, vy] = self.vectorToPlayer(DRINK_STREAM_SPEED);
   for (let i = 0; i < DRINK_STREAM_BULLETS; i++) {
-    if (!self.alive) return;
     if (i % DRINK_STREAM_SFX_EVERY === 0) shoot();
     self.spawn(drinkBullet, self.x, self.y, vx, vy);
     yield DRINK_STREAM_GAP;
@@ -72,10 +71,9 @@ function* managerScript(self: Entity) {
   self.say(MANAGER_INTRO_LINE, MANAGER_INTRO_SAY);
   yield MANAGER_INTRO_HOLD;
 
-  while (self.alive) {
+  while (true) {
     self.say(MANAGER_BURST_LINE, MANAGER_BURST_SAY);
     for (let i = 0; i < STREAMS_PER_BURST; i++) {
-      if (!self.alive) return;
       yield* drinkStream(self);
       yield BETWEEN_STREAMS;
     }
@@ -92,7 +90,7 @@ function makePartyMemberScript(targetY: number, fireOffset: number): EntityScrip
     yield* moveTo(self, self.x, targetY, ENTRY_SPEED);
     yield fireOffset;
     let baseAngle = Math.random() * Math.PI * 2;
-    while (self.alive) {
+    while (true) {
       ring(self, RING_COUNT, bullet, RING_SPEED, baseAngle);
       baseAngle += Math.PI / RING_COUNT;
       yield RING_GAP;

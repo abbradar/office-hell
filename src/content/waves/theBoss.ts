@@ -64,7 +64,7 @@ function* theBossScript(self: Entity) {
   // Repeating attack cycle. Kicks off on the first beat of the main
   // loop. Loops until the lethal hit lands, at which point takeDamage
   // swaps this script out for the boss death script via runScript.
-  while (self.alive) {
+  while (true) {
     ring(self, 64, bullet, spiralSpeed, spiralAngle);
     spiralAngle += 0.01;
     yield* waitSeconds(BPM_STEP);

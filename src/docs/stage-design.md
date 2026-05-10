@@ -321,6 +321,64 @@ PLAYER_BOMBS` to unlock bombs, or a boss script setting
 `stage.bossName` (which is cleared by the boss's `onDeath` callback
 on either natural defeat or forced release).
 
+### Convention: no `self.alive` termination guards
+
+Don't write `while (self.alive) { … }` or `if (!self.alive) return;` to
+terminate an entity script when its owner dies. Use `while (true)` for
+forever-loops and let the runtime handle teardown.
+
+When an entity dies (`alive = false`), `StageManager.update`'s active-list
+sweep calls `release(e, …)`, which `drop`s the entity's script. `drop`
+sets `script.generation = null` (so any in-flight wakeups silently fall
+through the generation guard) and calls `iter.return()` on the generator,
+which propagates through `yield*` into sub-generators and runs every
+`try/finally` on the way out. Same teardown path as race losers — see
+[Race / timeout](#race--timeout).
+
+The window between death and teardown is at most one script tick: if the
+script's wait happens to expire on the death frame, `tickQueue` runs
+before the active sweep and the script gets one more block of code. That
+extra block is normally invisible (one extra ring volley, one extra
+position update) and not worth guarding against — guards just clutter the
+script and obscure the intended pattern.
+
+This applies to all entity scripts: enemy `defaultScript`s, per-bullet
+`{script}` SpawnOpts, sub-generators called via `yield*`, and pattern
+utilities in [`src/script/patterns.ts`](../script/patterns.ts) that fire
+bullets in a loop.
+
+`*.alive` checks for *other* entities (a bullet checking its target, a
+collision callback rejecting a stale pair, the player's `takeDamage`
+death-bomb safety net) are different — those are stay-alive guards, not
+script-termination, and remain valid.
+
+### Convention: speakers must leave room for the bubble
+
+Speech bubbles (`self.say(text, frames)` → [`BubbleManager`](../ui/bubbles.ts))
+are anchored above the speaker, with `OFFSET_Y = 30` between sprite centre
+and bubble bottom. If the bubble would clip the top of the screen, it
+flips to *below* the speaker — which usually puts the text behind another
+sprite (a follower walking in, a bullet stream, the speaker's own body
+when it overlaps). Either way, the player can't read it.
+
+When you write a wave whose enemy speaks, position the speaker far enough
+down for its **tallest line** to fit above it. Rough budget for the
+default `FONT_DIALOGUE_SM` (monogram 16px):
+
+- 1 line ≈ 28px bubble height — needs `y ≥ ~80`
+- 2 lines ≈ 46px — needs `y ≥ ~95`
+- 3 lines ≈ 62px — needs `y ≥ ~115` (give yourself margin: 130+)
+
+The standing convention across `oversleeper`, `wellnessCoach`, etc. is
+`ENTRY_Y = 110`, which fits comfortably for ≤2-line lines. Push lower
+when the script has 3-line dialogue or stacked simultaneous speakers
+whose bubbles can collide. `hrTrio` uses 130 for its three-line lead
+intro.
+
+The same rule applies anywhere `self.say` runs, not just the entry
+position — if the speaker is moving while talking, make sure the *whole
+say-window* stays low enough.
+
 ## Currently shipped stages
 
 ### Real stage — [`src/content/stage.ts`](../content/stage.ts)
