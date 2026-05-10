@@ -13,7 +13,9 @@ import {
   preloadBackgrounds,
   preloadBullets,
   preloadPlayerBullet,
+  preloadBombExplosion,
   preloadWaterDispenser,
+  registerBombAnims,
 } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
@@ -129,6 +131,7 @@ export class BootScene extends Phaser.Scene {
     preloadPlayerBullet(this);
     preloadBullets(this);
     preloadWaterDispenser(this);
+    preloadBombExplosion(this);
     preloadAudio(this);
     preloadMuteIcons(this);
     this.load.start();
@@ -163,6 +166,7 @@ export class BootScene extends Phaser.Scene {
           // Anims tie into spritesheets that just landed — register now.
           registerAllCharacterAnims(this);
           registerElevatorAnims(this);
+          registerBombAnims(this);
           resolve();
         } catch (err) {
           reject(err);
