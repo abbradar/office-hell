@@ -48,6 +48,13 @@ const RUN_VX_RATIO = 0.5;
 // while approaching the touch target doesn't immediately downgrade
 // the anim from run to walk.
 const RUN_HOLD_FRAMES = 10;
+// Focus mode (Shift held + keyboard movement): scales PLAYER_SPEED
+// down for fine positioning into dense bullet streams. The factor is
+// below RUN_VX_RATIO so the displacement-based anim picker would
+// already land on walk; updateAnim still forces walk explicitly so
+// the RUN_HOLD_FRAMES tail doesn't flash a few frames of run on the
+// transition from full-speed into focus.
+const FOCUS_SPEED_RATIO = 0.4;
 
 export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
@@ -75,9 +82,17 @@ export class Player extends Entity {
 
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
+  private focusKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
   private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
+  // True while the player is moving via keyboard with Shift held — speed
+  // scales by FOCUS_SPEED_RATIO and updateAnim forces 'walk'. Set in
+  // controlUpdate (which runs before updateAnim each frame) and cleared
+  // when controls are locked or no horizontal key is active, so a held
+  // Shift outside of movement (or during a cutscene) doesn't pin the
+  // anim choice on stale state.
+  private focused = false;
 
   // Touch-mode movement target, in logical x. While a finger is down,
   // tracks its x; on release, snaps to the player's current x so the
@@ -161,6 +176,7 @@ export class Player extends Entity {
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
+    this.focusKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   }
@@ -186,6 +202,7 @@ export class Player extends Entity {
     // finger long-released doesn't snap the player toward a stale x.
     this.touchTargetX = null;
     this.targetSamples.length = 0;
+    this.focused = false;
   }
 
   unlockControls(): void {
@@ -286,7 +303,10 @@ export class Player extends Entity {
       if (effVx !== 0) {
         this.framesSinceMovement = 0;
         dir = effVx > 0 ? 'right' : 'left';
-        action = this.framesSinceRunSpeed <= RUN_HOLD_FRAMES ? 'run' : 'walk';
+        // Focus mode forces walk — bypasses the RUN_HOLD_FRAMES tail
+        // so pressing Shift mid-run drops to walk on the same frame.
+        if (this.focused) action = 'walk';
+        else action = this.framesSinceRunSpeed <= RUN_HOLD_FRAMES ? 'run' : 'walk';
       } else {
         this.framesSinceMovement++;
         const sideways = this.facing === 'left' || this.facing === 'right';
@@ -316,6 +336,7 @@ export class Player extends Entity {
     const maxX = GAME_W - WALL_W - half;
 
     const kbDir = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
+    this.focused = kbDir !== 0 && this.focusKey.isDown;
 
     let newVx = 0;
     if (kbDir !== 0) {
@@ -326,7 +347,8 @@ export class Player extends Entity {
       let dir = kbDir;
       if (dir < 0 && this.x <= minX) dir = 0;
       if (dir > 0 && this.x >= maxX) dir = 0;
-      newVx = dir * PLAYER_SPEED;
+      const speed = this.focused ? PLAYER_SPEED * FOCUS_SPEED_RATIO : PLAYER_SPEED;
+      newVx = dir * speed;
     } else {
       // Touch: while a finger is down, refresh the target to its x. On
       // release the target snaps to the player's current x so the player
