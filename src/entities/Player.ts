@@ -91,8 +91,9 @@ export class Player extends Entity {
   // controlUpdate (which runs before updateAnim each frame) and cleared
   // when controls are locked or no horizontal key is active, so a held
   // Shift outside of movement (or during a cutscene) doesn't pin the
-  // anim choice on stale state.
-  private focused = false;
+  // anim choice on stale state. Public so the intro's focus tutorial
+  // can poll it as the prompt's completion signal.
+  focused = false;
 
   // Touch-mode movement target, in logical x. While a finger is down,
   // tracks its x; on release, snaps to the player's current x so the

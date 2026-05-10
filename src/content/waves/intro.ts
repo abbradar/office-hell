@@ -28,6 +28,14 @@ const EMAIL_NEAR_MARGIN = 16;
 // Two-line layout keeps icons on their own row above the action label so
 // keys read at full size without crowding the text.
 const ARROW_TEMPLATE = isTouchDevice ? 'DRAG ◀ ▶\nTO DODGE' : '<moveHorizontal>\nDODGE!';
+// Keyboard-only — touch has no analogous focus mode. No <shift> icon
+// shipped in the kenney pack we use, so 'SHIFT' is plain text alongside
+// the moveHorizontal arrow glyphs.
+const FOCUS_TEMPLATE = 'SHIFT + <moveHorizontal>\nFOCUS!';
+// How long the player must move in focus mode (Shift + arrow) for the
+// prompt to dismiss. Accumulated, not contiguous — releasing Shift
+// pauses the timer rather than resetting it.
+const FOCUS_HOLD_SECONDS = 1.5;
 const BOMB_TEMPLATE = isTouchDevice ? 'TAP ✱\nTO GET ANGRY' : '<bomb>\nGET ANGRY!';
 const FIRE_TEMPLATE = '<fire>\nFIRE EXCUSES!';
 // Side prompt that appears for repeat players: spend a bomb to skip the
@@ -57,7 +65,7 @@ function markIntroCompleted(): void {
   }
 }
 
-type TutorialKind = 'arrows' | 'bomb' | 'fire';
+type TutorialKind = 'arrows' | 'focus' | 'bomb' | 'fire';
 
 // Show a tutorial bubble, freeze physics, and yield until the player
 // presses the matching input. Doesn't touch `stage.paused` — that would
@@ -77,10 +85,19 @@ type TutorialKind = 'arrows' | 'bomb' | 'fire';
 function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Generator<ScriptYield, void, void> {
   const scene = self.scene;
   const player = self.stage.player;
-  scene.physics.pause();
+  // Focus is the only prompt that needs physics live — completion is
+  // gated on the player actually walking in focus mode for 1.5s, which
+  // can't happen if body integration is frozen. Other prompts park
+  // bullets / the email and resolve on a single keypress.
+  const freezePhysics = kind !== 'focus';
+  if (freezePhysics) scene.physics.pause();
   const dismiss = showTutorialBubble(scene, template);
 
-  const lockMovement = kind !== 'arrows';
+  // Focus keeps movement enabled like 'arrows' does — Player.controlUpdate
+  // only flips `focused` on when shift is held *with* a horizontal key,
+  // and the focus poll below reads exactly that flag, so we'd be locking
+  // out the very input we're waiting for.
+  const lockMovement = kind !== 'arrows' && kind !== 'focus';
   if (lockMovement) player.lockControls();
 
   const kb = scene.input.keyboard;
@@ -97,6 +114,20 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
       // input. controlUpdate uses the same source, so the velocity is
       // already pointing at the finger by the time physics resumes.
       while (!(left.isDown || right.isDown || scene.getTouchTargetX() !== null)) yield { scriptFrames: 1 };
+    } else if (kind === 'focus') {
+      // Keyboard-only path (this kind isn't reached on touch). Bank
+      // wall-clock time per frame while Player.focused is true (Shift +
+      // a horizontal key) and dismiss once the player has moved in focus
+      // mode for FOCUS_HOLD_SECONDS total. Accumulated, not contiguous —
+      // releasing Shift pauses the timer rather than resetting it, so a
+      // brief direction-flip mid-focus doesn't make the prompt feel
+      // punitive. Physics is live (see freezePhysics above), so the
+      // player actually walks while the timer runs.
+      let focusedFor = 0;
+      while (focusedFor < FOCUS_HOLD_SECONDS) {
+        yield { scriptFrames: 1 };
+        if (player.focused) focusedFor += scene.game.loop.delta / 1000;
+      }
     } else if (kind === 'bomb') {
       const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       // consumeBombPress is edge-triggered (drains the bomb-tap queue), so
@@ -212,11 +243,26 @@ function* skippableIntroBody(self: Entity): Generator<ScriptYield, void, void> {
   yield* tutorialPrompt(self, ARROW_TEMPLATE, 'arrows');
 
   // Stop the email *just* before it would hit — moveTo halts and snaps
-  // it to a position above the player, so the "getting angry" dialog
-  // pauses physics with the email frozen close but not touching. The
-  // bomb radius (≥ GAME_W/2) guarantees it gets swept regardless of how
-  // far the player dodged sideways.
+  // it to a position above the player. This is the active-dodge window
+  // the player uses to practise what they just learned; same beat that
+  // previously sat between the movement and explosion tutorials, kept
+  // before the focus prompt so the gap between the two checks is the
+  // same length as it used to be between movement and explosion. The
+  // email then waits frozen across the focus dialog/prompt; the bomb
+  // radius (≥ GAME_W/2) guarantees it gets swept regardless of how far
+  // the player dodged sideways.
   yield* moveTo(email, email.x, p.y - EMAIL_NEAR_MARGIN, COACH_EMAIL_SPEED);
+
+  // Focus tutorial — keyboard only. Touch has no Shift modifier and
+  // Player.focused is gated on the keyboard branch of controlUpdate, so
+  // there's nothing to teach here on a touch device.
+  if (!isTouchDevice) {
+    yield self.dialogue({
+      left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+      lines: [{ speaker: 'left', text: 'I might need to *focus* to deal with some of it.' }],
+    });
+    yield* tutorialPrompt(self, FOCUS_TEMPLATE, 'focus');
+  }
 
   // The dialog itself pauses physics + input — no need to flip
   // controlsEnabled around it.
