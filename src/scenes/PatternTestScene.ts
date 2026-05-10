@@ -22,7 +22,22 @@ import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { aimed, arc, moveTo, ring, spread, walkOffScreen } from '../script/patterns';
+import {
+  STILL,
+  aimed,
+  arc,
+  hexGrid,
+  lineGrid,
+  lineStroke,
+  move,
+  moveTo,
+  ring,
+  spread,
+  squareGrid,
+  tiledScroll,
+  walkOffScreen,
+  wave,
+} from '../script/patterns';
 import { StageManager } from '../script/StageManager';
 import {
   markWave,
@@ -61,6 +76,14 @@ const STATIC_HELPERS = {
   aimed,
   spread,
   arc,
+  squareGrid,
+  hexGrid,
+  lineGrid,
+  move,
+  STILL,
+  wave,
+  tiledScroll,
+  lineStroke,
   moveTo,
   walkOffScreen,
   bullet,
@@ -82,11 +105,20 @@ export type BulletStyleOpts = {
 };
 
 const DEFAULT_CODE = `// Helpers in scope:
-//   ring(self, count, kind, speed, baseAngleRad?)
-//   aimed(self, count, kind, speed, spreadRad?)
-//   spread(self, count, kind, speed, baseAngleRad, spreadRad)
-//   arc(self, count, kind, speed, fromRad, toRad)
+//   ring/aimed/spread/arc(self, count, kind, speed, ...)
+//   lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, spacing?)
 //   moveTo, walkOffScreen
+//
+// Compositional grid → mover → wave:
+//   squareGrid({ cols, rows, x0, y0, dx, dy })          → Point[]
+//   hexGrid({ cols, rows, x0, y0, dx, dy? })            → Point[]   (every other row shifted dx/2)
+//   lineGrid({ x1, y1, x2, y2, spacing? | count? })     → Point[]
+//   move(angle, speed, accel?)                          → Mover
+//   STILL                                               → Mover (no motion)
+//   yield* wave(self, { grid, kind, mover?, direction?, speed, lifeFrames?, loops?, loopDelayFrames? })
+//   yield* tiledScroll(self, { kind, dx, dy, vx, vy, hex?, fillHoldFrames?, durationFrames? })
+//
+// Time:
 //   yield* waitSeconds(s)        // audio-aware delay
 //   yield N                      // wait N script frames
 //

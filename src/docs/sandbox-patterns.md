@@ -263,6 +263,137 @@ while (self.alive) {
 }
 ```
 
+## 11. Hex rain (composition: hexGrid + move + wave)
+
+Three small primitives compose into rain. The grid says **where**, the
+mover says **how each bullet moves**, the wave says **when**.
+
+- `hexGrid` — points on a hex lattice; alternate rows shift right by
+  `dx/2` so the bullets tessellate.
+- `move(angle, speed, accel?)` — mover that gives every bullet the same
+  heading + linear acceleration. `Math.PI / 2` is "down".
+- `wave` — spawns the grid as a wavefront propagating along `direction`
+  at `speed` px/s; loops with `loopDelayFrames` between passes.
+
+For continuous rain, the grid is a single hex row at the top of the
+field; the wave loops forever and each loop alternates between the
+straight and shifted row by translating `x0` between calls. Each
+bullet falls and accelerates via the mover, exiting through the bottom
+cull margin on its own (no `lifeFrames` needed).
+
+```js
+const blueD = bulletStyle({ color: 0x66bbff, radius: 3, shape: 'diamond' });
+const falling = move(Math.PI / 2, 30, 80);   // down, accelerating
+
+let beat = 0;
+while (self.alive) {
+  // Single-row hex sweep at the top. `x0` shifts by dx/2 every other
+  // beat for the tessellation; `speed: Infinity` makes the whole row
+  // spawn on the same frame (no horizontal sweep).
+  yield* wave(self, {
+    grid: hexGrid({
+      cols: 6,
+      rows: 1,
+      x0: 16 + (beat % 2 === 0 ? 0 : 16),
+      y0: -8,
+      dx: 32,
+    }),
+    kind: blueD,
+    mover: falling,
+    speed: Infinity,
+    loops: 1,
+  });
+  beat++;
+  yield 32;   // one beat at 113 BPM (60 fps)
+}
+```
+
+Knobs: `cols` controls density across the field. The outer `yield 32`
+sets row cadence (drop for torrential, raise for sparse). `move(π/2,
+v0, a)` tunes start-speed vs acceleration — small `v0` and large `a`
+gives the "creeps then drowns" feel. Swap the angle for diagonal rain.
+
+For a "wall sweeps in then dissolves" variant: full-field grid + slow
+`speed` + short `lifeFrames` + STILL mover.
+
+```js
+yield* wave(self, {
+  grid: hexGrid({ cols: 6, rows: 12, x0: 16, y0: 0, dx: 32 }),
+  kind: blueD,
+  mover: STILL,           // bullets don't move, they just blink in/out
+  direction: Math.PI / 2, // sweep top-to-bottom
+  speed: 200,             // wavefront px/s
+  lifeFrames: 60,         // each bullet shows for 1s after the front passes
+});
+```
+
+Rotate the wave by changing `direction` — `Math.PI / 4` for a diagonal,
+`-Math.PI / 2` for bottom-to-top, `0` for left-to-right.
+
+## 12. Scrolling tile
+
+Bullets fill the whole field on a `(dx, dy)` lattice and then drift as
+one rigid tile, wrapping around the edges so the field stays uniformly
+threatened. `tiledScroll` handles spawn → optional read-the-layout
+hold → motion + per-frame wrap → cleanup on exit. Pass `hex: true` for
+a triangular lattice (every other row shifted `dx/2`).
+
+```js
+const blueD = bulletStyle({ color: 0x66bbff, radius: 3, shape: 'diamond' });
+
+// Spawn the lattice, hold for ~0.5s so the player sees it, then drift
+// down-right indefinitely. The tile wraps so the field is always full.
+yield* tiledScroll(self, {
+  kind: blueD,
+  dx: 32,
+  dy: 32,
+  vx: 30,
+  vy: 60,
+  hex: true,
+  fillHoldFrames: 30,
+});
+```
+
+Knobs: `dx` / `dy` are density (smaller = denser, harder to weave —
+note the field is 200×660 so `dx: 32` gives ~8 columns of bullets at
+once). `(vx, vy)` is the drift; orient it for visual variety —
+straight-down is rain-like, diagonal feels like a current, mostly-
+horizontal feels like a side-scroll. Cap with `durationFrames` to
+auto-clear before transitioning to the next phase, or omit it for
+"runs until the boss dies".
+
+A pulsing variant: chain a `tiledScroll` with `durationFrames: 240` to
+two beats of nothing, then call again with rotated `(vx, vy)` so the
+tile changes direction between bars.
+
+## 13. Field-dividing strokes
+
+Stationary red squares laid along a line segment — each lethal for
+`lifeFrames` before despawning. Compose multiple calls to slice the
+field into regions. Default spacing makes squares touch, so the line
+reads as solid. The function is fire-and-forget; the caller controls
+when to throw the next stroke.
+
+```js
+const redSq = bulletStyle({ color: 0xff5577, radius: 2, shape: 'square' });
+const LIFE = 180;   // 3 seconds at 60 fps
+
+while (self.alive) {
+  // Three crossing strokes — diagonal, horizontal, vertical — all
+  // lethal for 3s. Player has to find the one safe pocket between
+  // them before they vanish.
+  lineStroke(self, 0, 0, 200, 660, redSq, LIFE);
+  lineStroke(self, 0, 200, 200, 200, redSq, LIFE);
+  lineStroke(self, 100, 0, 100, 660, redSq, LIFE);
+  yield* waitSeconds(3.5);   // slightly longer than LIFE so strokes clear before next set
+}
+```
+
+For a "warning then commit" feel, fire a faint stroke first
+(`bulletStyle({ color: 0x553333, radius: 1, shape: 'square' })`) with
+a short life as the telegraph, wait ~30 frames, then fire the real
+red stroke at the same coords.
+
 ---
 
 ## Helper reference (cheat sheet)
@@ -272,6 +403,18 @@ ring(self, count, kind, speed, baseAngleRad?)
 aimed(self, count, kind, speed, spreadRad?)
 spread(self, count, kind, speed, baseAngleRad, spreadRad)
 arc(self, count, kind, speed, fromRad, toRad)
+lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, spacing?)
+
+// Compositional grid → mover → wave:
+squareGrid({ cols, rows, x0, y0, dx, dy })           → Point[]
+hexGrid({ cols, rows, x0, y0, dx, dy? })             → Point[]
+lineGrid({ x1, y1, x2, y2, spacing? | count? })      → Point[]
+move(angle, speed, accel?)                           → Mover
+STILL                                                → Mover (no motion)
+wave(self, { grid, kind, mover?, direction?, speed,   // generator — yield* it
+              lifeFrames?, loops?, loopDelayFrames? })
+tiledScroll(self, { kind, dx, dy, vx, vy, hex?,       // generator — yield* it
+                    fillHoldFrames?, durationFrames? })
 
 moveTo(self, x, y, speed)              // generator — yield* it
 walkOffScreen(self, vx, vy)            // generator — yield* it

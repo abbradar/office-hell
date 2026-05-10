@@ -146,3 +146,321 @@ export function arc(
     shootAt(self, kind, fromAngle + i * step, speed);
   }
 }
+
+// --- grid + mover + wave: compositional bullet patterns ------------------
+//
+// Three primitives that separate concerns that tend to get tangled up in
+// monolithic patterns:
+//
+//   GRID   — *where* bullets appear in field space (point producers).
+//   MOVER  — *how* each bullet moves once it appears (per-bullet vx/vy/ax/ay).
+//   WAVE   — *when* bullets appear/despawn, propagated as a wavefront across
+//            the grid in any direction.
+//
+// "Rain" is wave({ grid: hexGrid(top row), mover: move(π/2, ...), looped }).
+// "Wall that flashes in then out" is wave({ grid: full hexGrid, mover: STILL,
+// short lifeFrames, slow speed }). "Diagonal sweep" is the same with
+// `direction: π/4`. Compose freely; race the result with `waitSeconds(N)` to
+// time-box a phase.
+
+export type Point = { x: number; y: number };
+
+export type Mover = (p: Point, self: Entity) => { vx: number; vy: number; ax: number; ay: number };
+
+// Stationary bullets — useful with `wave` for "appear, hold, vanish" walls.
+export const STILL: Mover = () => ({ vx: 0, vy: 0, ax: 0, ay: 0 });
+
+// Constant heading (radians) at `speed` px/s, with optional matching linear
+// acceleration along the same axis. Angle convention is screen-space:
+// 0 = right, π/2 = down, π = left, -π/2 = up.
+export function move(angle: number, speed: number, accel = 0): Mover {
+  const cx = Math.cos(angle);
+  const cy = Math.sin(angle);
+  return () => ({ vx: cx * speed, vy: cy * speed, ax: cx * accel, ay: cy * accel });
+}
+
+// `cols × rows` lattice anchored at `(x0, y0)`, spaced `(dx, dy)`. Returns
+// flat point array — order is row-major (top-to-bottom, left-to-right).
+export function squareGrid(opts: {
+  cols: number;
+  rows: number;
+  x0: number;
+  y0: number;
+  dx: number;
+  dy: number;
+}): Point[] {
+  const { cols, rows, x0, y0, dx, dy } = opts;
+  const out: Point[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      out.push({ x: x0 + c * dx, y: y0 + r * dy });
+    }
+  }
+  return out;
+}
+
+// Hex-tessellated lattice — every other row is shifted right by `dx/2` so
+// the points sit on a triangular grid. `dy` defaults to `dx × √3/2` for
+// equilateral spacing; pass a custom `dy` to stretch vertically.
+export function hexGrid(opts: {
+  cols: number;
+  rows: number;
+  x0: number;
+  y0: number;
+  dx: number;
+  dy?: number;
+}): Point[] {
+  const { cols, rows, x0, y0, dx } = opts;
+  const dy = opts.dy ?? dx * (Math.sqrt(3) / 2);
+  const out: Point[] = [];
+  for (let r = 0; r < rows; r++) {
+    const offsetX = (r % 2) * (dx / 2);
+    for (let c = 0; c < cols; c++) {
+      out.push({ x: x0 + offsetX + c * dx, y: y0 + r * dy });
+    }
+  }
+  return out;
+}
+
+// Points evenly spaced along `(x1,y1) → (x2,y2)`. Either pass `count` for
+// an exact bullet count, or `spacing` to derive count from segment length
+// (default spacing = 8 px). Endpoints are always included.
+export function lineGrid(opts: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  spacing?: number;
+  count?: number;
+}): Point[] {
+  const { x1, y1, x2, y2 } = opts;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return [{ x: x1, y: y1 }];
+  const count = opts.count ?? Math.max(2, Math.ceil(dist / (opts.spacing ?? 8)) + 1);
+  const out: Point[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : i / (count - 1);
+    out.push({ x: x1 + dx * t, y: y1 + dy * t });
+  }
+  return out;
+}
+
+// Spawn the points in `grid` as a wavefront propagating along `direction`
+// (radians, default π/2 = top→bottom) at `speed` px/s. Each bullet picks
+// its velocity / acceleration from `mover` (default STILL) at spawn time
+// and self-destructs after `lifeFrames` frames if specified — omit for
+// "lives until cull margin" (right answer for moving bullets that exit
+// the screen on their own). `loops` runs the wave more than once with
+// `loopDelayFrames` between passes; race with `waitSeconds(N)` to
+// time-box.
+//
+// Mechanic: each point is projected onto the direction axis and ordered
+// by projection, so rotating `direction` rotates the sweep across
+// whatever shape the grid takes — no per-grid math needed.
+export function* wave(
+  self: Entity,
+  opts: {
+    grid: Point[];
+    kind: EntityKind;
+    mover?: Mover;
+    direction?: number;
+    speed: number;
+    lifeFrames?: number;
+    loops?: number;
+    loopDelayFrames?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  const { grid, kind, speed } = opts;
+  if (grid.length === 0 || speed <= 0) return;
+  const mover = opts.mover ?? STILL;
+  const direction = opts.direction ?? Math.PI / 2;
+  const loops = opts.loops ?? 1;
+  const loopDelay = Math.max(0, Math.round(opts.loopDelayFrames ?? 0));
+  const life = opts.lifeFrames !== undefined ? Math.max(1, Math.round(opts.lifeFrames)) : null;
+
+  const ux = Math.cos(direction);
+  const uy = Math.sin(direction);
+  const projected = grid.map((p) => ({ p, proj: p.x * ux + p.y * uy }));
+  projected.sort((a, b) => a.proj - b.proj);
+  const minProj = projected[0]?.proj ?? 0;
+
+  let lap = 0;
+  while (lap < loops && self.alive) {
+    let cursor = 0;
+    let elapsed = 0;
+    shoot();
+    while (cursor < projected.length && self.alive) {
+      while (cursor < projected.length) {
+        const item = projected[cursor];
+        if (!item) break;
+        const arrivalFrames = ((item.proj - minProj) / speed) * SCRIPT_FPS;
+        if (arrivalFrames > elapsed + 1e-6) break;
+        const m = mover(item.p, self);
+        const spawnOpts =
+          life !== null
+            ? {
+                script: function* (b: Entity): Generator<ScriptYield, void, void> {
+                  yield life;
+                  if (b.alive) b.die();
+                },
+              }
+            : undefined;
+        const e = self.spawn(kind, item.p.x, item.p.y, m.vx, m.vy, spawnOpts);
+        // Body acceleration persists for the entity's life; `body.reset`
+        // on the next pool reuse clears it, so this can't leak across
+        // spawns.
+        if (m.ax !== 0 || m.ay !== 0) e.body.setAcceleration(m.ax, m.ay);
+        cursor++;
+      }
+      yield 1;
+      elapsed++;
+    }
+    lap++;
+    if (lap < loops && self.alive && loopDelay > 0) yield loopDelay;
+  }
+}
+
+// A `(dx, dy)` lattice covering the whole field, drifting as one rigid
+// tile at `(vx, vy)` px/s. Each bullet wraps modulo the tile period so
+// the field stays uniformly covered indefinitely — visualises as a
+// "tiled background that scrolls", uniformly threatening from every
+// direction. `hex: true` shifts every other row by `dx/2` for triangular
+// tessellation; row count rounds to even so the wrap stays parity-clean.
+//
+// Phases: spawn the still tile → optional `fillHoldFrames` so the player
+// reads the layout → engage motion + per-frame wrap until
+// `durationFrames` (default Infinity) elapses → kill survivors.
+//
+// The wrap math sizes the period as `(ceil(GAME_W / dx) + 2) * dx` so
+// thresholds at `-dx` / `GAME_W + dx` swap a bullet from one edge to
+// the other while staying inside the cull margin and inside the
+// just-wrapped band — no double-wrap risk at reasonable velocities.
+export function* tiledScroll(
+  self: Entity,
+  opts: {
+    kind: EntityKind;
+    dx: number;
+    dy: number;
+    vx: number;
+    vy: number;
+    hex?: boolean;
+    fillHoldFrames?: number;
+    durationFrames?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  const { kind, dx, dy, vx, vy } = opts;
+  if (dx <= 0 || dy <= 0) return;
+  const hex = opts.hex ?? false;
+  const fillHold = Math.max(0, Math.round(opts.fillHoldFrames ?? 0));
+  const duration = opts.durationFrames ?? Infinity;
+
+  const colsCount = Math.ceil(GAME_W / dx) + 2;
+  let rowsCount = Math.ceil(GAME_H / dy) + 2;
+  if (hex && rowsCount % 2 !== 0) rowsCount++;
+  const periodX = colsCount * dx;
+  const periodY = rowsCount * dy;
+  const x0 = -dx;
+  const y0 = -dy;
+  // Wrap thresholds — one cell beyond the spawn band on each side.
+  const wrapMinX = x0;
+  const wrapMaxX = x0 + periodX;
+  const wrapMinY = y0;
+  const wrapMaxY = y0 + periodY;
+
+  // Phase 1 — spawn the still tile.
+  shoot();
+  const bullets: Entity[] = [];
+  for (let r = 0; r < rowsCount; r++) {
+    const offsetX = hex && r % 2 ? dx / 2 : 0;
+    for (let c = 0; c < colsCount; c++) {
+      const x = x0 + c * dx + offsetX;
+      const y = y0 + r * dy;
+      bullets.push(self.spawn(kind, x, y, 0, 0));
+    }
+  }
+
+  // Phase 2 — hold so the threat reads.
+  if (fillHold > 0) yield fillHold;
+
+  // Phase 3 — engage motion.
+  for (const b of bullets) {
+    if (b.alive) b.body.setVelocity(vx, vy);
+  }
+
+  // Phase 4 — drive the wrap loop. `body.reset(x, y)` sets position +
+  // re-syncs body.prev so velocity stays consistent through the wrap;
+  // setVelocity restores the drift since reset zeros it.
+  let elapsed = 0;
+  while (elapsed < duration && self.alive) {
+    yield 1;
+    elapsed++;
+    for (const b of bullets) {
+      if (!b.alive) continue;
+      let nx = b.x;
+      let ny = b.y;
+      let wrapped = false;
+      if (nx < wrapMinX) {
+        nx += periodX;
+        wrapped = true;
+      } else if (nx > wrapMaxX) {
+        nx -= periodX;
+        wrapped = true;
+      }
+      if (ny < wrapMinY) {
+        ny += periodY;
+        wrapped = true;
+      } else if (ny > wrapMaxY) {
+        ny -= periodY;
+        wrapped = true;
+      }
+      if (wrapped) {
+        b.body.reset(nx, ny);
+        b.body.setVelocity(vx, vy);
+      }
+    }
+  }
+
+  // Phase 5 — clear the field on exit so the next pattern starts clean.
+  for (const b of bullets) if (b.alive) b.die();
+}
+
+// Lay a row of stationary bullets along the segment `(x1,y1) → (x2,y2)`,
+// each lethal for `lifeFrames` frames before self-destructing. Visualises
+// as a "stroke" dividing the field — compose multiple calls into a
+// hatched / cross pattern. Default `spacing = kind.hitboxRadius × 2` so
+// squares touch and circles barely kiss; tighten for solidity, loosen for
+// a dotted laser feel. Fire-and-forget: returns immediately, the strokes
+// time out on their own.
+export function lineStroke(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  kind: EntityKind,
+  lifeFrames: number,
+  spacing?: number,
+): void {
+  shoot();
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return;
+  const step = spacing ?? Math.max(2, kind.hitboxRadius * 2);
+  const count = Math.max(2, Math.ceil(dist / step) + 1);
+  const life = Math.max(1, Math.round(lifeFrames));
+
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    self.spawn(kind, px, py, 0, 0, {
+      script: function* (b) {
+        yield life;
+        if (b.alive) b.die();
+      },
+    });
+  }
+}
