@@ -23,7 +23,6 @@ import type { Player } from '../entities/Player';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
 import {
-  STILL,
   aimed,
   arc,
   hexGrid,
@@ -32,6 +31,7 @@ import {
   move,
   moveTo,
   ring,
+  STILL,
   spread,
   squareGrid,
   tiledScroll,

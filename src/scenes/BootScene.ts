@@ -11,9 +11,9 @@ import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import {
   generateTextures,
   preloadBackgrounds,
+  preloadBombExplosion,
   preloadBullets,
   preloadPlayerBullet,
-  preloadBombExplosion,
   preloadWaterDispenser,
   registerBombAnims,
 } from '../content/textures';
