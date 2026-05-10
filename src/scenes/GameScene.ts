@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { DEADZONE_Y, GAME_H, GAME_W, WALL_W } from '../config';
+import { DEADZONE_Y, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
 import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
 import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
@@ -63,8 +63,6 @@ const HUD_REFRESH_MS = 1000;
 // Eraser and door Image share native size + origin (0, 0), so they
 // cover the exact same rect — the door pixels can't drift past the
 // cutout edge.
-
-const HEADER_H = 28;
 
 const BOMB_BUTTON_RADIUS = 50;
 const BOMB_BUTTON_X = GAME_W / 2;
@@ -215,13 +213,13 @@ export class GameScene extends Phaser.Scene {
     return pending;
   }
 
-  // Finger-follow movement target: x of the most recently pressed active
-  // pointer (logical coords), or null if no movement pointer is held.
-  // Pointers currently inside the bomb circle are excluded — both because
-  // a tap there is already handled as a bomb press and because a finger
-  // resting on the bomb shouldn't yank the player to centre.
-  getTouchTargetX(): number | null {
-    let chosenX: number | null = null;
+  // Finger-follow movement target: (x, y) of the most recently pressed
+  // active pointer in logical coords, or null if no movement pointer is
+  // held. Pointers currently inside the bomb circle are excluded — both
+  // because a tap there is already handled as a bomb press and because
+  // a finger resting on the bomb shouldn't yank the player to centre.
+  getTouchTarget(): { x: number; y: number } | null {
+    let chosen: { x: number; y: number } | null = null;
     let chosenTime = -Infinity;
     const bombR2 = BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
     const bombY = bombButtonY();
@@ -233,11 +231,11 @@ export class GameScene extends Phaser.Scene {
       const dyB = ly - bombY;
       if (dxB * dxB + dyB * dyB <= bombR2) continue;
       if (p.downTime > chosenTime) {
-        chosenX = lx;
+        chosen = { x: lx, y: ly };
         chosenTime = p.downTime;
       }
     }
-    return chosenX;
+    return chosen;
   }
 
   create(): void {

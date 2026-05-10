@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
-import { GAME_W, PLAYER_SPEED, PLAYER_Y, WALL_W } from '../config';
+import { GAME_H, GAME_W, HEADER_H, PLAYER_SPEED, PLAYER_Y, WALL_W } from '../config';
 import { type Action, characterAnimKey, type Direction } from '../content/animations';
 import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
@@ -20,9 +20,9 @@ const FIRE_OFFSET_Y = 24;
 const FIRE_SIDE_OFFSET_X = 6;
 const FIRE_SIDE_VX = 40;
 // Touch target deadband, in logical pixels: incoming finger / release
-// positions are ignored if they differ from the current touchTargetX by
-// less than this. Filters out raw-pointer jitter so the player doesn't
-// twitch while the finger is held still.
+// positions are ignored if they differ from the current touchTarget by
+// less than this (Euclidean). Filters out raw-pointer jitter so the
+// player doesn't twitch while the finger is held still.
 const TARGET_DEADBAND_PX = 1;
 // Touch target smoothing window: the candidate target each frame is the
 // mean of this many most-recent samples. Larger = smoother + laggier.
@@ -55,6 +55,12 @@ const RUN_HOLD_FRAMES = 10;
 // the RUN_HOLD_FRAMES tail doesn't flash a few frames of run on the
 // transition from full-speed into focus.
 const FOCUS_SPEED_RATIO = 0.4;
+// Touch target sits this many pixels above the finger so the player
+// sprite (and hitbox dot) isn't hidden under the user's fingertip.
+// 1/15 of the playfield height ≈ 44px — about one player-sprite
+// height of clearance, which keeps the dot framed just above the
+// fingernail on a typical thumb hold.
+const TOUCH_Y_OFFSET = GAME_H / 15;
 
 export class Player extends Entity {
   // Stage scripts flip this to false during cutscenes (e.g. the intro monologue
@@ -82,6 +88,8 @@ export class Player extends Entity {
 
   private leftKey: Phaser.Input.Keyboard.Key;
   private rightKey: Phaser.Input.Keyboard.Key;
+  private upKey: Phaser.Input.Keyboard.Key;
+  private downKey: Phaser.Input.Keyboard.Key;
   private focusKey: Phaser.Input.Keyboard.Key;
   private fireKey: Phaser.Input.Keyboard.Key;
   private bombKey: Phaser.Input.Keyboard.Key;
@@ -95,20 +103,22 @@ export class Player extends Entity {
   // can poll it as the prompt's completion signal.
   focused = false;
 
-  // Touch-mode movement target, in logical x. While a finger is down,
-  // tracks its x; on release, snaps to the player's current x so the
-  // player halts in place instead of coasting to the last tap point.
-  // Once set, stays set — the deadband filter above gates updates so
-  // sub-pixel jitter doesn't keep re-arming a new target. Only cleared
-  // (back to null) when keyboard input takes over or in lockControls,
-  // so a cutscene doesn't yank the player toward a stale x on resume.
-  private touchTargetX: number | null = null;
-  // Rolling buffer of raw target candidates (finger.x or release-snap),
-  // averaged each frame to smooth pointer jitter. Bounded length =
-  // TARGET_SMOOTHING_FRAMES; the oldest entry is dropped on each push.
-  // Cleared whenever touch movement is interrupted (keyboard takeover,
-  // lockControls) so a re-engagement isn't dragged toward stale samples.
-  private targetSamples: number[] = [];
+  // Touch-mode movement target, in logical (x, y). While a finger is
+  // down, tracks its position; on release, snaps to the player's
+  // current position so the player halts in place instead of coasting
+  // to the last tap point. Once set, stays set — the deadband filter
+  // above gates updates so sub-pixel jitter doesn't keep re-arming a
+  // new target. Only cleared (back to null) when keyboard input takes
+  // over or in lockControls, so a cutscene doesn't yank the player
+  // toward a stale target on resume.
+  private touchTarget: { x: number; y: number } | null = null;
+  // Rolling buffer of raw target candidates (finger position or
+  // release-snap), averaged each frame to smooth pointer jitter.
+  // Bounded length = TARGET_SMOOTHING_FRAMES; the oldest entry is
+  // dropped on each push. Cleared whenever touch movement is
+  // interrupted (keyboard takeover, lockControls) so a re-engagement
+  // isn't dragged toward stale samples.
+  private targetSamples: { x: number; y: number }[] = [];
   // Frames since vx was last non-zero (in-stage mode). Reset to 0 on
   // any horizontal motion; counted up while the player is parked.
   // updateAnim holds the side run anim until this exceeds
@@ -119,10 +129,11 @@ export class Player extends Entity {
   // anim stays at 'run' even if the current frame's effVx has dropped
   // into the walk band, so deceleration tails off smoothly.
   private framesSinceRunSpeed = RUN_HOLD_FRAMES + 1;
-  // Last frame's this.x, used by updateAnim to compute effective
-  // horizontal velocity. Seeded in the constructor so the very first
-  // updateAnim call doesn't see a (this.x − 0) jump.
+  // Last frame's (this.x, this.y), used by updateAnim to compute
+  // effective velocity. Seeded in the constructor so the very first
+  // updateAnim call doesn't see a (this.* − 0) jump.
   private prevX = 0;
+  private prevY = 0;
 
   // Counter, not a flag — a second bomb fired during an existing invincibility
   // window must extend it, not corrupt the saved damagedBy classes that the
@@ -157,6 +168,7 @@ export class Player extends Entity {
     // subsequent frames are driven by updateAnim().
     this.facing = 'up';
     this.prevX = this.x;
+    this.prevY = this.y;
     this.updateAnim();
 
     kind.render(this);
@@ -177,6 +189,8 @@ export class Player extends Entity {
     if (!kb) throw new Error('Keyboard input plugin missing');
     this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
     this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
+    this.upKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+    this.downKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
     this.focusKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
@@ -192,16 +206,16 @@ export class Player extends Entity {
     this.kind.render(this);
   }
 
-  // Disable input *and* zero horizontal velocity. Zeroing matters because
-  // controlUpdate may have set vx from a held arrow on a previous frame
+  // Disable input *and* zero velocity. Zeroing matters because
+  // controlUpdate may have set v from a held arrow on a previous frame
   // — without it, updateAnim keeps rendering the run-direction frame
   // until the player happens to release the key.
   lockControls(): void {
     this.controlsEnabled = false;
-    this.setVelocityX(0);
+    this.setVelocity(0, 0);
     // Drop any pending touch target so a cutscene that ends with the
-    // finger long-released doesn't snap the player toward a stale x.
-    this.touchTargetX = null;
+    // finger long-released doesn't snap the player toward a stale spot.
+    this.touchTarget = null;
     this.targetSamples.length = 0;
     this.focused = false;
   }
@@ -263,14 +277,16 @@ export class Player extends Entity {
     // branch (idle, or walk under walkInPlace) instead of walk/run.
     const vx = this.animSuppressed ? 0 : this.body.velocity.x;
     const vy = this.animSuppressed ? 0 : this.body.velocity.y;
-    // Effective horizontal velocity from frame-over-frame displacement,
-    // captured before any branch returns so prevX stays current across
+    // Effective velocity from frame-over-frame displacement, captured
+    // before any branch returns so prevX/prevY stay current across
     // walkAnim ↔ in-stage transitions. Only the in-stage branch reads
     // it; the walkAnim path keeps using body.velocity (set explicitly
     // by moveTo and friends).
     const dt = this.scene.game.loop.delta / 1000;
     const effVx = this.animSuppressed || dt <= 0 ? 0 : (this.x - this.prevX) / dt;
+    const effVy = this.animSuppressed || dt <= 0 ? 0 : (this.y - this.prevY) / dt;
     this.prevX = this.x;
+    this.prevY = this.y;
     let dir: Direction;
     let action: Action;
     if (this.walkAnim) {
@@ -286,24 +302,33 @@ export class Player extends Entity {
       // player is "walking" but the world scrolls under them instead.
       action = movingX || movingY || this.walkInPlace ? 'walk' : 'idle';
     } else {
-      // Normal in-stage mode. Effective horizontal velocity (from
+      // Normal in-stage mode. Effective speed (from frame-over-frame
       // displacement, computed above) drives the threshold pick: above
-      // RUN_VX_RATIO → run, any non-zero motion below → walk, exact
-      // zero → idle. Reading body.velocity instead of displacement
-      // would skip walk entirely because controlUpdate's snap branch
-      // writes this.x directly while leaving body.velocity at 0.
-      // The side anim is "sticky" — after motion stops it holds
-      // whatever sideways anim was last playing for
+      // RUN_VX_RATIO of PLAYER_SPEED → run, any non-zero motion below
+      // → walk, exact zero → idle. Reading body.velocity instead of
+      // displacement would skip walk entirely because controlUpdate's
+      // snap branch writes this.x/y directly while leaving
+      // body.velocity at 0. The side anim is "sticky" — after motion
+      // stops it holds whatever sideways anim was last playing for
       // SIDEWAYS_ANIM_HOLD_FRAMES before falling back to forward 'up',
       // so a quick deceleration still gets a visible walk-out instead
       // of flicking straight to idle on the next frame.
-      const absRatio = Math.abs(effVx) / PLAYER_SPEED;
+      const speed = Math.hypot(effVx, effVy);
+      const absRatio = speed / PLAYER_SPEED;
       if (absRatio > RUN_VX_RATIO) this.framesSinceRunSpeed = 0;
       else this.framesSinceRunSpeed++;
 
-      if (effVx !== 0) {
+      if (effVx !== 0 || effVy !== 0) {
         this.framesSinceMovement = 0;
-        dir = effVx > 0 ? 'right' : 'left';
+        // Diagonal motion favours horizontal direction — the sprite
+        // sheet has dedicated left/right walk/run frames, and the
+        // sideways pose reads as the "moving" pose for the player. We
+        // only pick down/up when motion is purely (or mostly) vertical.
+        if (Math.abs(effVx) >= Math.abs(effVy) && effVx !== 0) {
+          dir = effVx > 0 ? 'right' : 'left';
+        } else {
+          dir = effVy > 0 ? 'down' : 'up';
+        }
         // Focus mode forces walk — bypasses the RUN_HOLD_FRAMES tail
         // so pressing Shift mid-run drops to walk on the same frame.
         if (this.focused) action = 'walk';
@@ -333,75 +358,114 @@ export class Player extends Entity {
     if (!this.alive || !this.controlsEnabled) return;
 
     const half = this.width / 2;
+    const halfH = this.height / 2;
     const minX = WALL_W + half;
     const maxX = GAME_W - WALL_W - half;
+    // Vertical bounds: top edge sits just below the HUD header strip;
+    // bottom edge keeps the sprite inside the playfield (above the
+    // touch control band on mobile, above the bottom of GAME_H on
+    // desktop). The hitbox is much smaller than the sprite, so a
+    // half-sprite gap below the header keeps the sprite from
+    // overlapping the HUD even when the player parks at the top.
+    const minY = HEADER_H + halfH;
+    const maxY = GAME_H - halfH;
 
-    const kbDir = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
-    this.focused = kbDir !== 0 && this.focusKey.isDown;
+    const kbDirX = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
+    const kbDirY = (this.upKey.isDown ? -1 : 0) + (this.downKey.isDown ? 1 : 0);
+    const kbActive = kbDirX !== 0 || kbDirY !== 0;
+    this.focused = kbActive && this.focusKey.isDown;
 
     let newVx = 0;
-    if (kbDir !== 0) {
+    let newVy = 0;
+    if (kbActive) {
       // Keyboard takes priority and clears any pending touch target so a
       // cached tap doesn't keep tugging once the player grabs the keys.
-      this.touchTargetX = null;
+      this.touchTarget = null;
       this.targetSamples.length = 0;
-      let dir = kbDir;
-      if (dir < 0 && this.x <= minX) dir = 0;
-      if (dir > 0 && this.x >= maxX) dir = 0;
-      const speed = this.focused ? PLAYER_SPEED * FOCUS_SPEED_RATIO : PLAYER_SPEED;
-      newVx = dir * speed;
+      // Zero the component(s) pressed *into* a wall before normalising
+      // so a diagonal press against a single wall keeps full speed
+      // along the unblocked axis instead of dropping to sqrt(2)/2.
+      let dx = kbDirX;
+      let dy = kbDirY;
+      if (dx < 0 && this.x <= minX) dx = 0;
+      if (dx > 0 && this.x >= maxX) dx = 0;
+      if (dy < 0 && this.y <= minY) dy = 0;
+      if (dy > 0 && this.y >= maxY) dy = 0;
+      if (dx !== 0 || dy !== 0) {
+        const len = Math.hypot(dx, dy);
+        const speed = this.focused ? PLAYER_SPEED * FOCUS_SPEED_RATIO : PLAYER_SPEED;
+        newVx = (dx / len) * speed;
+        newVy = (dy / len) * speed;
+      }
     } else {
-      // Touch: while a finger is down, refresh the target to its x,
+      // Touch: while a finger is down, refresh the target to its (x, y),
       // smoothed by averaging TARGET_SMOOTHING_FRAMES recent samples and
       // gated by a sub-deadband filter so steady-finger pointer jitter
       // doesn't re-arm a cleared target. On release, halt in place: pin
-      // the target to the current x and drop the buffer. Feeding this.x
-      // back into the buffer instead would let it drain over the next
-      // TARGET_SMOOTHING_FRAMES frames while the player is *still
-      // moving* at PLAYER_SPEED, so the average ends up behind the
-      // player and gap flips sign — the player overshoots, reverses,
-      // and bounces around the eventual target. That bouncing reads as
-      // a visible twitch on every finger-up.
-      const finger = this.scene.getTouchTargetX();
+      // the target to the current position and drop the buffer. Feeding
+      // this.x/this.y back into the buffer instead would let it drain
+      // over the next TARGET_SMOOTHING_FRAMES frames while the player
+      // is *still moving* at PLAYER_SPEED, so the average ends up
+      // behind the player and gap flips sign — the player overshoots,
+      // reverses, and bounces around the eventual target. That
+      // bouncing reads as a visible twitch on every finger-up.
+      const finger = this.scene.getTouchTarget();
       if (finger === null) {
         this.targetSamples.length = 0;
-        this.touchTargetX = this.x;
+        this.touchTarget = { x: this.x, y: this.y };
       } else {
-        const sample = Phaser.Math.Clamp(finger, minX, maxX);
+        const sample = {
+          x: Phaser.Math.Clamp(finger.x, minX, maxX),
+          y: Phaser.Math.Clamp(finger.y - TOUCH_Y_OFFSET, minY, maxY),
+        };
         this.targetSamples.push(sample);
         if (this.targetSamples.length > TARGET_SMOOTHING_FRAMES) this.targetSamples.shift();
-        let sum = 0;
-        for (const s of this.targetSamples) sum += s;
-        const candidate = sum / this.targetSamples.length;
+        let sumX = 0;
+        let sumY = 0;
+        for (const s of this.targetSamples) {
+          sumX += s.x;
+          sumY += s.y;
+        }
+        const candidate = { x: sumX / this.targetSamples.length, y: sumY / this.targetSamples.length };
 
-        if (this.touchTargetX === null || Math.abs(candidate - this.touchTargetX) >= TARGET_DEADBAND_PX) {
-          this.touchTargetX = candidate;
+        if (
+          this.touchTarget === null ||
+          Math.hypot(candidate.x - this.touchTarget.x, candidate.y - this.touchTarget.y) >= TARGET_DEADBAND_PX
+        ) {
+          this.touchTarget = candidate;
         }
       }
 
-      const gap = this.touchTargetX - this.x;
+      const gapX = this.touchTarget.x - this.x;
+      const gapY = this.touchTarget.y - this.y;
+      const dist = Math.hypot(gapX, gapY);
       const dt = this.scene.game.loop.delta / 1000;
       const maxStep = PLAYER_SPEED * dt;
-      if (Math.abs(gap) <= maxStep) {
+      if (dist <= maxStep) {
         // Within one frame's max step. Don't try to land via a scaled
         // gap/dt velocity — Phaser's next-frame physics dt isn't
         // necessarily this frame's dt, and the resulting overshoot can
         // exceed any reasonable tolerance and cause the player to
-        // ping-pong around the target. Snap this.x directly instead;
-        // body.position picks it up in preUpdate before the next
-        // integration, and vx=0 keeps physics from drifting back.
-        // touchTargetX is intentionally left set so the deadband above
-        // continues to filter sub-pixel candidate jitter; nulling it
-        // here would bypass the deadband on the very next frame and
-        // re-arm a new target from any micro-movement in `candidate`.
-        this.x = this.touchTargetX;
+        // ping-pong around the target. Snap directly instead; body.position
+        // picks it up in preUpdate before the next integration, and v=0
+        // keeps physics from drifting back. touchTarget is intentionally
+        // left set so the deadband above continues to filter sub-pixel
+        // candidate jitter; nulling it here would bypass the deadband
+        // on the very next frame and re-arm a new target from any
+        // micro-movement in `candidate`.
+        this.x = this.touchTarget.x;
+        this.y = this.touchTarget.y;
       } else {
-        newVx = Math.sign(gap) * PLAYER_SPEED;
+        // Diagonal motion is automatically normalised — the velocity
+        // vector here has magnitude PLAYER_SPEED regardless of heading.
+        newVx = (gapX / dist) * PLAYER_SPEED;
+        newVy = (gapY / dist) * PLAYER_SPEED;
       }
     }
-    this.setVelocityX(newVx);
+    this.setVelocity(newVx, newVy);
 
     this.x = Phaser.Math.Clamp(this.x, minX, maxX);
+    this.y = Phaser.Math.Clamp(this.y, minY, maxY);
 
     const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
     if (firing) {

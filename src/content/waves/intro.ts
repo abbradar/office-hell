@@ -110,10 +110,14 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
     if (kind === 'arrows') {
       const left = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
       const right = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
+      const up = kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+      const down = kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
       // Touch is finger-follow: any non-bomb pointer counts as a move
       // input. controlUpdate uses the same source, so the velocity is
       // already pointing at the finger by the time physics resumes.
-      while (!(left.isDown || right.isDown || scene.getTouchTargetX() !== null)) yield { scriptFrames: 1 };
+      while (!(left.isDown || right.isDown || up.isDown || down.isDown || scene.getTouchTarget() !== null)) {
+        yield { scriptFrames: 1 };
+      }
     } else if (kind === 'focus') {
       // Keyboard-only path (this kind isn't reached on touch). Bank
       // wall-clock time per frame while Player.focused is true (Shift +

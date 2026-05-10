@@ -9,6 +9,10 @@ export const GAME_H = 660;
 // inside the corridor. Must match the visible wall-column width baked
 // into src/assets/bg/walls.png.
 export const WALL_W = 18;
+// HUD header strip drawn at the top of the canvas (hp / bombs / boss
+// name). Exported so Player.ts can clamp vertical movement just below
+// it without duplicating the literal.
+export const HEADER_H = 28;
 
 export const PLAYER_SPEED = 280;
 export const ENTITY_POOL_SIZE = 1024;
