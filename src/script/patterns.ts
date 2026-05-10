@@ -88,6 +88,22 @@ export function* walkOffScreen(self: Entity, vx: number, vy: number): Generator<
   yield { until: self };
 }
 
+// Wait until `self` reaches the y-coordinate `targetY`, computed once
+// from the current velocity rather than polled per frame — works for
+// any free-flying entity whose velocity won't change mid-flight (most
+// bullets). If the entity is already at-or-past `targetY` along its
+// motion vector, or is moving away from it, returns immediately so the
+// caller's "after I get there" beat fires now rather than parking
+// forever. The wait is in physics frames, so it auto-pauses with the
+// simulation; if the entity dies mid-wait the engine drops the script.
+export function* waitUntilY(self: Entity, targetY: number): Generator<ScriptYield, void, void> {
+  const dy = targetY - self.y;
+  const vy = self.body.velocity.y;
+  if (dy === 0 || vy === 0 || Math.sign(dy) !== Math.sign(vy)) return;
+  const frames = Math.max(1, Math.round((dy / vy) * SCRIPT_FPS));
+  yield frames;
+}
+
 // Drive the entity from its current position to (tx, ty) at `speed`, then
 // stop. Computes heading + travel time for you and yields until it lands.
 // Snaps to the exact target on arrival to absorb sub-pixel rounding so the

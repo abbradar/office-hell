@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { becomeHittable, bossShudder, nextBossPhase, PhasedBossKind, phaseRunning } from '../../script/boss';
-import { moveTo } from '../../script/patterns';
+import { moveTo, waitUntilY } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
@@ -149,19 +149,32 @@ const TEST_SAY_FRAMES = TEST_SAY_REPEAT_TICKS + 18;
 
 // --- Phase 4: vitamins --------------------------------------------------
 
-// Nine radial rays around Karen, each ray firing a sequence of tight
-// pill clumps with a micro pause between clumps. 9 rays at 40° apart
-// leave wider sector "safe wedges" than the breathing sun's 20 rays;
-// the difficulty comes from clump-vs-clump density along a ray and
-// the faster pace, not from packing more rays.
-const VIT_RAYS = 9;
-const VIT_BUNCHES = 7;
+// Twenty-two radial rays around Karen, each ray firing a sequence
+// of tight pill clumps with a micro pause between clumps. 22 rays
+// at ~16° apart leave narrow safe wedges — the player has to thread
+// through them along the rotation rather than parking in a sector.
+const VIT_RAYS = 22;
+// Short barrages: only 2 bunches per anchored aim before the next
+// barrage re-locks on the player. Keeps the pressure aggressive
+// instead of letting one long barrage telegraph a single safe arc.
+const VIT_BUNCHES = 2;
 const VIT_BUNCH_GAP = 5;
 const VIT_BULLETS_PER_BUNCH = 4;
 const VIT_BUNCH_SPREAD_PX = 14;
 const VIT_SPEED = 260;
+// Short rest between barrages — just enough breath to read the
+// rotation reset, then straight into the next salvo.
+const VIT_PHASE_GAP = 10;
 const VIT_SAY = 'Have you taken\nyour supplements?!';
-const VIT_SAY_FRAMES = VIT_BUNCHES * VIT_BUNCH_GAP + PHASE_GAP + 12;
+const VIT_SAY_FRAMES = VIT_BUNCHES * VIT_BUNCH_GAP + VIT_PHASE_GAP + 12;
+// Half-way auto-aim: when a pill crosses the screen midline it re-aims
+// at the player once, with the turn capped at this much from its
+// current heading. Cap is small enough that a player who's already
+// laterally clear of the ray's lane only gets a glancing curve, not a
+// hard track — sustained dodging still pays off, but loitering gets
+// punished.
+const VIT_REAIM_MAX_TURN = (10 * Math.PI) / 180;
+const VIT_REAIM_Y = GAME_H / 2;
 
 // --- Helpers ------------------------------------------------------------
 
@@ -375,6 +388,30 @@ function* personalityPhase(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
+// Per-pill auto-aim: fly straight on the launched vector until the
+// bullet crosses the screen midline, then re-aim once at the player
+// with the turn capped at `VIT_REAIM_MAX_TURN`. `waitUntilY` computes
+// the time-to-cross from the current velocity once and yields for that
+// duration — no per-frame polling. Generator returns after the single
+// re-aim — physics then carries the bullet on its new heading until it
+// leaves the field. Bullets fired upward or sideways never cross the
+// midline and `waitUntilY` returns immediately, so the re-aim still
+// fires from their current position; that's fine because the cap means
+// the curve is small and the bullet was already off the player's lane
+// anyway.
+function* vitaminBulletScript(self: Entity): Generator<ScriptYield, void, void> {
+  yield* waitUntilY(self, VIT_REAIM_Y);
+  const v = self.body.velocity;
+  const speed = Math.hypot(v.x, v.y);
+  const cur = Math.atan2(v.y, v.x);
+  let diff = self.angleToPlayer() - cur;
+  // Wrap diff into (-π, π] so we always turn the short way around.
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const turn = Math.max(-VIT_REAIM_MAX_TURN, Math.min(VIT_REAIM_MAX_TURN, diff));
+  self.setMotion(cur + turn, speed);
+}
+
 // Spawn one tight clump of pill bullets all flying along `angle`,
 // scattered across a small disk around the boss so the volley reads
 // as a single fat lump moving as one — the same trick as the
@@ -385,16 +422,20 @@ function spawnVitaminBunch(self: Entity, angle: number): void {
   for (let i = 0; i < VIT_BULLETS_PER_BUNCH; i++) {
     const r = Math.random() * VIT_BUNCH_SPREAD_PX;
     const a = Math.random() * Math.PI * 2;
-    self.spawn(pillBullet, self.x + Math.cos(a) * r, self.y + Math.sin(a) * r, vx, vy);
+    self.spawn(pillBullet, self.x + Math.cos(a) * r, self.y + Math.sin(a) * r, vx, vy, {
+      script: vitaminBulletScript,
+    });
   }
 }
 
 function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
   // Final phase: loops until the lethal hit lands, at which point
   // takeDamage swaps this script out for coachDeath via runScript.
+  // Every barrage anchors ray 0 on the player, so the only way out
+  // is to keep moving along the rotation.
   while (true) {
     self.say(VIT_SAY, VIT_SAY_FRAMES);
-    const baseRot = Math.random() * Math.PI * 2;
+    const baseRot = self.angleToPlayer();
     for (let b = 0; b < VIT_BUNCHES; b++) {
       shoot();
       for (let s = 0; s < VIT_RAYS; s++) {
@@ -403,7 +444,7 @@ function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
       }
       yield VIT_BUNCH_GAP;
     }
-    yield PHASE_GAP;
+    yield VIT_PHASE_GAP;
   }
 }
 
