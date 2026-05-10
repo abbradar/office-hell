@@ -12,11 +12,14 @@ import { bullet } from '../kinds';
 // consecutive vertical lasers from the top edge in classic Touhou form —
 // a thin "starter laser" runs the full path during the telegraph window,
 // with a brighter pulsing source at the top so the player can read the
-// column to dodge out of, then a thick three-cell-wide white-cored laser
-// fires along the same path. The second admin keeps the legacy "arrow"
-// pack: twelve bullets laid out as a long pointed triangle aimed at the
-// player, all moving in formation so the dodge is read on the shape
-// rather than individual bullets.
+// column to dodge out of, then a thick gradient beam fires straight
+// down: a bright white core, a mid-alpha pink halo, and a soft outer
+// fade glow on the long edges. The strip extends well past the bottom
+// of the screen — only the origin reads, the far end never does. The
+// second admin keeps the legacy "arrow" pack: twelve bullets laid out
+// as a long pointed triangle aimed at the player, all moving in
+// formation so the dodge is read on the shape rather than individual
+// bullets.
 
 const ENTRY_SPEED = 100;
 const ENTRY_Y = 90;
@@ -30,32 +33,53 @@ const EXIT_SPEED = 220;
 // Beam timings. A beam (warning + lethal + gap) fits in roughly one
 // second; with BEAM_VOLLEYS = 6 that gives the admin ~6s of firing on top
 // of their entry / exit. Player speed is 280 px/s ≈ 4.7 px/frame, and
-// the lethal beam is 24 px wide so dodging requires the player centre to
-// move > 16 px from the beam centre — ~3-4 frames of travel. The
-// 22-frame (≈0.37s) warning leaves the rest as reaction headroom.
+// the lethal beam's hitbox is 24 px wide so dodging requires the player
+// centre to move > 16 px from the beam centre — ~3-4 frames of travel.
+// The 22-frame (≈0.37s) warning leaves the rest as reaction headroom.
 const WARNING_FRAMES = 22;
 const LASER_FRAMES = 14;
 const BEAM_VOLLEY_GAP = 16;
 const BEAM_VOLLEYS = 6;
+// Frames the lethal beam takes to expand from a sliver to its full
+// width at the start of the lethal phase. Short — the beam reads as
+// "energy snapping on" with just enough easing that it doesn't pop in
+// instantly.
+const BEAM_EXPAND_FRAMES = 4;
 
-// Beam construction. Cells are 8×8 (chartCell sprite) laid centre-to-centre
-// at BEAM_CELL_STEP so adjacent cells touch with no gap — a wall of
-// hitboxes the player can't graze through. The lethal beam is three rows
-// thick (24 px wide) for the chunky Touhou look, with a bright white
-// core flanked by tinted outer rows. The starter laser is one row thick
-// (8 px wide) at low alpha so the player can read the path without it
-// reading as part of the lethal hit.
-const BEAM_CELL_STEP = 8;
-const BEAM_THICKNESS_ROWS = 3;
+// Lethal beam geometry. The hitbox is the same 24-px wall the cell-based
+// version had, so dodge timing is unchanged. The visual is drawn as
+// three nested layers: a bright white core, a mid-alpha pink halo
+// matching the hitbox, and a wider faded glow that provides the soft
+// fade at the long edges.
+const BEAM_HIT_WIDTH = 24;
+const BEAM_CORE_WIDTH = 12;
+const BEAM_HALO_WIDTH = 24;
+const BEAM_GLOW_WIDTH = 38;
+
+// Beam length: long enough that the far end is always off the bottom
+// regardless of source y. Sources spawn at DEADZONE_Y, so 2× GAME_H is
+// plenty of headroom for any caller. Anything past GAME_H sits behind
+// the touch-control band (depth 50) on touch devices and clips off the
+// canvas on desktop, so the beam visually has no end.
+const BEAM_LENGTH = GAME_H * 2;
+
 const BEAM_OUTER_TINT = 0xff5577;
 const BEAM_CORE_TINT = 0xffffff;
 const STARTER_TINT = 0xff5577;
 const STARTER_ALPHA = 0.4;
+const STARTER_WIDTH = 2;
 const SOURCE_FLASH_TINT = 0xffd96a;
 
-// Non-damaging cell used to telegraph a beam. Same sprite + size as the
-// lethal beamLaser so the warning's source flash transitions visually
-// into the lethal cell occupying the same pixels.
+// Beam graphics sit between floor (-10) and walls (-9), matching the
+// depth bullets / pooled hazards render at — so the side walls and
+// closed door panels still occlude a stray beam tail and the open-door
+// gaps let it show through.
+const BEAM_DEPTH = -9.5;
+
+// Non-damaging entity used for the pulsing source flash at the beam
+// origin. The lethal beam itself is no longer cell-based, but the source
+// flash stays as a sprite so the engine cleans it up automatically when
+// the admin dies mid-warning.
 const beamWarning = new EntityKind({
   sprite: 'chartCell',
   hitboxRadius: 4,
@@ -65,101 +89,120 @@ const beamWarning = new EntityKind({
   damagedByClass: [],
 });
 
-// Lethal beam segment. damageClass: ['player'] so the player takes a hit
-// from any cell they overlap; hp: null so the beam isn't shootable by
-// the player's own bullets — it just times out on its own per-bullet script.
+// Lethal beam. The chartCell sprite is just a placeholder we hide on
+// spawn — the visible beam is rendered into a Graphics strip by the
+// per-bullet script, and the body is resized to a tall rectangle
+// covering the full beam path. damageClass: ['player'] so the player
+// takes a hit any time they cross the strip; hp: null so it can't be
+// shot down by player fire — the script self-destructs on a timer.
+// hitboxRadius is a tiny placeholder; the script overrides body size +
+// offset on spawn.
 const beamLaser = new EntityKind({
   sprite: 'chartCell',
-  hitboxRadius: 4,
+  hitboxRadius: 1,
   hitboxShape: 'square',
   hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
 
-// Fire one beam from (sx, sy) to (ex, ey). Phase 1: Touhou-style starter
-// laser — a thin faint row of cells along the full path so the player
-// can see exactly which lane is about to be lethal — plus a brighter
-// pulsing source flash at (sx, sy) drawing the eye to the origin. Phase
-// 2: the chunky lethal beam, three rows thick with a bright white core
-// flanked by tinted outer rows. Each spawned cell self-destructs on its
-// per-bullet script, so a mid-flight admin death (script cancelled by
-// the outer race) leaves no orphans on the field.
-function* fireBeam(self: Entity, sx: number, sy: number, ex: number, ey: number): Generator<ScriptYield, void, void> {
-  const dx = ex - sx;
-  const dy = ey - sy;
-  const dist = Math.hypot(dx, dy);
-  if (dist < 1e-6) return;
-  const ux = dx / dist;
-  const uy = dy / dist;
-  // Lateral basis = beam direction rotated +90°. Used to offset the outer
-  // rows of the thick lethal beam perpendicular to its flight axis.
-  const lx = -uy;
-  const ly = ux;
-  const count = Math.max(2, Math.ceil(dist / BEAM_CELL_STEP) + 1);
+// Fire one vertical beam from (sx, sy), extending downward past the
+// bottom of the screen. Phase 1: Touhou-style starter laser — a thin
+// faint stripe along the full path so the player can see exactly which
+// lane is about to be lethal — plus a brighter pulsing source flash at
+// (sx, sy) drawing the eye to the origin. Phase 2: a real expanding
+// gradient beam, one rectangular collision body plus a layered Graphics
+// strip (bright white core, mid-alpha pink halo, soft outer glow) that
+// fades on its long edges. The width animates from 0 to full over
+// BEAM_EXPAND_FRAMES so the beam reads as snapping on rather than
+// popping in. The strip extends past the bottom of the screen so the
+// player only sees its origin, never its end.
+function* fireBeam(self: Entity, sx: number, sy: number): Generator<ScriptYield, void, void> {
+  const scene = self.scene;
 
-  // Phase 1a — starter laser: thin faint row along the full path.
-  for (let i = 0; i < count; i++) {
-    const t = i / (count - 1);
-    const px = sx + dx * t;
-    const py = sy + dy * t;
-    self.spawn(beamWarning, px, py, 0, 0, {
+  // Phase 1a — starter laser: thin faint stripe down the full path. One
+  // Graphics rectangle instead of a row of cells; wrapped in try/finally
+  // so a mid-warning admin death (script dropped by the outer race)
+  // still tears it down via iter.return().
+  const starter = scene.add.graphics().setDepth(BEAM_DEPTH);
+  starter.fillStyle(STARTER_TINT, STARTER_ALPHA);
+  starter.fillRect(sx - STARTER_WIDTH / 2, sy, STARTER_WIDTH, BEAM_LENGTH);
+
+  try {
+    // Phase 1b — pulsing source flash at the beam start. Spawned as an
+    // entity so the engine cleans it up on admin death without leaving
+    // an orphan sprite. Scale ramps from 1.5× to 3× over the warning
+    // so the cell visibly "charges up", and the alpha pulse adds a
+    // flicker the player can read peripherally.
+    self.spawn(beamWarning, sx, sy, 0, 0, {
       script: function* (b: Entity): Generator<ScriptYield, void, void> {
-        b.setTint(STARTER_TINT);
-        b.setAlpha(STARTER_ALPHA);
-        yield WARNING_FRAMES;
+        b.setTint(SOURCE_FLASH_TINT);
+        for (let t = 0; t < WARNING_FRAMES && b.alive; t++) {
+          const phase = t / WARNING_FRAMES;
+          b.setScale(1.5 + phase * 1.5);
+          b.setAlpha(0.7 + 0.3 * Math.abs(Math.sin(phase * Math.PI * 5)));
+          yield 1;
+        }
         if (b.alive) b.die();
       },
     });
+
+    yield WARNING_FRAMES;
+  } finally {
+    starter.destroy();
   }
 
-  // Phase 1b — pulsing source flash at the beam start. Spawned after the
-  // starter row so it draws on top of the dim path-preview cell at the
-  // same coords. Scale ramps from 1.5× to 3× over the warning so the
-  // cell visibly "charges up", and the alpha pulse adds a flicker the
-  // player can read peripherally.
-  self.spawn(beamWarning, sx, sy, 0, 0, {
+  // Phase 2 — lethal beam. One pooled entity carries both the
+  // rectangular hitbox and the per-frame Graphics that draws the
+  // gradient strip. The pair is torn down together when the script
+  // finishes (or is cancelled by entity culling); this keeps the beam
+  // alive past its parent admin's death without orphaning visuals,
+  // matching the cell-based version's "fire-and-forget" semantics.
+  shoot();
+  self.spawn(beamLaser, sx, sy, 0, 0, {
     script: function* (b: Entity): Generator<ScriptYield, void, void> {
-      b.setTint(SOURCE_FLASH_TINT);
-      for (let t = 0; t < WARNING_FRAMES && b.alive; t++) {
-        const phase = t / WARNING_FRAMES;
-        b.setScale(1.5 + phase * 1.5);
-        b.setAlpha(0.7 + 0.3 * Math.abs(Math.sin(phase * Math.PI * 5)));
-        yield 1;
+      // Hide the placeholder sprite — the gradient strip below renders
+      // the beam itself.
+      b.setVisible(false);
+      // Override the kind's tiny placeholder hitbox with a tall slab
+      // covering the full beam path. setSize(..., false) skips the
+      // auto-centring that would otherwise stomp our offset; setOffset
+      // is in sprite-local coords (relative to the sprite's top-left),
+      // and chartCell is 8×8 with origin (0.5, 0.5) so add 4 to the
+      // half-width / put the body's top flush with the sprite centre.
+      b.body.setSize(BEAM_HIT_WIDTH, BEAM_LENGTH, false);
+      b.body.setOffset(b.width / 2 - BEAM_HIT_WIDTH / 2, b.height / 2);
+
+      const g = scene.add.graphics().setDepth(BEAM_DEPTH);
+      try {
+        for (let t = 0; t < LASER_FRAMES; t++) {
+          // Width grows linearly from 0 → 1 over BEAM_EXPAND_FRAMES,
+          // then holds — the "snap-on" feel without an instant pop.
+          const grow = Math.min(1, (t + 1) / BEAM_EXPAND_FRAMES);
+          g.clear();
+          // Outer glow: widest, lowest alpha — the soft fade at the
+          // beam's long edges (the "vertical contours").
+          const gw = BEAM_GLOW_WIDTH * grow;
+          g.fillStyle(BEAM_OUTER_TINT, 0.2);
+          g.fillRect(sx - gw / 2, sy, gw, BEAM_LENGTH);
+          // Halo: mid alpha, matches the hitbox width — what hits you
+          // also reads as fully solid.
+          const hw = BEAM_HALO_WIDTH * grow;
+          g.fillStyle(BEAM_OUTER_TINT, 0.55);
+          g.fillRect(sx - hw / 2, sy, hw, BEAM_LENGTH);
+          // Core: narrow, full white, full alpha — drawn last so it
+          // sits on top of the halo within the same Graphics.
+          const cw = BEAM_CORE_WIDTH * grow;
+          g.fillStyle(BEAM_CORE_TINT, 1);
+          g.fillRect(sx - cw / 2, sy, cw, BEAM_LENGTH);
+          yield 1;
+        }
+      } finally {
+        g.destroy();
       }
       if (b.alive) b.die();
     },
   });
-
-  yield WARNING_FRAMES;
-
-  // Phase 2 — lethal beam. BEAM_THICKNESS_ROWS parallel rows offset by
-  // BEAM_CELL_STEP perpendicular to the flight axis; cells along each
-  // row touch edge-to-edge so the slab reads (and hits) as one
-  // continuous laser. The middle row is a bright white core; outer rows
-  // carry the tinted halo. With BEAM_THICKNESS_ROWS = 3, the beam spans
-  // 24 px (one cell either side of the core).
-  shoot();
-  const halfRows = (BEAM_THICKNESS_ROWS - 1) / 2;
-  for (let r = 0; r < BEAM_THICKNESS_ROWS; r++) {
-    const off = (r - halfRows) * BEAM_CELL_STEP;
-    const ox = lx * off;
-    const oy = ly * off;
-    const isCore = r === Math.floor(BEAM_THICKNESS_ROWS / 2);
-    const tint = isCore ? BEAM_CORE_TINT : BEAM_OUTER_TINT;
-    for (let i = 0; i < count; i++) {
-      const t = i / (count - 1);
-      const px = sx + dx * t + ox;
-      const py = sy + dy * t + oy;
-      self.spawn(beamLaser, px, py, 0, 0, {
-        script: function* (b: Entity): Generator<ScriptYield, void, void> {
-          b.setTint(tint);
-          yield LASER_FRAMES;
-          if (b.alive) b.die();
-        },
-      });
-    }
-  }
 
   yield LASER_FRAMES;
 }
@@ -241,8 +284,9 @@ function makeBeamAdminScript(speech: SpeechSchedule): EntityScript {
       // Beam spawns at DEADZONE_Y so the source flash + starter laser
       // sit just under the 28-px HUD strip — anything spawned at y = 0
       // is occluded by the panel (depth 99), which is why an earlier
-      // version of this telegraph was effectively invisible.
-      yield* fireBeam(self, aimX, DEADZONE_Y, aimX, GAME_H);
+      // version of this telegraph was effectively invisible. The beam
+      // extends past the bottom of the screen on its own (BEAM_LENGTH).
+      yield* fireBeam(self, aimX, DEADZONE_Y);
       yield BEAM_VOLLEY_GAP;
     }
 
