@@ -12,7 +12,7 @@ import {
   pauseMusicForDefeat,
 } from '../../script/boss';
 import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, race, startMusicLoop, suspendRunning } from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -79,9 +79,9 @@ const DEFEAT_BUBBLE_FRAMES =
 // Brad's lethal-hit script. Music halts for the dramatic beat, the
 // bubble goes up, then the standard shudder runs and retro-02 is
 // restarted from t=0 just before die() — so the next sub-stage's wave
-// block can be timed against a known music clock. The next sub-stage's
-// idempotent `startMusicLoop` call sees retro-02 already running and
-// is a no-op.
+// block can be timed against a known music clock. The next chain
+// function's idempotent `startMusicLoop` call sees retro-02 already
+// running and is a no-op.
 function* gymBroDeath(self: Entity): Generator<ScriptYield, void, void> {
   const m = pauseMusicForDefeat(STAGE1_RETRO_02_LOOP_KEY);
   self.body.setVelocity(0, 0);
@@ -352,10 +352,10 @@ export const gymBro = new GymBroKind({
 // damageable via becomeHittable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'gym bro');
-  // Idempotent in live flow (stage1Part1 switched to retro-02 at the
-  // retro-01 seam just before this wave); switches in from menu music
-  // when run from the practice menu.
-  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  // Music setup (switch to retro-02) is owned by the chain function
+  // (`fromGymBro`) — both the live chain and the standalone practice
+  // entry route through it so the music is correct before the wave
+  // body runs.
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0);

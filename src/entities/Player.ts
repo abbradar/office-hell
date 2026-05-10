@@ -237,6 +237,7 @@ export class Player extends Entity {
         this.stage.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
         this.stage.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
         this.stage.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.stage.score.bullets += 3;
         shoot();
       }
     }

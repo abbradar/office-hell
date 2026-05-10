@@ -59,7 +59,7 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const cx = player.x;
   const cy = player.y;
 
-  stage.score.bombsUsed++;
+  stage.score.bombs++;
 
   // Make the player untouchable for the duration: a stray bullet that
   // spawned mid-bomb (or one whose freeze we missed by a frame) would

@@ -1,10 +1,9 @@
-import { STAGE1_METAL_LOOP_KEY, STAGE1_METAL_OPENING_KEY } from '../../audio/keys';
 import { shoot } from '../../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
 import { aimed, moveTo } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { pillBullet } from './pillBullet';
@@ -32,7 +31,7 @@ import { reportBullet } from './reportBullet';
 //
 // On the lethal phase-4 hit she runs a custom death dialogue whose
 // single line is chosen from the bombs-used delta captured at fight
-// start (`self.vars.bombsAtStart` against `stage.score.bombsUsed`). 0
+// start (`self.vars.bombsAtStart` against `stage.score.bombs`). 0
 // bombs → "At least you didn't get angry…", 1 → "a single time…", N>1
 // → "N times…".
 
@@ -385,7 +384,7 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.enable = false;
 
   const bombsAtStart = (self.vars?.bombsAtStart as number | undefined) ?? 0;
-  const used = Math.max(0, self.stage.score.bombsUsed - bombsAtStart);
+  const used = Math.max(0, self.stage.score.bombs - bombsAtStart);
   let line: string;
   if (used === 0) line = "At least you didn't get angry…";
   else if (used === 1) line = 'You even got angry a single time…';
@@ -462,7 +461,7 @@ function* coachScript(self: Entity) {
   self.vars ??= {};
   self.vars.phase = 1;
   self.vars.phaseDown = false;
-  self.vars.bombsAtStart = self.stage.score.bombsUsed;
+  self.vars.bombsAtStart = self.stage.score.bombs;
   self.hp = PHASE_HP;
   becomeHittable(self);
 
@@ -494,10 +493,10 @@ export const wellnessCoach = new WellnessCoachKind({
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
-  // Idempotent in live flow (stage1Part2 already switched to metal at the
-  // retro-02 seam); switches in from menu music when run from the
-  // practice menu.
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+  // Music setup (switch to metal opening → loop) is owned by the chain
+  // function (`fromWellnessCoach`) — both the live chain and the
+  // standalone practice entry route through it so the music is correct
+  // before the wave body runs.
   // Field clean + brief beat, then she enters. BossKind keeps her
   // unhittable on spawn; her script calls becomeHittable after the
   // dialogue.

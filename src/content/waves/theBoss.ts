@@ -9,12 +9,10 @@ import {
   markWave,
   prepareForBoss,
   race,
-  startMusicLoop,
   startMusicWithIntro,
   suspendRunning,
   waitAudioTimeAtLeast,
   waitSeconds,
-  waitTrackEnded,
 } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
@@ -139,20 +137,16 @@ export const theBoss = new BossKind({
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
+  // Music setup (loop the metal opening under the boss's entry +
+  // dialog, with a leading seam wait) is owned by the chain function
+  // (`fromTheBoss`) — both the live chain and the standalone practice
+  // entry route through it. theBossScript later flips this over to
+  // the proper intro→loop sequence right after the dialog dismisses.
   // Don't open the encounter while leftovers are still on screen. Sweep
   // enemies + in-flight bullets, brief beat, then bring on the boss.
   // BossKind makes all bosses spawn unhittable; theBossScript handles
   // entry, dialogue, and calls becomeHittable() once dialog dismisses.
   yield* prepareForBoss(self);
-  // Music handover lives here so the boss fight plays identically from
-  // every entry point — the live stage flow, the "Stage 2 — Part 2"
-  // practice slot, and the standalone "Final Boss — The Boss" practice
-  // entry. Wait the previous track to its loop boundary (no-op if none
-  // is playing), then loop the metal opening under the boss's entry +
-  // dialog. theBossScript flips this over to the proper intro→loop
-  // sequence right after the dialog dismisses.
-  yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE2_METAL_OPENING_KEY);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
