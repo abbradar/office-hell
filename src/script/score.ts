@@ -4,8 +4,9 @@
 // quips (e.g. coach's "you got angry N times…"); future stats can land
 // here without re-plumbing.
 export class GameScore {
-  bombsUsed = 0;
-  enemiesKilled = 0;
+  bullets = 0;
+  kills = 0;
+  bombs = 0;
   hpLost = 0;
-  continuesUsed = 0;
+  continues = 0;
 }

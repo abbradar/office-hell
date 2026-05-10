@@ -326,7 +326,7 @@ on either natural defeat or forced release).
 ### Real stage — [`src/content/stage.ts`](../content/stage.ts)
 
 Plain generator body composing intro monologue → retro 01 + waves 1–3 →
-retro 02 + wave 4 → Mr. Hodges → metal music + final boss → outro →
+retro 02 + wave 4 → Mr. Hodges → retro 03 music + final boss → outro →
 end. Inter-wave pacing via `waitSeconds(s)`; music switches snap to
 `waitTrackEnded()`; `waitEnemiesClear`/`waitScreenClear` gate the
 bossfight transitions.
@@ -335,7 +335,7 @@ bossfight transitions.
 
 A short body with `waitAudioTimeAtLeast` waits at known offsets so the
 sync-test debug HUD can be observed against an obvious schedule.
-Includes the metal music switch + final boss to exercise the per-track
+Includes the retro 03 music switch + final boss to exercise the per-track
 clock reset and `waitTrackEnded` snapping. Player is pinned invincible
 ([`GameScene.create`](../scenes/GameScene.ts)) so a stray bullet doesn't
 end the test mid-observation.

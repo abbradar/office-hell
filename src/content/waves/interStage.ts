@@ -140,15 +140,22 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   // The conversation. Greeting line uses the player's actual name so
   // it reads correctly for either MC. The MC's tail-end gripes are
   // sourced from the run-wide GameScore — counters are accumulated by
-  // the engine (enemies killed, HP lost, bombs used, continues taken)
-  // so the lines reflect how the player actually played stage 1.
+  // the engine (bullets fired, kills, HP lost, bombs used, continues
+  // taken) so the lines reflect how the player actually played stage 1.
   const score = stage.score;
-  const excuses = score.enemiesKilled;
-  const angry = score.bombsUsed;
+  const excuses = score.bullets;
+  const colleagues = score.kills;
+  const angry = score.bombs;
   const hits = score.hpLost;
-  const continues = score.continuesUsed;
+  const continues = score.continues;
   const excusesLine =
-    excuses === 1 ? 'I told one excuse today to get out.' : `I told about ${excuses} excuses today to get out.`;
+    excuses === 1 && colleagues === 1
+      ? 'I told one excuse to send one colleague away from me.'
+      : excuses === 1
+        ? `I told one excuse to send ${colleagues} colleagues away from me.`
+        : colleagues === 1
+          ? `I told ${excuses} excuses to send one colleague away from me.`
+          : `I told ${excuses} excuses to send ${colleagues} colleagues away from me.`;
   const angryLine =
     angry === 0
       ? "At least I didn't get angry."

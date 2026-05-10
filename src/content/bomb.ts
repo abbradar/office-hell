@@ -2,7 +2,8 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
-import { COLOR_BOMB_CORE, COLOR_BOMB_GLOW, COLOR_BOMB_HIGHLIGHT, COLOR_BOMB_HOT, COLOR_BOMB_RING } from '../ui/palette';
+import { COLOR_BOMB_CORE, COLOR_BOMB_GLOW } from '../ui/palette';
+import { BOMB_EXPAND_ANIM, BOMB_EXPLOSION_KEY, BOMB_FADE_ANIM } from './textures';
 
 // Three-phase bomb: brief freeze (the player visibly snaps), an
 // expanding shockwave that consumes anything it touches, and a flicker-
@@ -35,6 +36,12 @@ export const DEATH_BOMB_INVINCIBLE_MS = 3500;
 // Passive-aggressive office-speak the player snaps out as they "get angry"
 // and nuke the field. One picked at random per bomb — keeps repeated bombing
 // from feeling robotic.
+// Sprite scale: the largest expand-row fireball is ~77 px wide inside its
+// 96×91 cell, so 3× lands the explosion at ~230 px on screen — slightly
+// overshoots the bomb's kill radius (BOMB_RADIUS × 2 = 200 px) so the
+// VFX visually "fills the field" rather than reading as a tight aura.
+const BOMB_SPRITE_SCALE = 3;
+
 const BOMB_BARKS = [
   'Enough of this, please.',
   "I'm trying to work here.",
@@ -52,7 +59,7 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const cx = player.x;
   const cy = player.y;
 
-  stage.score.bombsUsed++;
+  stage.score.bombs++;
 
   // Make the player untouchable for the duration: a stray bullet that
   // spawned mid-bomb (or one whose freeze we missed by a frame) would
@@ -76,10 +83,14 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   // Punch the camera so the freeze feels like an impact, not a stutter.
   scene.cameras.main.shake(BOMB_FREEZE_MS + 250, 0.005);
 
-  // Depth 49 sits just below the touch-button band's mask (depth 50),
-  // so on mobile the explosion is clipped to the playfield instead of
-  // bleeding behind the buttons.
-  const gfx = scene.add.graphics().setDepth(49);
+  // Render the explosion BELOW the player sprite (depth 0) and the
+  // red-dot hitbox indicator (depth 1) so the player can still track
+  // their hurtbox through the blast. -0.5 keeps the VFX above bullets
+  // (depth -9.5) and bg (depth -10), and well below the touch-button
+  // band's mask (depth 50) so on mobile the explosion stays clipped to
+  // the playfield.
+  const BOMB_DEPTH = -0.5;
+  const windup = scene.add.graphics().setDepth(BOMB_DEPTH);
 
   const freezeFrac = BOMB_FREEZE_MS / BOMB_DURATION_MS;
   const explodeEndFrac = (BOMB_FREEZE_MS + BOMB_EXPLODE_MS) / BOMB_DURATION_MS;
@@ -90,14 +101,26 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
     t: 1,
     duration: BOMB_DURATION_MS,
     ease: 'Linear',
-    onUpdate: () => drawBomb(gfx, cx, cy, state.t, bullets, freezeFrac, explodeEndFrac),
+    onUpdate: () => updateBomb(windup, cx, cy, state.t, bullets, freezeFrac, explodeEndFrac),
     onComplete: () => {
-      gfx.destroy();
+      windup.destroy();
       // Failsafe: any bullet that the wave's discrete sampling skipped
       // (e.g. one parked just past the final sampled radius) still gets
       // cleared so the screen ends in the same state regardless.
       for (const { e } of bullets) if (e.alive) e.die();
     },
+  });
+
+  // Spawn the explosion sprite at the freeze end so the wind-up core has
+  // a beat alone before the fireball blooms. expand → fade chain matches
+  // BOMB_EXPLODE_MS / BOMB_LINGER_MS exactly (durations declared in
+  // textures.ts → registerBombAnims), so the sprite always finishes on
+  // the same beat the wave-kill loop does.
+  scene.time.delayedCall(BOMB_FREEZE_MS, () => {
+    const sprite = scene.add.sprite(cx, cy, BOMB_EXPLOSION_KEY).setDepth(BOMB_DEPTH).setScale(BOMB_SPRITE_SCALE);
+    sprite.play(BOMB_EXPAND_ANIM);
+    sprite.chain(BOMB_FADE_ANIM);
+    sprite.on(`animationcomplete-${BOMB_FADE_ANIM}`, () => sprite.destroy());
   });
 }
 
@@ -181,7 +204,7 @@ function freezeBullet(stage: StageManager, bullet: Entity): void {
   });
 }
 
-function drawBomb(
+function updateBomb(
   g: Phaser.GameObjects.Graphics,
   cx: number,
   cy: number,
@@ -195,7 +218,7 @@ function drawBomb(
   if (t <= freezeFrac) {
     // Wind-up: a small red core swells at the player's position. Sells
     // the freeze as deliberate ("she's about to *snap*") rather than a
-    // physics hiccup.
+    // physics hiccup. The fireball sprite takes over once freeze ends.
     const f = t / freezeFrac;
     g.fillStyle(COLOR_BOMB_CORE, 0.25 + 0.55 * f);
     g.fillCircle(cx, cy, 10 + 28 * f);
@@ -204,62 +227,13 @@ function drawBomb(
     return;
   }
 
-  // After the wind-up, t maps onto a wave-expansion ramp (`waveT` 0→1
-  // ending at the full-reach mark) and an alpha ramp that decouples
-  // from it: the fade starts as soon as the explosion phase begins and
-  // runs all the way to the end of the linger, so the burst is already
-  // dimming as the wave is still pushing outward. The flicker is a
-  // square wave on top of the linear fade so the burst visibly stutters
-  // before vanishing instead of just dimming.
-  const explodePhase = (t - freezeFrac) / (1 - freezeFrac);
+  // Explode phase: the sprite handles the visual; we just keep the
+  // wave-kill geometry in step. waveT ramps 0→1 over BOMB_EXPLODE_MS so
+  // bullets die as the leading edge reaches them — same timing as the
+  // sprite's expand animation.
   const waveT = Math.min(1, (t - freezeFrac) / (explodeEndFrac - freezeFrac));
-  const flicker = Math.floor(explodePhase * 14) % 2 === 0 ? 1 : 0.45;
-  const alpha = (1 - explodePhase) * flicker;
-
-  // Kill bullets the leading edge of the wave has reached. Once dead,
-  // StageManager.update releases them from the pool on the next tick.
   const r = waveT * BOMB_RADIUS;
   for (const item of bullets) {
     if (item.e.alive && r >= item.d) item.e.die();
   }
-
-  // Outer shockwave ring — red rim with an orange inner echo. Fades as
-  // it expands so it doesn't feel like a hard line plowing across the
-  // field.
-  const ringFade = alpha * (1 - waveT * 0.55);
-  g.lineStyle(8, COLOR_BOMB_CORE, ringFade);
-  g.strokeCircle(cx, cy, r);
-  g.lineStyle(4, COLOR_BOMB_RING, ringFade);
-  g.strokeCircle(cx, cy, r * 0.92);
-
-  // Hot core — a white-hot dot inside a yellow halo, both shrinking as
-  // the wave expands.
-  const coreScale = 1 - waveT * 0.7;
-  g.fillStyle(COLOR_BOMB_HOT, alpha * coreScale);
-  g.fillCircle(cx, cy, 50 * coreScale);
-  g.fillStyle(COLOR_BOMB_HIGHLIGHT, alpha * coreScale * 0.85);
-  g.fillCircle(cx, cy, 22 * coreScale);
-
-  // Comic-book anger starburst: a 16-vertex star (8 long spikes
-  // alternating with 8 short ones) rotating slightly as it scales up.
-  // Asymmetric spike lengths read as "BAM!"-jagged rather than a clean
-  // sun.
-  const longR = (38 + waveT * 60) * (1 - waveT * 0.25);
-  const shortR = (16 + waveT * 28) * (1 - waveT * 0.25);
-  const rotation = waveT * 0.45;
-  const points = 16;
-  g.beginPath();
-  for (let i = 0; i < points; i++) {
-    const a = (i / points) * Math.PI * 2 - Math.PI / 2 + rotation;
-    const rr = i % 2 === 0 ? longR : shortR;
-    const px = cx + Math.cos(a) * rr;
-    const py = cy + Math.sin(a) * rr;
-    if (i === 0) g.moveTo(px, py);
-    else g.lineTo(px, py);
-  }
-  g.closePath();
-  g.fillStyle(COLOR_BOMB_GLOW, alpha);
-  g.fillPath();
-  g.lineStyle(2, COLOR_BOMB_CORE, alpha);
-  g.strokePath();
 }

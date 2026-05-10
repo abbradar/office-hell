@@ -146,13 +146,16 @@ export class Player extends Entity {
     kind.render(this);
 
     // Touhou-style hitbox marker: a bright dot the player can centre on dense
-    // bullet streams. Sits above the sprite in z-order.
+    // bullet streams. Sits at the highest in-game z so nothing covers it
+    // except dialogue / pause overlays (depth 200) — bombs, bullets, the
+    // HUD, and speech bubbles all render below, so the player can always
+    // track their hurtbox.
     this.hitboxGfx = scene.add.graphics();
     this.hitboxGfx.fillStyle(COLOR_DANGER, 0.9);
     this.hitboxGfx.fillCircle(0, 0, kind.hitboxRadius);
     this.hitboxGfx.lineStyle(1, COLOR_NO_TINT, 0.9);
     this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
-    this.hitboxGfx.setDepth(this.depth + 1);
+    this.hitboxGfx.setDepth(199);
 
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
@@ -376,6 +379,7 @@ export class Player extends Entity {
         this.stage.spawn(playerBullet, this.x, fy, 0, -PLAYER_BULLET_SPEED);
         this.stage.spawn(playerBullet, this.x - FIRE_SIDE_OFFSET_X, fy, -FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
         this.stage.spawn(playerBullet, this.x + FIRE_SIDE_OFFSET_X, fy, FIRE_SIDE_VX, -PLAYER_BULLET_SPEED);
+        this.stage.score.bullets += 3;
         shoot();
       }
     }

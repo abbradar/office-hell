@@ -8,10 +8,11 @@ import drinkBulletUrl from '../assets/bullets/drink.png';
 import emailBulletUrl from '../assets/bullets/email.png';
 import missedCallUrl from '../assets/bullets/missedCall.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
+import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
 import reportBulletUrl from '../assets/bullets/report.png';
-import playerBulletUrl from '../assets/sprites/player_bullet.png';
-import waterDispenserUrl from '../assets/sprites/water_dispenser.png';
+import bombExplosionUrl from '../assets/misc/bomb_explosion.png';
+import waterDispenserUrl from '../assets/misc/water_dispenser.png';
 import { BULLET_RADIUS } from '../config';
 import { COLOR_BULLET_DEFAULT } from '../ui/palette';
 
@@ -71,6 +72,43 @@ export function preloadPlayerBullet(scene: Phaser.Scene): void {
 export const PROP_WATER_DISPENSER_KEY = 'prop_water_dispenser';
 export function preloadWaterDispenser(scene: Phaser.Scene): void {
   scene.load.image(PROP_WATER_DISPENSER_KEY, waterDispenserUrl);
+}
+
+// Bomb explosion spritesheet — 5×2 lattice of 96×91 cells, source
+// `explosion1.png` (rows 2 and 3 of the original explosions sheet,
+// pre-cropped to keep the dust-scatter band at full height). Frame
+// stride matches the source's actual fireball spacing (centers at
+// 48, 144, 240, 336, 432 → 96 px apart), so each fireball sits
+// centered in its cell and the animation plays without horizontal
+// wobble. Frames 0–4 are the expand phase, 5–9 the fade phase.
+// Animations are registered post-load via `registerBombAnims`.
+export const BOMB_EXPLOSION_KEY = 'bomb_explosion';
+export const BOMB_EXPAND_ANIM = 'bomb-expand';
+export const BOMB_FADE_ANIM = 'bomb-fade';
+const BOMB_FRAME_W = 96;
+const BOMB_FRAME_H = 91;
+export function preloadBombExplosion(scene: Phaser.Scene): void {
+  scene.load.spritesheet(BOMB_EXPLOSION_KEY, bombExplosionUrl, {
+    frameWidth: BOMB_FRAME_W,
+    frameHeight: BOMB_FRAME_H,
+  });
+}
+export function registerBombAnims(scene: Phaser.Scene): void {
+  // Durations are wired to the bomb timing in content/bomb.ts —
+  // EXPAND matches BOMB_EXPLODE_MS, FADE matches BOMB_LINGER_MS — so
+  // the sprite always finishes on the same beat the script does.
+  scene.anims.create({
+    key: BOMB_EXPAND_ANIM,
+    frames: scene.anims.generateFrameNumbers(BOMB_EXPLOSION_KEY, { start: 0, end: 4 }),
+    duration: 700,
+    repeat: 0,
+  });
+  scene.anims.create({
+    key: BOMB_FADE_ANIM,
+    frames: scene.anims.generateFrameNumbers(BOMB_EXPLOSION_KEY, { start: 5, end: 9 }),
+    duration: 1100,
+    repeat: 0,
+  });
 }
 
 export function generateBulletTexture(scene: Phaser.Scene): void {

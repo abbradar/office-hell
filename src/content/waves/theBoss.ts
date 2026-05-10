@@ -1,9 +1,8 @@
-import { STAGE2_METAL_LOOP_KEY, STAGE2_METAL_OPENING_KEY } from '../../audio/keys';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
-import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
+import { moveTo, ring } from '../../script/patterns';
+import { clearBullets, markWave, prepareForBoss, suspendRunning, waitSeconds } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -12,6 +11,10 @@ import { bullet } from '../kinds';
 const BOSS_ENTRY_SPEED = 110;
 const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
+
+// Coach Becky has 400 HP; the final boss is balanced at 1.5× that for
+// a longer, more punishing feel.
+const BOSS_HP = 600;
 
 function* theBossScript(self: Entity) {
   // Entry — boss flies down from above to his fight position. BossKind
@@ -25,7 +28,9 @@ function* theBossScript(self: Entity) {
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
 
-  // Pre-fight dialogue.
+  // Pre-fight dialogue. The opening track is already looping under us
+  // (theBossWave started it before the dialog) and stays in that loop
+  // through the fight.
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
@@ -47,38 +52,22 @@ function* theBossScript(self: Entity) {
     self.stage.bossName = null;
   });
 
-  // Become hittable.
+  // The opening keeps looping under the fight (started by `fromTheBoss`
+  // before the wave) — there's no separate main melody to switch into.
   becomeHittable(self);
   self.say('Shrink the workforce!', 110);
-  yield 110;
 
-  // Repeating attack cycle. Loops until the lethal hit lands, at which
-  // point takeDamage swaps this script out for the boss death script
-  // via runScript.
-  while (true) {
-    // Phase 1: aimed shotgun bursts
-    self.say('Performance review!', 90);
-    for (let i = 0; i < 5; i++) {
-      aimed(self, 5, bullet, 200, Math.PI / 6);
-      yield 28;
-    }
-    yield 30;
+  const BPM_STEP = 60 / 113;
+  let spiralAngle = 0;
+  const spiralSpeed = 120;
 
-    // Phase 2: rotating multi-rings
-    self.say('Touch base!', 90);
-    for (let i = 0; i < 4; i++) {
-      ring(self, 16, bullet, 130, i * (Math.PI / 16));
-      yield 22;
-    }
-    yield 30;
-
-    // Phase 3: wide downward arcs
-    self.say('Align the deliverables!', 110);
-    for (let i = 0; i < 6; i++) {
-      arc(self, 11, bullet, 170, Math.PI / 6, (5 * Math.PI) / 6);
-      yield 32;
-    }
-    yield 60;
+  // Repeating attack cycle. Kicks off on the first beat of the main
+  // loop. Loops until the lethal hit lands, at which point takeDamage
+  // swaps this script out for the boss death script via runScript.
+  while (self.alive) {
+    ring(self, 64, bullet, spiralSpeed, spiralAngle);
+    spiralAngle += 0.01;
+    yield* waitSeconds(BPM_STEP);
   }
 }
 
@@ -105,7 +94,7 @@ function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
 export const theBoss = new BossKind({
   sprite: 'boss',
   hitboxRadius: 24,
-  hp: 65,
+  hp: BOSS_HP,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: theBossScript,
@@ -114,14 +103,14 @@ export const theBoss = new BossKind({
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
-  // Idempotent in live flow (stage2Part2 already switched to stage-2
-  // metal at the KAEDALUS_SHORT seam); switches in from menu music when
-  // run from the practice menu.
-  yield* startMusicWithIntro(STAGE2_METAL_OPENING_KEY, STAGE2_METAL_LOOP_KEY);
+  // Music setup (loop the retro-03 opening under the entire encounter,
+  // with a leading seam wait) is owned by the chain function
+  // (`fromTheBoss`) — both the live chain and the standalone practice
+  // entry route through it.
   // Don't open the encounter while leftovers are still on screen. Sweep
   // enemies + in-flight bullets, brief beat, then bring on the boss.
-  // BossKind makes all bosses spawn unhittable; the boss's own script
-  // handles entry, dialogue, and calls becomeHittable() once it's done.
+  // BossKind makes all bosses spawn unhittable; theBossScript handles
+  // entry, dialogue, and calls becomeHittable() once dialog dismisses.
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);

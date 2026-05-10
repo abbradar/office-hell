@@ -15,9 +15,9 @@
 //   wait for screen clear → end stage
 
 import {
-  STAGE1_METAL_LOOP_KEY,
-  STAGE1_METAL_OPENING_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
+  STAGE1_RETRO_03_LOOP_KEY,
+  STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
 import { GAME_W } from '../config';
@@ -72,7 +72,7 @@ const PRE_BOSS_DIALOG: DialogueOpts = {
   left: PORTRAIT,
   lines: [
     { speaker: 'left', text: 'Boss music switch test.' },
-    { speaker: 'left', text: 'After this, the metal opening fanfare plays — then the loop kicks in.' },
+    { speaker: 'left', text: 'After this, the retro-03 opening fanfare plays — then the loop kicks in.' },
     { speaker: 'left', text: 'Audio clock resets to the new track. Boss has its own dialogue + attack.' },
   ],
 };
@@ -133,15 +133,15 @@ function* testStageBody(self: Entity) {
   spawnWave4(self);
 
   // Boss intro dialog gated on screen clear so the speech doesn't
-  // compete with residual driver bullets. Switches music to metal
+  // compete with residual driver bullets. Switches music to retro-03
   // opening + loop next.
   markWave(self, 'pre-boss dialog');
   yield* waitScreenClear(self);
   yield self.dialogue(PRE_BOSS_DIALOG);
 
-  markWave(self, 'metal music');
+  markWave(self, 'retro-03 music');
   yield* waitTrackEnded();
-  yield* startMusicWithIntro(STAGE1_METAL_OPENING_KEY, STAGE1_METAL_LOOP_KEY);
+  yield* startMusicWithIntro(STAGE1_RETRO_03_OPENING_KEY, STAGE1_RETRO_03_LOOP_KEY);
 
   // Boss spawn + wait-for-death. BossKind keeps the boss unhittable on
   // spawn; theBossScript in waves/theBoss.ts handles entry, dialogue,

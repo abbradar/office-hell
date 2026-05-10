@@ -1,4 +1,4 @@
-import { KAEDALUS_LONG_KEY, KAEDALUS_SHORT_KEY } from '../../audio/keys';
+import { KAEDALUS_SHORT_KEY } from '../../audio/keys';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
@@ -11,7 +11,7 @@ import {
   pauseMusicForDefeat,
 } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { markWave, prepareForBoss, startMusicLoop, suspendRunning } from '../../script/stage';
+import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
@@ -62,7 +62,7 @@ const DEFEAT_BUBBLE_FRAMES =
 // the dramatic beat; the bubble goes up, then the standard shudder
 // runs and KAEDALUS_SHORT — the next sub-stage's loop — is restarted
 // from t=0 just before die(), so part 2 can be timed against a known
-// music clock. The next sub-stage's idempotent `startMusicLoop`
+// music clock. The next chain function's idempotent `startMusicLoop`
 // observes KAEDALUS_SHORT already running and is a no-op.
 function* shrunkOldManDeath(self: Entity): Generator<ScriptYield, void, void> {
   const m = pauseMusicForDefeat(KAEDALUS_SHORT_KEY);
@@ -154,10 +154,10 @@ export const shrunkOldMan = new BossKind({
 
 export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'mr. hodges');
-  // Idempotent in live flow (stage2Part1 already started KAEDALUS_LONG
-  // for the part); switches in from menu music when run from the
-  // practice menu.
-  yield* startMusicLoop(KAEDALUS_LONG_KEY);
+  // Music setup (KAEDALUS_LONG) is owned by the chain function
+  // (`fromShrunkOldMan`) — both the live chain and the standalone
+  // practice entry route through it. The lethal-hit script below
+  // performs the mid-stage hand-off to KAEDALUS_SHORT.
   // Same opening beat as the final-boss wave: don't bring him on while
   // leftover enemies are still drifting around, sweep stragglers, brief
   // pause for funereal tone, then he shuffles in. BossKind keeps him

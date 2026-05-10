@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import elevatorUrl from '../assets/sprites/elevator_doors.png';
+import elevatorUrl from '../assets/misc/elevator_doors.png';
 import { GAME_H, GAME_W } from '../config';
 
 // 7-frame doors strip: frame 0 = fully closed, frame 6 = fully open. The
