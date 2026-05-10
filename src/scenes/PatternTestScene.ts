@@ -106,7 +106,7 @@ export type BulletStyleOpts = {
 
 const DEFAULT_CODE = `// Helpers in scope:
 //   ring/aimed/spread/arc(self, count, kind, speed, ...)
-//   lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, spacing?)
+//   lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, { damaging?, spacing?, color?, width? })
 //   moveTo, walkOffScreen
 //
 // Compositional grid → mover → wave:
