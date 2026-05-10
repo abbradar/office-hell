@@ -84,16 +84,21 @@ const IN_TO_OUT_GAP = 28;
 // path, just staggered by launch time. Amplitude and frequency are
 // chosen once per exhale and shared across every ray, so the sun has
 // rotational symmetry; only the curvature varies from breath to breath.
-const EXHALE_STREAMS = 10;
+const EXHALE_STREAMS = 20;
 const EXHALE_TICKS = 20;
 const EXHALE_TICK_GAP = 7;
 const EXHALE_BULLET_SPEED = 160;
 // Lateral amplitude in pixels — peak excursion of each ray's sine
-// curve from its base radial. Kept below the inter-ray spacing at
-// mid-screen (124px between adjacent radials at d=200) so adjacent
-// rays brush but don't dissolve into each other.
+// curve from its base radial. With 20 streams the inter-ray spacing
+// at d=200 is only ~62px so adjacent rays interleave; the resulting
+// woven mesh is the intended look.
 const EXHALE_WIGGLE_AMP_MIN = 40;
 const EXHALE_WIGGLE_AMP_MAX = 70;
+// Random scatter bullets fired from Coach on each exhale tick,
+// alongside the sun rays. Speed sits below the rays so they read as
+// a separate hazard layer instead of dissolving into the mesh.
+const EXHALE_RANDOM_PER_TICK = 2;
+const EXHALE_RANDOM_SPEED = 120;
 // Radians per script-tick — controls spatial wavelength of the ray
 // (wavelength ≈ 2π · BULLET_SPEED / (freq · SCRIPT_FPS)). Tuned so a
 // ray displays ~1–1.5 visible waves before leaving the play field.
@@ -312,6 +317,10 @@ function* breathPhase(self: Entity): Generator<ScriptYield, void, void> {
           script: makeExhaleBulletScript(stream),
         });
       }
+      for (let r = 0; r < EXHALE_RANDOM_PER_TICK; r++) {
+        const a = Math.random() * Math.PI * 2;
+        self.spawn(bullet, self.x, self.y, Math.cos(a) * EXHALE_RANDOM_SPEED, Math.sin(a) * EXHALE_RANDOM_SPEED);
+      }
       yield EXHALE_TICK_GAP;
     }
     yield PHASE_GAP;
@@ -425,7 +434,7 @@ function* coachScript(self: Entity) {
 export const wellnessCoach = new PhasedBossKind({
   sprite: COACH_SPRITE,
   hitboxRadius: 22,
-  phaseHps: [PHASE_HP, PHASE_HP, PHASE_HP, PHASE_HP],
+  phaseHps: [PHASE_HP, PHASE_HP * 2, PHASE_HP, PHASE_HP],
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: coachScript,
