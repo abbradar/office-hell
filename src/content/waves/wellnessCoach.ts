@@ -398,6 +398,8 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
     lines: [{ speaker: 'right', text: line }],
   });
 
+  clearBullets(self);
+
   yield* bossShudder(self);
   self.die();
 }

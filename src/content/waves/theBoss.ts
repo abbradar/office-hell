@@ -1,9 +1,9 @@
 import { STAGE2_METAL_LOOP_KEY, STAGE2_METAL_OPENING_KEY } from '../../audio/keys';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable } from '../../script/boss';
+import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
-import { markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
+import { clearBullets, markWave, prepareForBoss, startMusicWithIntro, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -82,6 +82,26 @@ function* theBossScript(self: Entity) {
   }
 }
 
+// Final-boss death: lock motion, run the (placeholder) parting dialogue,
+// then sweep in-flight bullets so the ending scene opens on a clean
+// field, then the standard shudder.
+function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
+  self.body.setVelocity(0, 0);
+  self.body.enable = false;
+
+  const ch = self.stage.player.character;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    right: { sprite: 'boss', frame: 1, name: 'The Boss' },
+    lines: [{ speaker: 'right', text: 'TODO: final boss defeat line.' }],
+  });
+
+  clearBullets(self);
+
+  yield* bossShudder(self);
+  self.die();
+}
+
 export const theBoss = new BossKind({
   sprite: 'boss',
   hitboxRadius: 24,
@@ -89,6 +109,7 @@ export const theBoss = new BossKind({
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: theBossScript,
+  deathScript: theBossDeath,
 });
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {

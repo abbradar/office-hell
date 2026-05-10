@@ -64,7 +64,10 @@ export class PlayerKind extends EntityKind {
     // Apply damage normally. super.takeDamage decrements hp and calls
     // die() if it hits zero — at which point self.alive flips false and
     // the death sequence takes over.
+    const before = self.hp ?? 0;
     super.takeDamage(self, amount);
+    const after = self.hp ?? 0;
+    self.stage.score.hpLost += Math.max(0, before - after);
     // Non-killing hit safety net: still alive after damage → fire a
     // free death-bomb (clears bullets in a tight radius around the
     // player + DEATH_BOMB_INVINCIBLE_MS of invincibility + sprite

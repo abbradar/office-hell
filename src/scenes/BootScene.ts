@@ -208,26 +208,40 @@ export class BootScene extends Phaser.Scene {
       // NOT grant user activation — only pointerup/touchend do. On mouse the
       // activation from the preceding pointerdown is still live at pointerup,
       // so this works for both inputs.
-      let fired = false;
+      //
+      // On touch the listener stays installed for the lifetime of the game
+      // so that any subsequent press re-requests fullscreen if the browser
+      // dropped us out (Esc, OS back gesture, etc.). On non-touch we tear
+      // it down after the first press — there's no fullscreen path to keep
+      // arming.
+      let started = false;
       const onGesture = () => {
-        if (fired) return;
-        fired = true;
-        window.removeEventListener('pointerup', onGesture);
-        window.removeEventListener('keydown', onGesture);
-
         if (isTouchDevice && !this.scale.isFullscreen) {
           this.scale.startFullscreen();
         }
+        if (started) return;
+        started = true;
         // Browsers require a user gesture to unlock the AudioContext —
         // this handler is that gesture, which is why we don't start the loop
         // until the player presses something.
         playMusicLoop(MENU_LOOP_KEY);
         this.scene.start('Menu');
+        if (!isTouchDevice) {
+          window.removeEventListener('pointerup', onGesture);
+          window.removeEventListener('keydown', onGesture);
+        }
       };
 
       // Listen on window so a laptop with a touch screen catches either input.
       window.addEventListener('pointerup', onGesture);
       window.addEventListener('keydown', onGesture);
+
+      // Tear the keepalive down with the game so a hot-reload or explicit
+      // game.destroy() doesn't leak a dangling listener.
+      this.game.events.once(Phaser.Core.Events.DESTROY, () => {
+        window.removeEventListener('pointerup', onGesture);
+        window.removeEventListener('keydown', onGesture);
+      });
 
       // When the viewport changes (fullscreen toggle, address-bar
       // show/hide, orientation flip, desktop window drag) recompute the

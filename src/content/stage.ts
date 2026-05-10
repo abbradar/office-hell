@@ -288,6 +288,7 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* stage1Part1(self);
   yield* stage1Part2(self);
+  yield* self.stage.separateWave(interStageWaterCooler(self));
   yield* stage2Part1(self);
   yield* stage2Part2(self);
 
