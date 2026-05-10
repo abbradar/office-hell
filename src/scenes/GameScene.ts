@@ -148,12 +148,13 @@ class RunState {
   // path runs; subsequent deaths re-show it. Null in practice / test /
   // music modes — those fall through to startDeathSequence.
   continueOverlay: Phaser.GameObjects.Container | null = null;
-  // Edge-triggered touch bomb input — matches keyboard JustDown(X)
-  // semantics. Set on a pointerdown inside the bomb circle and drained
-  // by consumeBombPress. Tracking only pointerdown (not pointermove)
-  // means a finger sliding off the move pad into the bomb region won't
-  // accidentally burn a bomb.
-  bombPending = false;
+  // Pointer ids currently captured by an interactive button (bomb /
+  // pause). Phaser's hit-test puts the pointerdown event on the button
+  // (topOnly), so the button's pointerdown handler adds the id here
+  // and the scene-level pointerup removes it. getTouchTargetX skips
+  // these so a finger holding the bomb button doesn't drag the player
+  // — without ever doing a manual coordinate check.
+  readonly buttonPointers: Set<number> = new Set();
   // Accumulated forward scroll, in pixels. Mirrors `-bg.tilePositionY` (the
   // floor's tile offset) and drives the doors' wrap-around y. Tracked
   // separately so the doors keep their phase across the modulo without
@@ -199,6 +200,13 @@ export class GameScene extends Phaser.Scene {
   // looping the 1px source GAME_H times.
   private wallsTile!: Phaser.GameObjects.TileSprite;
   private debugHud: Phaser.GameObjects.Text | null = null;
+  // Movement / fire keys live on the scene, not the Player, so all
+  // gameplay input dispatching is in one place. Player.controlUpdate
+  // takes a snapshot built from these each frame.
+  private leftKey!: Phaser.Input.Keyboard.Key;
+  private rightKey!: Phaser.Input.Keyboard.Key;
+  private focusKey!: Phaser.Input.Keyboard.Key;
+  private fireKey!: Phaser.Input.Keyboard.Key;
   private playerKind!: PlayerKind;
   // Per-run mutable state — see RunState. Built fresh in init() each
   // entry; never assign to fields that should be in here directly.
@@ -220,36 +228,20 @@ export class GameScene extends Phaser.Scene {
     this.time.paused = false;
   }
 
-  consumeBombPress(): boolean {
-    const pending = this.state.bombPending;
-    this.state.bombPending = false;
-    return pending;
-  }
-
   // Finger-follow movement target: x of the most recently pressed active
   // pointer (logical coords), or null if no movement pointer is held.
-  // Pointers currently inside the bomb circle are excluded — both because
-  // a tap there is already handled as a bomb press and because a finger
-  // resting on the bomb shouldn't yank the player to centre.
+  // Pointers whose pointerdown landed on an interactive button (bomb /
+  // pause) are skipped so a finger resting on the bomb doesn't drag the
+  // player — Phaser's hit-test marks them via state.buttonPointers, no
+  // manual coordinate check needed.
   getTouchTargetX(): number | null {
     let chosenX: number | null = null;
     let chosenTime = -Infinity;
-    const bombR2 = BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS;
-    const bombY = bombButtonY();
-    const pauseR2 = PAUSE_BUTTON_RADIUS * PAUSE_BUTTON_RADIUS;
-    const pauseY = pauseButtonY();
     for (const p of this.game.input.pointers) {
       if (!p.isDown) continue;
-      const lx = pointerLogicalX(p.x);
-      const ly = pointerLogicalY(p.y);
-      const dxB = lx - BOMB_BUTTON_X;
-      const dyB = ly - bombY;
-      if (dxB * dxB + dyB * dyB <= bombR2) continue;
-      const dxP = lx - PAUSE_BUTTON_X;
-      const dyP = ly - pauseY;
-      if (dxP * dxP + dyP * dyP <= pauseR2) continue;
+      if (this.state.buttonPointers.has(p.id)) continue;
       if (p.downTime > chosenTime) {
-        chosenX = lx;
+        chosenX = pointerLogicalX(p.x);
         chosenTime = p.downTime;
       }
     }
@@ -260,13 +252,14 @@ export class GameScene extends Phaser.Scene {
     bindLogicalCamera(this);
     stopMusicLoop();
 
-    // Scene-level pointer listener auto-cleans on shutdown. Pointer
-    // coords are already in game space (Phaser's scale manager handles
-    // the canvas-fit transform), so a plain distance check is enough.
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      const dx = pointerLogicalX(pointer.x) - BOMB_BUTTON_X;
-      const dy = pointerLogicalY(pointer.y) - bombButtonY();
-      if (dx * dx + dy * dy <= BOMB_BUTTON_RADIUS * BOMB_BUTTON_RADIUS) this.state.bombPending = true;
+    // Scene-level pointerup releases any pointer ids the bomb / pause
+    // buttons captured on pointerdown. Listening at the scene level (not
+    // on each button) keeps releases reliable on touch — finger drift
+    // off the hit area between press and release is a known Phaser quirk
+    // (see ui/tap.ts) that breaks per-object pointerup, but the scene-
+    // level event always fires for the released pointer.
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      this.state.buttonPointers.delete(pointer.id);
     });
 
     // Floor: small repeating tile (416 wide × 112 tall, designed to loop
@@ -384,34 +377,47 @@ export class GameScene extends Phaser.Scene {
       // Bomb button — gold accent reads as "the ✱-button" without a
       // separate label. Movement is finger-follow (see getTouchTargetX),
       // so the rest of the touch area is implicit and unmarked.
-      this.add
-        .circle(BOMB_BUTTON_X, bombY, BOMB_BUTTON_RADIUS, COLOR_ACCENT_GOLD, 0.2)
-        .setStrokeStyle(2, COLOR_ACCENT_GOLD, 0.6)
-        .setDepth(100);
+      const bombBtn = makeRoundButton(this, BOMB_BUTTON_X, bombY, BOMB_BUTTON_RADIUS, COLOR_ACCENT_GOLD, 0.2, 0.6);
       this.add
         .text(BOMB_BUTTON_X, bombY, '✱', { color: COLOR_ACCENT_GOLD_STR, fontSize: '30px' })
         .setOrigin(0.5)
         .setAlpha(0.95)
         .setDepth(101);
+      // Bombs fire on pointerdown, not on the onTap pointerup, so the
+      // gameplay action is responsive — not a menu click. Capture the
+      // pointer id for getTouchTargetX in the same handler. The Player
+      // listens for `bombInput` and decides whether to actually fire.
+      bombBtn.on('pointerdown', (p: Phaser.Input.Pointer) => {
+        this.state.buttonPointers.add(p.id);
+        this.events.emit('bombInput');
+      });
 
       // Pause button — neutral colour so it reads as a UI control rather
       // than a gameplay action. Toggles between pause and resume so the
-      // same thumb tap can dismiss the overlay it just opened.
+      // same thumb tap can dismiss the overlay it opened.
       const pauseY = pauseButtonY();
-      const pauseBtn = this.add
-        .circle(PAUSE_BUTTON_X, pauseY, PAUSE_BUTTON_RADIUS, COLOR_TEXT_PRIMARY, 0.15)
-        .setStrokeStyle(2, COLOR_TEXT_PRIMARY, 0.5)
-        .setDepth(100)
-        .setInteractive({ useHandCursor: true });
+      const pauseBtn = makeRoundButton(
+        this,
+        PAUSE_BUTTON_X,
+        pauseY,
+        PAUSE_BUTTON_RADIUS,
+        COLOR_TEXT_PRIMARY,
+        0.15,
+        0.5,
+      );
       this.add
         .text(PAUSE_BUTTON_X, pauseY, '❚❚', { color: COLOR_TEXT_PRIMARY_STR, fontSize: '18px' })
         .setOrigin(0.5)
         .setAlpha(0.95)
         .setDepth(101);
+      pauseBtn.on('pointerdown', (p: Phaser.Input.Pointer) => {
+        this.state.buttonPointers.add(p.id);
+      });
       onTap(this, pauseBtn, () => {
+        // Toggle: tap the same button to dismiss the overlay it opened.
+        // Skip when a dialogue / continue overlay already owns the
+        // freeze — yanking it would resume play mid-cutscene.
         if (this.state.userPaused) this.unpauseGame();
-        // Don't grab the freeze from a dialogue / continue overlay — they
-        // already own stage.paused and toggling it would resume mid-line.
         else if (!this.stage.paused) this.pauseGame();
       });
     }
@@ -439,8 +445,20 @@ export class GameScene extends Phaser.Scene {
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
+    this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
+    this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
+    this.focusKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     kb.on('keydown-ESC', this.handleResume, this);
     kb.on('keydown-X', this.handleExitToMenu, this);
+    // X is the bomb key during gameplay — emit the unified `bombInput`
+    // event that Player and the intro skip / bomb tutorial polls all
+    // listen for. handleExitToMenu above gates on userPaused so it
+    // shares the same key without conflict.
+    kb.on('keydown-X', (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      this.events.emit('bombInput');
+    });
 
     // Auto-pause when the player tabs away or hides the page. We own
     // this because BootScene set `sound.pauseOnBlur = false` to take
@@ -540,12 +558,13 @@ export class GameScene extends Phaser.Scene {
     });
     c.add(menu);
 
-    if (isTouchDevice) {
-      setOverlayHit(resume, GAME_W * 0.7, 70);
-      setOverlayHit(menu, GAME_W * 0.7, 70);
-      onTap(this, resume, () => this.unpauseGame());
-      onTap(this, menu, () => this.scene.start('Menu'));
-    }
+    // Click / tap targets work on both desktop (mouse) and touch — onTap
+    // dispatches on scene-level pointerup which is the same event for
+    // both. The keyboard handlers above stay so ESC / X still work.
+    setOverlayHit(resume);
+    setOverlayHit(menu);
+    onTap(this, resume, () => this.unpauseGame());
+    onTap(this, menu, () => this.scene.start('Menu'));
 
     this.state.pauseOverlay = c;
   }
@@ -588,19 +607,13 @@ export class GameScene extends Phaser.Scene {
 
     this.state.continueOverlay = c;
 
-    if (isTouchDevice) {
-      setOverlayHit(continueBtn, GAME_W * 0.7, 70);
-      setOverlayHit(quitBtn, GAME_W * 0.7, 70);
-      onTap(this, continueBtn, () => {
-        if (!this.state.continueOverlay) return;
-        this.dismissContinueOverlay();
-        this.revivePlayerWithDeathBomb();
-      });
-      onTap(this, quitBtn, () => {
-        if (!this.state.continueOverlay) return;
-        this.scene.start('Menu');
-      });
-    }
+    setOverlayHit(continueBtn);
+    setOverlayHit(quitBtn);
+    onTap(this, continueBtn, () => {
+      this.dismissContinueOverlay();
+      this.revivePlayerWithDeathBomb();
+    });
+    onTap(this, quitBtn, () => this.scene.start('Menu'));
 
     const kb = this.input.keyboard;
     if (!kb) return;
@@ -619,14 +632,12 @@ export class GameScene extends Phaser.Scene {
 
   private handleContinueConfirm(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (!this.state.continueOverlay) return;
     this.dismissContinueOverlay();
     this.revivePlayerWithDeathBomb();
   }
 
   private handleContinueExit(event: KeyboardEvent): void {
     if (event.repeat) return;
-    if (!this.state.continueOverlay) return;
     // Don't bother dismissing the overlay — scene.start tears the whole
     // scene down, taking the container with it.
     this.scene.start('Menu');
@@ -646,9 +657,6 @@ export class GameScene extends Phaser.Scene {
     p.updateAnim();
     p.render();
 
-    // Drop any pointerdown that landed on the bomb circle while the
-    // overlay was up so unfreezing doesn't immediately burn a bomb.
-    this.consumeBombPress();
     this.stage.unfreeze();
     resumeMusic();
 
@@ -742,12 +750,13 @@ export class GameScene extends Phaser.Scene {
         this.wallsRt.erase(BG_DOORS_BBOX_KEY, 0, y);
       });
 
-      this.player.controlUpdate();
-    } else {
-      // Drop any queued bomb tap while paused — every pointerdown
-      // advances dialogue, so a tap that happened to land in a bomb
-      // circle would otherwise fire a bomb the moment play resumes.
-      this.consumeBombPress();
+      const kbDir = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
+      this.player.controlUpdate({
+        kbDir,
+        focusHeld: this.focusKey.isDown,
+        touchTargetX: isTouchDevice ? this.getTouchTargetX() : null,
+        firing: isTouchDevice || this.fireKey.isDown,
+      });
     }
     // Player isn't part of stage.active, so its anim doesn't get the per-tick
     // refresh that pooled entities get inside stage.update — drive it here. Run
@@ -823,9 +832,37 @@ export class GameScene extends Phaser.Scene {
   }
 }
 
-// Container origin sits at the prompt's centre, so a centred rectangle
-// gives a hit pad that extends in all four directions equally — same
-// fat-finger pattern MenuScene uses for its title-screen buttons.
-function setOverlayHit(target: Phaser.GameObjects.Container, w: number, h: number): void {
-  target.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+// Add an interactive circular button (visual circle + ready-to-handle
+// tap). Hit area is an explicit Phaser.Geom.Circle so taps register on
+// the visible disc rather than its bounding rectangle, and the center
+// is offset by the radius because Phaser's pointWithinHitArea uses
+// local coords with `displayOrigin` already applied (origin 0.5, 0.5
+// on Arc puts the visual centre at local (radius, radius)).
+function makeRoundButton(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  radius: number,
+  fillColor: number,
+  fillAlpha: number,
+  strokeAlpha: number,
+): Phaser.GameObjects.Arc {
+  return scene.add
+    .circle(x, y, radius, fillColor, fillAlpha)
+    .setStrokeStyle(2, fillColor, strokeAlpha)
+    .setDepth(100)
+    .setInteractive(new Phaser.Geom.Circle(radius, radius, radius), Phaser.Geom.Circle.Contains);
+}
+
+// Fat-finger pad for an overlay prompt. Container origin sits at the
+// prompt's centre (makePrompt positions it that way), so a centred
+// rectangle gives a hit pad that extends in all four directions equally
+// — same pattern MenuScene uses for its title-screen buttons.
+const OVERLAY_HIT_W = GAME_W * 0.7;
+const OVERLAY_HIT_H = 70;
+function setOverlayHit(target: Phaser.GameObjects.Container): void {
+  target.setInteractive(
+    new Phaser.Geom.Rectangle(-OVERLAY_HIT_W / 2, -OVERLAY_HIT_H / 2, OVERLAY_HIT_W, OVERLAY_HIT_H),
+    Phaser.Geom.Rectangle.Contains,
+  );
 }

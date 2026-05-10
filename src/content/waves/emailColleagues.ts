@@ -10,13 +10,13 @@ import { emailBullet } from './checkEmail';
 //
 // Two flavours of script:
 //   - drift: spawns off-screen, drifts in-and-out at constant velocity,
-//     firing while moving. Used by emailColleagues3's pinch pairs where
+//     firing while moving. Used by emailColleagues2's pinch pairs where
 //     the converging motion is the threat.
 //   - stationary: slides in to a fixed firing post, fires from a hold,
 //     retreats back the way it came. Used by the merged early-stage
 //     opener where the threat is the volleys, not the motion.
 
-// Travel speed for both flavours below. For `emailColleagues3`'s pinch
+// Travel speed for both flavours below. For `emailColleagues2`'s pinch
 // pairs the drift script walks in for two volleys (~95 frames, ~160 px)
 // then turns upward at the same speed for the v2→v3 gap so volley 3
 // fires from a point ~100px above the door y. Once that last shot is
@@ -34,7 +34,7 @@ const EMAIL_SPREAD = Math.PI / 9;
 
 // `side` is travel direction: +1 spawns at left edge moving right; -1 spawns
 // at right edge moving left. Aimed volleys track the player either way.
-// Pinch pairs (emailColleagues3) spawn at the same y from opposite sides, so
+// Pinch pairs (emailColleagues2) spawn at the same y from opposite sides, so
 // continuing horizontally would have the two members collide in the middle
 // of the corridor. They walk in for two volleys (~1.6s, ~160 px from the
 // wall — well clear of centre) then peel upward and fire the last volley
@@ -168,7 +168,7 @@ export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void,
   });
 }
 
-// Wave 3 — three pinch pairs: each pair has a left and a right spawn arriving
+// Wave 2 — three pinch pairs: each pair has a left and a right spawn arriving
 // within a few frames of each other, so the player has to commit to a vertical
 // lane between two converging volleys. Pairs are spaced further apart than
 // the in-pair beat. Slotted after vacation photos in the stage script.
@@ -179,8 +179,8 @@ export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void,
 // at the middle of the trio (250) keeps the centre pair on a real door;
 // the outer pairs fall to whichever slot is closest.
 const EMAIL_PINCH_MID_Y = 250;
-export function* emailColleagues3(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'email colleagues 3');
+export function* emailColleagues2(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'email colleagues 2');
   yield* alignDoor(self, EMAIL_PINCH_MID_Y);
   yield* suspendRunning(self, function* () {
     const PAIR_BEAT = 12;

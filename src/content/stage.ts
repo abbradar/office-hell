@@ -26,7 +26,7 @@ import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
-import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
+import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
@@ -184,13 +184,13 @@ function* fromVacationPhotos(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* timeWave(self, 8, self.stage.separateWave(vacationPhotosWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* fromEmailColleagues3(self);
+  yield* fromEmailColleagues2(self);
 }
 
-function* fromEmailColleagues3(self: Entity): Generator<ScriptYield, void, void> {
+function* fromEmailColleagues2(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
 
-  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues3(self)));
+  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues2(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromMeetingInterns(self);
 }
@@ -382,7 +382,7 @@ export const WAVES: WaveDef[] = [
     name: 'Vacation Photos',
     script: fromVacationPhotos,
   },
-  { id: 'r-email-colleagues-3', name: 'Email Colleagues 3', script: fromEmailColleagues3 },
+  { id: 'r-email-colleagues-2', name: 'Email Colleagues 2', script: fromEmailColleagues2 },
   { id: 'r-meeting-interns', name: 'Meeting Interns', script: fromMeetingInterns },
   {
     id: 'r-wellness-coach',

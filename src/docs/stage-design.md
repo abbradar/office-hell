@@ -379,6 +379,39 @@ The same rule applies anywhere `self.say` runs, not just the entry
 position — if the speaker is moving while talking, make sure the *whole
 say-window* stays low enough.
 
+### Convention: every `from<Wave>` self-establishes its music
+
+Practice-menu entries are `from<Wave>` continuations in
+[`src/content/stage.ts`](../content/stage.ts), each restartable
+standalone. `GameScene.create` calls `stopMusicLoop()` on entry, so when
+a continuation is picked from the menu it lands in silence — anything
+that should be playing has to be started by the continuation itself.
+Every `from<Wave>` must therefore begin with one of:
+
+- `yield* startMusicLoop(KEY)` (or `startMusicWithIntro(intro, loop)`)
+  for sections that should have music — call it for the **track this
+  wave runs under**, even if the live chain already started that track
+  upstream;
+- `stopMusicLoop()` for sections that should be silent (e.g.
+  `fromWaterCooler`, `fromOutro`).
+
+Both calls are idempotent: `playMusicLoop` short-circuits when
+`current.key` already matches, so the live chain pays nothing — the
+upstream caller's start has already set the key, and the leading call
+in the continuation is a no-op. From the practice menu it's the actual
+switch in from menu music. Skip the intro fanfare (`startMusicLoop`,
+not `startMusicWithIntro`) for mid-section entries — the fanfare is a
+"section start" cue and re-firing it on a deeper practice entry reads
+as a restart.
+
+Section-boundary entries (`fromInterns`, `fromGymBro`, `fromMoreCharts`,
+`fromWellnessCoach`, `fromItAdmin`, `fromShrunkOldMan`, `fromHrTrio`,
+`fromTheBoss`) are where the *live chain's* music switch happens, so
+they additionally `markWave(self, 'music: …')` for the HUD. Mid-section
+entries skip the `markWave` since the live chain doesn't actually
+switch music at that point — the leading `startMusicLoop` is purely the
+practice-mode fallback.
+
 ## Currently shipped stages
 
 ### Real stage — [`src/content/stage.ts`](../content/stage.ts)

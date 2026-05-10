@@ -6,7 +6,6 @@ import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
-import { isTouchDevice } from '../input/device';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
@@ -80,11 +79,6 @@ export class Player extends Entity {
   // scripts can then reach kind-specific config (like character) without a cast.
   declare kind: PlayerKind;
 
-  private leftKey: Phaser.Input.Keyboard.Key;
-  private rightKey: Phaser.Input.Keyboard.Key;
-  private focusKey: Phaser.Input.Keyboard.Key;
-  private fireKey: Phaser.Input.Keyboard.Key;
-  private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
   // True while the player is moving via keyboard with Shift held — speed
   // scales by FOCUS_SPEED_RATIO and updateAnim forces 'walk'. Set in
@@ -173,13 +167,27 @@ export class Player extends Entity {
     this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
     this.hitboxGfx.setDepth(199);
 
-    const kb = scene.input.keyboard;
-    if (!kb) throw new Error('Keyboard input plugin missing');
-    this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
-    this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
-    this.focusKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
-    this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
-    this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    // Bomb input flows in via the scene's `bombInput` event — touch bomb
+    // button + keyboard X both emit it (see GameScene). The Player owns
+    // the eligibility checks (alive, controlsEnabled, bombs > 0) so the
+    // dispatcher in GameScene stays a one-line emit. The listener is
+    // tied to the scene's lifetime, which matches Player's own lifetime
+    // (Player is destroyed when the scene tears down), so no manual
+    // off() is needed.
+    scene.events.on('bombInput', this.tryFireBomb, this);
+  }
+
+  // Fire a bomb if conditions allow — entry point from the `bombInput`
+  // event. Gates on stage.paused so a tap on the visible bomb button
+  // during a dialogue / pause overlay / continue overlay can't burn a
+  // bomb (the event still fires for the intro skip / bomb tutorial poll
+  // to catch — they listen to the same event).
+  private tryFireBomb(): void {
+    if (this.stage.paused) return;
+    if (!this.alive || !this.controlsEnabled) return;
+    if (this.kind.bombs <= 0) return;
+    this.kind.consumeBomb(this);
+    activateBomb(this, this.stage);
   }
 
   get character(): CharacterDef {
@@ -326,7 +334,7 @@ export class Player extends Entity {
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 
-  controlUpdate(): void {
+  controlUpdate(input: PlayerControlInput): void {
     this.hitboxGfx.setPosition(this.x, this.y);
     this.hitboxGfx.setVisible(this.alive);
 
@@ -336,16 +344,15 @@ export class Player extends Entity {
     const minX = WALL_W + half;
     const maxX = GAME_W - WALL_W - half;
 
-    const kbDir = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
-    this.focused = kbDir !== 0 && this.focusKey.isDown;
+    this.focused = input.kbDir !== 0 && input.focusHeld;
 
     let newVx = 0;
-    if (kbDir !== 0) {
+    if (input.kbDir !== 0) {
       // Keyboard takes priority and clears any pending touch target so a
       // cached tap doesn't keep tugging once the player grabs the keys.
       this.touchTargetX = null;
       this.targetSamples.length = 0;
-      let dir = kbDir;
+      let dir = input.kbDir;
       if (dir < 0 && this.x <= minX) dir = 0;
       if (dir > 0 && this.x >= maxX) dir = 0;
       const speed = this.focused ? PLAYER_SPEED * FOCUS_SPEED_RATIO : PLAYER_SPEED;
@@ -362,7 +369,7 @@ export class Player extends Entity {
       // player and gap flips sign — the player overshoots, reverses,
       // and bounces around the eventual target. That bouncing reads as
       // a visible twitch on every finger-up.
-      const finger = this.scene.getTouchTargetX();
+      const finger = input.touchTargetX;
       if (finger === null) {
         this.targetSamples.length = 0;
         this.touchTargetX = this.x;
@@ -403,8 +410,7 @@ export class Player extends Entity {
 
     this.x = Phaser.Math.Clamp(this.x, minX, maxX);
 
-    const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
-    if (firing) {
+    if (input.firing && this.firingEnabled) {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
@@ -416,19 +422,23 @@ export class Player extends Entity {
         shoot();
       }
     }
-
-    // Drain JustDown unconditionally — Phaser leaves the `_justDown`
-    // flag set until something reads it, so skipping the read while
-    // bombs=0 would queue a press that fires the moment bombs unlock
-    // (intro tutorial). The touch tap queue is the opposite: only drain
-    // it when a bomb is actually available, otherwise the intro's bomb
-    // tutorial poll loses every press to this same consumer (controls
-    // run every frame, the script polls every other frame, so half the
-    // taps got eaten here before the tutorial saw them).
-    const bombJustDown = Phaser.Input.Keyboard.JustDown(this.bombKey);
-    if (this.kind.bombs > 0 && (bombJustDown || this.scene.consumeBombPress())) {
-      this.kind.consumeBomb(this);
-      activateBomb(this, this.stage);
-    }
   }
 }
+
+// Per-frame input snapshot the GameScene assembles from keyboard +
+// touch state and hands to Player.controlUpdate. Keeping the input
+// reading on the scene side means the Player has no dependency on
+// Phaser keys / touch helpers — it just acts on what it's told.
+export type PlayerControlInput = {
+  // Keyboard movement direction: -1 left, 0 none, 1 right.
+  kbDir: number;
+  // Whether the focus modifier (Shift) is held. Only meaningful with a
+  // non-zero kbDir; Player gates focused-mode on both being true.
+  focusHeld: boolean;
+  // Touch finger x in logical coords (smoothed by Player), or null when
+  // no movement finger is held / the platform is desktop.
+  touchTargetX: number | null;
+  // Whether the auto-fire stream should be live this frame. True on
+  // touch (auto-fire) or when the keyboard fire key is held.
+  firing: boolean;
+};

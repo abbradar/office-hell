@@ -1,8 +1,9 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { GAME_W } from '../config';
 import { FONT_DIALOGUE_SM } from './fonts';
 import { COLOR_ACCENT_GOLD, COLOR_BUBBLE, COLOR_TEXT_INVERSE, COLOR_TEXT_INVERSE_STR } from './palette';
 import { makePrompt } from './prompt';
+import { onTap } from './tap';
 
 const DEPTH = 150;
 // Persistent side prompts ride above the dialogue layer (DEPTH = 200) so
@@ -31,6 +32,10 @@ export type TutorialBubbleOpts = {
   // with a centred 'top' prompt (the intro's skip hint sits here while
   // the dodge/bomb/fire prompts pop in centre).
   pos?: 'top' | 'right';
+  // When set, the entire bubble becomes a click / tap target. Lets the
+  // intro's SKIP bubble be activated by clicking it on desktop, not just
+  // by pressing the keyboard key its template advertises.
+  onClick?: () => void;
 };
 
 // Tutorial bubble — used during the intro to surface "press X to do Y"
@@ -70,6 +75,19 @@ export function showTutorialBubble(scene: Phaser.Scene, template: string, opts: 
   gfx.fillRoundedRect(x, y, w, h, CORNER_RADIUS);
   gfx.lineStyle(2, STROKE_COLOR, STROKE_ALPHA);
   gfx.strokeRoundedRect(x, y, w, h, CORNER_RADIUS);
+
+  if (opts.onClick) {
+    // Hit area is the bubble's world-space rect. Graphics has no implicit
+    // bounds, so we pass an explicit Rectangle; with the Graphics object
+    // sitting at world (0, 0) (no x/y set), local coords equal world
+    // coords. useHandCursor surfaces a click affordance on desktop.
+    gfx.setInteractive({
+      hitArea: new Phaser.Geom.Rectangle(x, y, w, h),
+      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+      useHandCursor: true,
+    });
+    onTap(scene, gfx, opts.onClick);
+  }
 
   return () => {
     prompt.destroy();
