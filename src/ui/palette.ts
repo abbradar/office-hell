@@ -71,45 +71,10 @@ export const COLOR_BULLET_DEFAULT = 0xffffff;
 // Player bullets keep their vibrant green identity.
 export const COLOR_PLAYER_BULLET = COLOR_ACCENT_GREEN;
 export const COLOR_PLAYER_BULLET_HIGHLIGHT = 0xffffff;
-// Missed-call notification.
-export const COLOR_MISSED_CALL_OUTER = COLOR_ACCENT_RED;
-export const COLOR_MISSED_CALL_INNER = 0xffffff;
-// Email envelope.
-export const COLOR_EMAIL_BORDER = 0x665522;
-export const COLOR_EMAIL_PAPER = 0xf0e0a0;
-// Question card.
-export const COLOR_QUESTION_TILE = 0xf0c840;
-export const COLOR_QUESTION_STAMP = 0xffffff;
-// Drink glass.
-export const COLOR_DRINK_GLASS = 0x335588;
-export const COLOR_DRINK_LIQUID = 0x60c0e8;
-export const COLOR_DRINK_FOAM = 0xffffff;
-// Report paper.
-export const COLOR_REPORT_BORDER = 0xc0b890;
-export const COLOR_REPORT_PAPER = 0xf0e8d0;
-// Pill / vitamin capsule — two-tone stadium shape with a dark outline.
-// Warm orange + cream so it reads as a vitamin (not a prescription drug)
-// and stays distinct from the cooler drink/email/report bullets.
-export const COLOR_PILL_BORDER = 0x33334a;
-export const COLOR_PILL_LEFT = 0xff9944;
-export const COLOR_PILL_RIGHT = 0xfff8e0;
-// Video-camera bullet — side-view camcorder painted in Google Meet
-// brand colors. Google green body, Google blue lens pupil ("live" /
-// pointed-at-you), Google red REC pixel. Dark outline holds the
-// silhouette against the corridor.
-export const COLOR_CAMERA_BORDER = 0x14141e;
-export const COLOR_CAMERA_BODY = 0x34a853;
-export const COLOR_CAMERA_LENS_DARK = 0x05050a;
-export const COLOR_CAMERA_LENS_BRIGHT = 0x4285f4;
-export const COLOR_CAMERA_REC = 0xea4335;
-// Chart-cell bullet — neutral 8×8 tile recolored at spawn via setTint to
-// flag pie wedges and bar columns. Border stays dark under the multiplicative
-// tint; the white fill picks up the tint as the wedge / column color.
-export const COLOR_CHART_CELL_BORDER = 0x202032;
-export const COLOR_CHART_CELL_FILL = 0xffffff;
 // Chart wedge / column palette — six saturated hues that hold up at 6×6 px
 // and stay distinct against the dark corridor background. Pie wedges cycle
-// through all six; bar columns use the first five.
+// through all six; bar columns use the first five. Multiplied into the
+// white interior of the chart-cell sprite at spawn time via setTint.
 export const CHART_TINTS = [0xff5577, 0xff9944, 0xffd96a, 0x6cf0a8, 0x60c0e8, 0xc080ff] as const;
 
 // --- Bomb / explosion (kept verbatim — fire colors read on any bg) --------
