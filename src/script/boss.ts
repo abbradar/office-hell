@@ -134,3 +134,111 @@ export function becomeHittable(self: Entity): void {
   }
   self.setDamagedByClasses(kind.hittableDamagedBy);
 }
+
+// --- Phased bosses ------------------------------------------------------
+//
+// Generic machinery for bosses with multiple HP pools. The kind owns the
+// pool sizes; the runtime tracks `phaseIdx` (0-based current phase) and
+// `phaseDown` (the per-phase "this pool is empty" latch) on `self.vars`.
+// The takeDamage override pins HP at zero in non-final phases and
+// raises the latch; the script reads the latch (via `phaseRunning` for
+// while-loops or `waitPhaseDown` for race-style termination), runs a
+// transition, and advances to the next pool. The final phase defers to
+// the base class so the kind's `deathScript` runs on the lethal hit.
+
+export type PhasedBossOpts = Omit<EntityKindOpts, 'hp'> & {
+  // HP pool per phase, in order. The last entry is the lethal phase
+  // (damage during it routes to the death path); every earlier pool is
+  // capped at zero and signals `phaseDown` instead. Must be non-empty.
+  phaseHps: number[];
+};
+
+export class PhasedBossKind extends BossKind {
+  readonly phaseHps: readonly number[];
+
+  constructor(opts: PhasedBossOpts) {
+    const firstHp = opts.phaseHps[0];
+    if (firstHp === undefined) {
+      throw new Error('PhasedBossKind needs at least one phase HP entry');
+    }
+    super({ ...opts, hp: firstHp });
+    this.phaseHps = opts.phaseHps;
+  }
+
+  override takeDamage(self: Entity, amount: number): void {
+    if (self.hp === null) return;
+    self.vars ??= {};
+    const idx = (self.vars.phaseIdx as number | undefined) ?? 0;
+    if (idx >= this.phaseHps.length - 1) {
+      // Lethal phase — defer to EntityKind.takeDamage so the death
+      // script fires when this pool is emptied.
+      super.takeDamage(self, amount);
+      return;
+    }
+    self.hp -= amount;
+    if (self.hp <= 0) {
+      self.hp = 0;
+      self.vars.phaseDown = true;
+      return;
+    }
+    self.flashDamage();
+  }
+}
+
+// Open the fight: initialise phase state and arm damage. Call once
+// after the entry dialogue, in place of a manual `becomeHittable(self)`
+// for phased bosses. Subsequent phases come up via `advanceBossPhase`.
+export function startBossPhases(self: Entity): void {
+  if (!(self.kind instanceof PhasedBossKind)) {
+    throw new Error(`startBossPhases called on non-phased kind: ${self.kind.sprite}`);
+  }
+  self.vars ??= {};
+  self.vars.phaseIdx = 0;
+  self.vars.phaseDown = false;
+  becomeHittable(self);
+}
+
+// True while the current phase's HP pool isn't depleted yet. Use as
+// the loop condition in a phase generator (`while (phaseRunning(self))
+// { … }`) — when the pool empties the latch flips and the loop exits
+// on its next iteration.
+export function phaseRunning(self: Entity): boolean {
+  return self.vars?.phaseDown !== true;
+}
+
+// Race-style termination partner: yields one frame at a time until the
+// phaseDown latch is raised. Use with `race(phaseBody, waitPhaseDown(self))`
+// when the phase generator can't be polled cleanly between sub-patterns.
+export function* waitPhaseDown(self: Entity): Generator<ScriptYield, void, void> {
+  while (self.vars?.phaseDown !== true) yield 1;
+}
+
+// Bookkeeping half of a phase change: advance `phaseIdx`, refill HP
+// from the kind's pool list, clear the `phaseDown` latch, and re-arm
+// damage. Pair with `bossPhaseTransition` for the visual half — either
+// run them back-to-back via `nextBossPhase`, or split them around a
+// boss-specific narrative beat (a declaration bubble, a re-position).
+export function advanceBossPhase(self: Entity): void {
+  const kind = self.kind;
+  if (!(kind instanceof PhasedBossKind)) {
+    throw new Error(`advanceBossPhase called on non-phased kind: ${kind.sprite}`);
+  }
+  self.vars ??= {};
+  const next = ((self.vars.phaseIdx as number | undefined) ?? 0) + 1;
+  const nextHp = kind.phaseHps[next];
+  if (nextHp === undefined) {
+    throw new Error(`advanceBossPhase past last phase (${next}/${kind.phaseHps.length})`);
+  }
+  self.vars.phaseIdx = next;
+  self.vars.phaseDown = false;
+  self.hp = nextHp;
+  becomeHittable(self);
+}
+
+// Standard phase change: visual reset followed by phase advance. Use
+// between phase generators when the boss has nothing extra to say or
+// do at the seam.
+export function* nextBossPhase(self: Entity): Generator<ScriptYield, void, void> {
+  yield* bossPhaseTransition(self);
+  advanceBossPhase(self);
+}

@@ -3,14 +3,16 @@ import { playJump, playThump, shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
-  BossKind,
-  becomeHittable,
+  advanceBossPhase,
   bossPhaseTransition,
   bossShudder,
   FLICKER_INTERVAL_FRAMES,
   FLICKER_TOGGLES,
+  PhasedBossKind,
   POST_FLICKER_HOLD_FRAMES,
   pauseMusicForDefeat,
+  startBossPhases,
+  waitPhaseDown,
 } from '../../script/boss';
 import { moveTo, ring, spread } from '../../script/patterns';
 import { markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
@@ -106,29 +108,6 @@ function* gymBroDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.die();
 }
 
-// Custom kind override so phase-1 damage gets pinned at zero instead of
-// killing the boss; phase-2's lethal hit defers to the base class,
-// whose `takeDamage` runs the kind's `deathScript` (set to gymBroDeath
-// below). The phase-1 race below polls `self.vars.phaseOneDown` for
-// the transition.
-class GymBroKind extends BossKind {
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    if (self.vars?.phaseTwo === true) {
-      super.takeDamage(self, amount);
-      return;
-    }
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      self.hp = 0;
-      self.vars ??= {};
-      self.vars.phaseOneDown = true;
-      return;
-    }
-    self.flashDamage();
-  }
-}
-
 // Small spread fired from one of Brad's shoulders rather than dead centre.
 // Inlined here because none of the patterns.ts helpers take an origin offset
 // and this is the only caller that needs one.
@@ -197,7 +176,7 @@ function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
   // dense halo field opens the phase, then shoulder curls, then hula again,
   // and so on. Each sub-pattern re-rolls its own parameters internally, so
   // adjacent runs of the same pick still play differently. Termination is
-  // handled by the race in gymBroScript — when waitPhaseOneDown wins this
+  // handled by the race in gymBroScript — when waitPhaseDown wins this
   // generator gets dropped.
   let useHula = true;
   while (true) {
@@ -205,13 +184,6 @@ function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
     useHula = !useHula;
     yield 28 + Math.floor(Math.random() * 24);
   }
-}
-
-// Polls each frame for the transition signal the kind override sets when
-// phase-1 HP runs out. Lives as the loser's race partner — when this resolves,
-// the barrage above gets dropped mid-volley.
-function* waitPhaseOneDown(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.vars?.phaseOneDown !== true) yield 1;
 }
 
 // 4 * (1-t) * t parabola; peak at t=0.5 lands at fromY + JUMP_PEAK_OFFSET.
@@ -325,11 +297,11 @@ function* gymBroScript(self: Entity) {
   });
 
   // --- Phase 1 ---
-  becomeHittable(self);
+  startBossPhases(self);
   self.say('Make me sweat!', POST_DIALOGUE_HOLD);
   yield POST_DIALOGUE_HOLD;
 
-  yield* race(phaseOneBarrage(self), waitPhaseOneDown(self));
+  yield* race(phaseOneBarrage(self), waitPhaseDown(self));
 
   // --- Transition: shudder, clear field, leg-day declaration ---
   yield* bossPhaseTransition(self);
@@ -343,18 +315,15 @@ function* gymBroScript(self: Entity) {
   yield 30;
 
   // --- Phase 2 ---
-  self.vars ??= {};
-  self.vars.phaseTwo = true;
-  self.hp = PHASE_TWO_HP;
-  becomeHittable(self);
+  advanceBossPhase(self);
 
   yield* phaseTwoCycle(self);
 }
 
-export const gymBro = new GymBroKind({
+export const gymBro = new PhasedBossKind({
   sprite: 'gymBro',
   hitboxRadius: 24,
-  hp: PHASE_ONE_HP,
+  phaseHps: [PHASE_ONE_HP, PHASE_TWO_HP],
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: gymBroScript,

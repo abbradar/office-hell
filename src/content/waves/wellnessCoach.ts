@@ -1,7 +1,7 @@
 import { shoot } from '../../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable, bossPhaseTransition, bossShudder } from '../../script/boss';
+import { bossShudder, nextBossPhase, PhasedBossKind, phaseRunning, startBossPhases } from '../../script/boss';
 import { aimed, moveTo } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
@@ -255,14 +255,6 @@ function pickAnxiousRingPos(self: Entity): { x: number; y: number } {
   return { x: GAME_W / 2, y: GAME_H * 0.4 };
 }
 
-// True while the current phase is still going — i.e. its HP pool hasn't
-// been depleted yet. Phases 1–3 can't kill the boss (the takeDamage
-// override pins HP at zero and sets phaseDown), so this is the only
-// termination condition the phase loops need.
-function phaseRunning(self: Entity): boolean {
-  return self.vars?.phaseDown !== true;
-}
-
 // --- Phase generators ---------------------------------------------------
 
 function* anxiousPhase(self: Entity): Generator<ScriptYield, void, void> {
@@ -351,20 +343,6 @@ function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-// Visual reset + per-phase setup. The visual half (immortal flicker,
-// field clear) is the shared `bossPhaseTransition`; here we follow it
-// with this boss's phase bookkeeping (advance `phase`, clear
-// `phaseDown` so the takeDamage gate reads correctly on the next hit,
-// refill HP) and re-arm damage.
-function* phaseTransition(self: Entity, nextPhase: number): Generator<ScriptYield, void, void> {
-  yield* bossPhaseTransition(self);
-  self.vars ??= {};
-  self.vars.phase = nextPhase;
-  self.vars.phaseDown = false;
-  self.hp = PHASE_HP;
-  becomeHittable(self);
-}
-
 // --- Death --------------------------------------------------------------
 
 // Custom death dialogue. The bomb-count delta is captured at fight start
@@ -392,31 +370,6 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* bossShudder(self);
   self.die();
-}
-
-// --- Kind ---------------------------------------------------------------
-
-// Phases 1-3 cap damage at 0 and signal `phaseDown` so the script can
-// roll into the next phase generator; phase 4's lethal hit defers to
-// the base class, whose `takeDamage` runs the kind's `deathScript`
-// (`coachDeath` below).
-class WellnessCoachKind extends BossKind {
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    const phase = (self.vars?.phase as number | undefined) ?? 1;
-    if (phase >= 4) {
-      super.takeDamage(self, amount);
-      return;
-    }
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      self.hp = 0;
-      self.vars ??= {};
-      self.vars.phaseDown = true;
-      return;
-    }
-    self.flashDamage();
-  }
 }
 
 // --- Script body --------------------------------------------------------
@@ -450,32 +403,29 @@ function* coachScript(self: Entity) {
   // *only* the bombs the player burned during this fight, not the ones
   // they spent earlier in the stage.
   self.vars ??= {};
-  self.vars.phase = 1;
-  self.vars.phaseDown = false;
   self.vars.bombsAtStart = self.stage.score.bombs;
-  self.hp = PHASE_HP;
-  becomeHittable(self);
+  startBossPhases(self);
 
   // --- Phase 1 ---
   yield* anxiousPhase(self);
-  yield* phaseTransition(self, 2);
+  yield* nextBossPhase(self);
 
   // --- Phase 2 ---
   yield* breathPhase(self);
-  yield* phaseTransition(self, 3);
+  yield* nextBossPhase(self);
 
   // --- Phase 3 ---
   yield* personalityPhase(self);
-  yield* phaseTransition(self, 4);
+  yield* nextBossPhase(self);
 
   // --- Phase 4 ---
   yield* vitaminsPhase(self);
 }
 
-export const wellnessCoach = new WellnessCoachKind({
+export const wellnessCoach = new PhasedBossKind({
   sprite: COACH_SPRITE,
   hitboxRadius: 22,
-  hp: PHASE_HP,
+  phaseHps: [PHASE_HP, PHASE_HP, PHASE_HP, PHASE_HP],
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: coachScript,
