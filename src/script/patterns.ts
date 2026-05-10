@@ -1,7 +1,7 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
-import type { EntityKind, ScriptYield } from './types';
+import { INERT_KIND, type EntityKind, type ScriptYield } from './types';
 
 // True once the entity's center is past any screen edge — i.e. it's at least
 // half hidden. Suppress firing in that case so off-screen exits don't keep
@@ -426,13 +426,30 @@ export function* tiledScroll(
   for (const b of bullets) if (b.alive) b.die();
 }
 
-// Lay a row of stationary bullets along the segment `(x1,y1) → (x2,y2)`,
-// each lethal for `lifeFrames` frames before self-destructing. Visualises
-// as a "stroke" dividing the field — compose multiple calls into a
-// hatched / cross pattern. Default `spacing = kind.hitboxRadius × 2` so
-// squares touch and circles barely kiss; tighten for solidity, loosen for
-// a dotted laser feel. Fire-and-forget: returns immediately, the strokes
-// time out on their own.
+// A stroke from `(x1,y1) → (x2,y2)` lasting `lifeFrames` frames.
+// Two modes, both fire-and-forget so multiple intersecting strokes can
+// telegraph in parallel:
+//
+//   damaging: true (default) — lays a row of stationary bullets along
+//     the segment; each lethal for `lifeFrames` before self-destructing.
+//     Snaps in instantly. `spacing` defaults to `kind.hitboxRadius × 2`
+//     so squares touch and circles barely kiss.
+//
+//   damaging: false — spawns an inert script entity that draws an
+//     animated Phaser line growing from start to endpoint, then holds.
+//     Alpha brightens 0.3 → 0.8 as it fills, then stays solid. No
+//     bullets spawn, so the warning passes through the player. The
+//     entity ticks with the simulation, so dialog / pause freeze the
+//     animation cleanly.
+//
+// Telegraph → detonate: call once with damaging:false for the warning,
+// `yield` for the warning's life, then call again with damaging:true:
+//
+//   lineStroke(self, x1, y1, x2, y2, redSq, 60, { damaging: false });
+//   lineStroke(self, ax, ay, bx, by, redSq, 60, { damaging: false });
+//   yield 60;                                    // both telegraphs play in parallel
+//   lineStroke(self, x1, y1, x2, y2, redSq, 30); // detonate first line
+//   lineStroke(self, ax, ay, bx, by, redSq, 30); // detonate second
 export function lineStroke(
   self: Entity,
   x1: number,
@@ -441,26 +458,82 @@ export function lineStroke(
   y2: number,
   kind: EntityKind,
   lifeFrames: number,
-  spacing?: number,
+  opts?: {
+    damaging?: boolean;
+    spacing?: number;
+    color?: number;
+    width?: number;
+  },
 ): void {
-  shoot();
   const dx = x2 - x1;
   const dy = y2 - y1;
   const dist = Math.hypot(dx, dy);
   if (dist < 1e-6) return;
-  const step = spacing ?? Math.max(2, kind.hitboxRadius * 2);
-  const count = Math.max(2, Math.ceil(dist / step) + 1);
   const life = Math.max(1, Math.round(lifeFrames));
+  const damaging = opts?.damaging ?? true;
 
-  for (let i = 0; i < count; i++) {
-    const t = i / (count - 1);
-    const px = x1 + dx * t;
-    const py = y1 + dy * t;
-    self.spawn(kind, px, py, 0, 0, {
-      script: function* (b) {
-        yield life;
-        if (b.alive) b.die();
-      },
-    });
+  if (damaging) {
+    shoot();
+    const step = opts?.spacing ?? Math.max(2, kind.hitboxRadius * 2);
+    const count = Math.max(2, Math.ceil(dist / step) + 1);
+    for (let i = 0; i < count; i++) {
+      const t = i / (count - 1);
+      const px = x1 + dx * t;
+      const py = y1 + dy * t;
+      self.spawn(kind, px, py, 0, 0, {
+        script: function* (b) {
+          yield life;
+          if (b.alive) b.die();
+        },
+      });
+    }
+    return;
   }
+
+  // Non-damaging telegraph. Grow over the first half of life, hold at
+  // full opacity for the second half — predictable read time without
+  // an extra parameter. The animation lives on an INERT_KIND entity's
+  // script so it pauses with the rest of the simulation; the graphic
+  // is owned by the script and destroyed on exit.
+  const color = opts?.color ?? 0xff5577;
+  const width = opts?.width ?? 2;
+  const grow = Math.max(1, Math.floor(life / 2));
+  const hold = life - grow;
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  self.spawn(INERT_KIND, mx, my, 0, 0, {
+    script: function* (e) {
+      // Use the dedicated `Phaser.GameObjects.Line` rather than a
+      // Graphics + lineBetween — Graphics path strokes were truncating
+      // at the camera-viewport center on the sandbox's non-integer
+      // pixelArt zoom. Line is a separate render path (a textured quad)
+      // that doesn't go through the path-stroke rasterizer, so the full
+      // segment renders cleanly.
+      //
+      // Phaser.Line's anchor (line.x, line.y) sits at the geometric
+      // center of the segment, so we set position to the midpoint and
+      // pass the endpoints in local space (relative to that midpoint).
+      // setTo redraws the local endpoints each frame; the world
+      // position stays at midpoint.
+      const scene = e.stage.scene;
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      const line = scene.add
+        .line(cx, cy, 0, 0, 0, 0, color, 1)
+        .setOrigin(0.5, 0.5)
+        .setLineWidth(width)
+        .setDepth(1);
+      for (let i = 1; i <= grow; i++) {
+        const t = i / grow;
+        const alpha = 0.3 + 0.5 * t;
+        // Endpoints in line-local space (midpoint at 0,0).
+        line.setTo(x1 - cx, y1 - cy, x1 + dx * t - cx, y1 + dy * t - cy);
+        line.setAlpha(alpha);
+        yield 1;
+      }
+      if (hold > 0) yield hold;
+      line.destroy();
+      e.die();
+    },
+  });
 }

@@ -389,10 +389,44 @@ while (self.alive) {
 }
 ```
 
-For a "warning then commit" feel, fire a faint stroke first
-(`bulletStyle({ color: 0x553333, radius: 1, shape: 'square' })`) with
-a short life as the telegraph, wait ~30 frames, then fire the real
-red stroke at the same coords.
+For a "telegraph then commit" feel, call `lineStroke` twice with the
+same coordinates: first with `damaging: false` to draw an animated
+warning (the line grows from start to endpoint, alpha brightening as
+it fills, then holds at full opacity for half its life), then `yield`
+for the warning's life, then again with the default `damaging: true`
+to detonate.
+
+Both modes are fire-and-forget — multiple intersecting strokes can
+telegraph in parallel without waiting on each other.
+
+```js
+const redSq = bulletStyle({ color: 0xff5577, radius: 2, shape: 'square' });
+
+while (self.alive) {
+  const ax = Math.random() * 200;
+  const bx = Math.random() * 200;
+  const cy = Math.random() * 660;
+
+  // Three crossing telegraphs draw in parallel — vertical, horizontal,
+  // diagonal.
+  lineStroke(self, ax, 0, ax, 660, redSq, 60, { damaging: false });
+  lineStroke(self, 0, cy, 200, cy, redSq, 60, { damaging: false });
+  lineStroke(self, 0, 0, bx, 660, redSq, 60, { damaging: false });
+
+  yield 60;   // wait the warnings out
+
+  // Detonate all three with one short lethal stroke each.
+  lineStroke(self, ax, 0, ax, 660, redSq, 30);
+  lineStroke(self, 0, cy, 200, cy, redSq, 30);
+  lineStroke(self, 0, 0, bx, 660, redSq, 30);
+  yield* waitSeconds(0.6);
+}
+```
+
+Knobs: `lifeFrames` is the warning's total visible time (split 50/50
+into grow + hold phases). For the lethal hit, `lifeFrames` is the
+duration the bullets exist before despawning — short for a blink,
+long for a "stay out of this lane" wall.
 
 ---
 
@@ -403,7 +437,9 @@ ring(self, count, kind, speed, baseAngleRad?)
 aimed(self, count, kind, speed, spreadRad?)
 spread(self, count, kind, speed, baseAngleRad, spreadRad)
 arc(self, count, kind, speed, fromRad, toRad)
-lineStroke(self, x1, y1, x2, y2, kind, lifeFrames, spacing?)
+lineStroke(self, x1, y1, x2, y2, kind, lifeFrames,
+           { damaging?, spacing?, color?, width? })   // damaging: true → lethal bullets;
+                                                     // damaging: false → animated warning
 
 // Compositional grid → mover → wave:
 squareGrid({ cols, rows, x0, y0, dx, dy })           → Point[]
