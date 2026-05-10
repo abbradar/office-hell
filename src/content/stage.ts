@@ -6,6 +6,7 @@ import {
   STAGE1_RETRO_03_LOOP_KEY,
   STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
+  STAGE2_RETRO_03_LOOP_KEY,
   STAGE2_RETRO_03_OPENING_KEY,
 } from '../audio/keys';
 import { stopMusicLoop } from '../audio/music/loop';
@@ -25,7 +26,7 @@ import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
-import { emailColleagues3, emailColleaguesWave } from './waves/emailColleagues';
+import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroWave } from './waves/gymBro';
@@ -108,18 +109,27 @@ function* fromInterns(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromEmailColleagues(self: Entity): Generator<ScriptYield, void, void> {
+  // Idempotent in the live chain (retro-01 already running from
+  // `fromInterns`); switches in from menu music when this is the
+  // practice entry point. No intro fanfare — mid-section.
+  yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
+
   yield* timeWave(self, 15, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromUrgentCall(self);
 }
 
 function* fromUrgentCall(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
+
   yield* timeWave(self, 12, self.stage.separateWave(urgentCallWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromCheckEmail(self);
 }
 
 function* fromCheckEmail(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
+
   yield* timeWave(self, 15, self.stage.separateWave(checkEmailWave(self)));
 
   // Snap the cut to the retro-01 loop boundary so `fromGymBro`'s music
@@ -170,18 +180,24 @@ function* fromMoreCharts(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromVacationPhotos(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
   yield* timeWave(self, 8, self.stage.separateWave(vacationPhotosWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* fromEmailColleagues3(self);
+  yield* fromEmailColleagues2(self);
 }
 
-function* fromEmailColleagues3(self: Entity): Generator<ScriptYield, void, void> {
-  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues3(self)));
+function* fromEmailColleagues2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
+  yield* timeWave(self, 8, self.stage.separateWave(emailColleagues2(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromMeetingInterns(self);
 }
 
 function* fromMeetingInterns(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+
   yield* timeWave(self, 11, self.stage.separateWave(meetingInternsWave(self)));
 
   // Snap the cut to the retro-02 loop boundary so `fromWellnessCoach`'s
@@ -237,12 +253,19 @@ function* fromItAdmin(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
+  // Idempotent in the live chain (kaedalus-long already running from
+  // `fromItAdmin`); switches in from menu music when this is the
+  // practice entry point.
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
+
   yield* self.stage.separateWave(salesClientWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromJanitor(self);
 }
 
 function* fromJanitor(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
+
   yield* self.stage.separateWave(janitorsWave(self));
 
   // Snap the cut to the kaedalus-long loop boundary so Mr. Hodges
@@ -281,12 +304,16 @@ function* fromHrTrio(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* fromOversleeper(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+
   yield* self.stage.separateWave(oversleeperWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromFridayParty(self);
 }
 
 function* fromFridayParty(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+
   yield* self.stage.separateWave(fridayPartyWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromTheBoss(self);
@@ -297,10 +324,10 @@ function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
   // Wait the previous track to its loop boundary (no-op if none is
   // playing — the live chain enters from kaedalus-short, the
   // standalone practice entry from menu music) so the retro-03 opening
-  // lands on a clean seam. The opening keeps looping for the entire
-  // boss encounter — there's no separate main-melody loop to switch into.
+  // lands on a clean seam. The opening plays once, then hands off to
+  // the main loop for the rest of the encounter.
   yield* waitTrackEnded();
-  yield* startMusicLoop(STAGE2_RETRO_03_OPENING_KEY);
+  yield* startMusicWithIntro(STAGE2_RETRO_03_OPENING_KEY, STAGE2_RETRO_03_LOOP_KEY);
 
   yield* self.stage.separateWave(theBossWave(self));
   yield* fromOutro(self);
@@ -355,7 +382,7 @@ export const WAVES: WaveDef[] = [
     name: 'Vacation Photos',
     script: fromVacationPhotos,
   },
-  { id: 'r-email-colleagues-3', name: 'Email Colleagues 3', script: fromEmailColleagues3 },
+  { id: 'r-email-colleagues-2', name: 'Email Colleagues 2', script: fromEmailColleagues2 },
   { id: 'r-meeting-interns', name: 'Meeting Interns', script: fromMeetingInterns },
   {
     id: 'r-wellness-coach',

@@ -134,10 +134,21 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
       }
     } else if (kind === 'bomb') {
       const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
-      // consumeBombPress is edge-triggered (drains the bomb-tap queue), so
-      // a touch tap registers exactly once; the keyboard side uses isDown
-      // for held-key tolerance.
-      while (!(bombKey.isDown || scene.consumeBombPress())) yield { scriptFrames: 1 };
+      // `bombInput` is the unified scene event GameScene.tryFireBomb
+      // emits for both touch taps and keyboard X presses — listening to
+      // it here means we resolve on the same press that fires the bomb,
+      // no edge-triggered queue draining needed. Keep the bombKey.isDown
+      // fallback so the prompt stays held-key tolerant on keyboard.
+      let pressed = false;
+      const onBombInput = (): void => {
+        pressed = true;
+      };
+      scene.events.on('bombInput', onBombInput);
+      try {
+        while (!(bombKey.isDown || pressed)) yield { scriptFrames: 1 };
+      } finally {
+        scene.events.off('bombInput', onBombInput);
+      }
     } else {
       const fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       // Z also dismisses dialogues, so the press that just closed the
@@ -154,33 +165,22 @@ function* tutorialPrompt(self: Entity, template: string, kind: TutorialKind): Ge
   }
 }
 
-// Poll for the bomb input (X / touch tap) until detected. Uses
-// `realSeconds` rather than scriptFrames so the poll keeps ticking
-// through dialogue freezes — otherwise an X press during a cutscene
-// line would only register after the player advanced the dialog.
-// Keydown event captures short taps that .isDown polling would miss
-// when the press happens between two poll fires.
+// Wait for the player to request a bomb (X press / touch tap on the
+// bomb button) — both inputs funnel through GameScene's `bombInput`
+// scene event, which fires on the same press the bomb would. Yields
+// `realSeconds` so the wait keeps ticking through dialogue freezes
+// (where script frames are paused).
 function* bombSkipPoll(self: Entity): Generator<ScriptYield, void, void> {
   const scene = self.scene;
-  const kb = scene.input.keyboard;
-  if (!kb) return;
-  const bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   let pressed = false;
-  const onX = (): void => {
+  const onBombInput = (): void => {
     pressed = true;
   };
-  kb.on('keydown-X', onX);
+  scene.events.on('bombInput', onBombInput);
   try {
-    while (!pressed && !scene.consumeBombPress()) {
-      yield { realSeconds: 0.05 };
-    }
+    while (!pressed) yield { realSeconds: 0.05 };
   } finally {
-    kb.off('keydown-X', onX);
-    // The keydown event above sees the press but doesn't clear Phaser's
-    // _justDown flag. Without this drain, Player.controlUpdate would read
-    // it on the next frame (after controls + bombs unlock) and fire a
-    // bomb on the same X press the player used to skip the intro.
-    Phaser.Input.Keyboard.JustDown(bombKey);
+    scene.events.off('bombInput', onBombInput);
   }
 }
 
@@ -346,7 +346,12 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
     const offerSkip = hasCompletedIntro();
     let dismissSkipBubble: (() => void) | null = null;
     if (offerSkip) {
-      dismissSkipBubble = showTutorialBubble(self.scene, SKIP_TEMPLATE, { pos: 'right' });
+      // Bubble is also clickable — same `bombInput` event the keyboard X
+      // / touch ✱ button emit, so bombSkipPoll catches it the same way.
+      dismissSkipBubble = showTutorialBubble(self.scene, SKIP_TEMPLATE, {
+        pos: 'right',
+        onClick: () => self.scene.events.emit('bombInput'),
+      });
     }
 
     let skipped = false;

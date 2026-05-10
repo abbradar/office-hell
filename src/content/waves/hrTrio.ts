@@ -18,7 +18,12 @@ import { reportBullet } from './reportBullet';
 // converge into the bickering loop on the same frame so turn-taking lines up.
 
 const ENTRY_SPEED = 90;
-const ENTRY_Y = 95;
+// Pushed lower than the typical wave's ~110 because the lead HR's solo intro
+// is three lines tall (LEAD_LINE_1) — at the more usual entry y the bubble
+// would either clip the screen top or flip to under the sprite, where the
+// follower HRs walking in obscure it. See the "speakers must leave room for
+// their bubble" note in src/docs/stage-design.md.
+const ENTRY_Y = 130;
 const SPAWN_Y = -30;
 
 // Frames moveTo takes to walk an HR from SPAWN_Y to ENTRY_Y at ENTRY_SPEED.
@@ -106,23 +111,21 @@ function makeHrScript(role: Role): EntityScript {
       yield (2 - followerIndex) * FOLLOWER_SLOT + OPENER_TO_BICKER_GAP;
     }
 
-    // Bickering + bombardment loop — runs forever, only stops when this HR dies.
-    // Each pass walks the role's bicker lines (one say + volley per cycle, with
-    // turn-taking offsets) and then plays the unison bombardment shout/volleys
-    // before starting over.
-    while (self.alive) {
+    // Bickering + bombardment loop — runs forever, only stops when this HR dies
+    // (StageManager drops the script on the next update tick after the entity
+    // is released). Each pass walks the role's bicker lines (one say + volley
+    // per cycle, with turn-taking offsets) and then plays the unison
+    // bombardment shout/volleys before starting over.
+    while (true) {
       for (const line of lines.bicker) {
-        if (!self.alive) return;
         yield role * TURN_GAP;
         self.say(line, SAY_DURATION);
         aimed(self, REPORTS_PER_TURN, reportBullet, REPORT_SPEED, REPORT_SPREAD);
         yield (2 - role) * TURN_GAP + CYCLE_GAP;
       }
 
-      if (!self.alive) return;
       self.say(lines.shout, BOMBARD_VOLLEYS * BOMBARD_GAP);
       for (let i = 0; i < BOMBARD_VOLLEYS; i++) {
-        if (!self.alive) return;
         aimed(self, BOMBARD_COUNT, reportBullet, REPORT_SPEED, BOMBARD_SPREAD);
         yield BOMBARD_GAP;
       }

@@ -23,7 +23,7 @@ two colors interleave.
 const red = bulletStyle({ color: 0xff5577, radius: 4 });
 const blue = bulletStyle({ color: 0x66bbff, radius: 4, shape: 'diamond' });
 
-while (self.alive) {
+while (true) {
   ring(self, 12, red, 130);
   yield* waitSeconds(0.25);
   ring(self, 12, blue, 130, Math.PI / 12);  // half a step offset
@@ -39,7 +39,7 @@ angle to taste.
 ```js
 const pink = bulletStyle({ color: 0xff8aa7, radius: 3 });
 
-while (self.alive) {
+while (true) {
   aimed(self, 5, pink, 220, Math.PI / 6);  // 30° spread
   yield* waitSeconds(0.6);
 }
@@ -54,7 +54,7 @@ delta + faster cadence → tighter spiral; larger → "petals".
 const cyan = bulletStyle({ color: 0x66ffe0, radius: 3 });
 
 let theta = 0;
-while (self.alive) {
+while (true) {
   ring(self, 8, cyan, 110, theta);
   theta += Math.PI / 24;     // ~7.5° per tick
   yield 6;                    // 10 Hz
@@ -74,7 +74,7 @@ const RADIUS = 80;
 const SPEED = 90;
 
 let theta = 0;
-while (self.alive) {
+while (true) {
   for (let i = 0; i < 12; i++) {
     const a = theta + (i * Math.PI * 2) / 12;
     const x = self.x + Math.cos(a) * RADIUS;
@@ -97,7 +97,7 @@ like any other script.
 ```js
 const orange = bulletStyle({ color: 0xff9944, radius: 4 });
 
-while (self.alive) {
+while (true) {
   self.spawn(orange, self.x, self.y, 0, 0, {
     script: function* (b) {
       // Phase 1 — drift toward top-right.
@@ -127,7 +127,7 @@ visible.
 ```js
 const red = bulletStyle({ color: 0xff5577, radius: 3 });
 
-while (self.alive) {
+while (true) {
   for (let i = 0; i < 8; i++) {
     const baseAngle = self.angleToPlayer() + (i - 3.5) * 0.06;
     self.spawn(
@@ -160,7 +160,7 @@ of fire" pointing in a specific direction without aiming at the player.
 ```js
 const blue = bulletStyle({ color: 0x66bbff, radius: 3 });
 
-while (self.alive) {
+while (true) {
   // 9 bullets evenly spread between 30° and 150°, i.e. a 120° fan
   // pointing roughly downward.
   arc(self, 9, blue, 150, Math.PI / 6, (5 * Math.PI) / 6);
@@ -185,7 +185,7 @@ for (let i = 0; i < 3; i++) {
   self.spawn(turret, tx, TURRET_Y, 0, 0, {
     script: function* (t) {
       yield i * 24;                // stagger by ~0.4 s per turret
-      while (t.alive) {
+      while (true) {
         aimed(t, 3, shot, 180, Math.PI / 8);   // 3-bullet fan, 22.5° spread
         yield* waitSeconds(1.2);
       }
@@ -194,7 +194,7 @@ for (let i = 0; i < 3; i++) {
 }
 
 // Boss itself idles while the turrets shoot.
-while (self.alive) yield 60;
+while (true) yield 60;
 ```
 
 A rotating variant: replace the `aimed` call with `ring(t, 1, shot, 160, theta)`
@@ -224,7 +224,7 @@ for (let i = 0; i < 5; i++) {
   self.spawn(enemy, -40 + i * SPACING, Y, DRIFT_VX, 0, {
     script: function* (e) {
       // Phase 1 — fire a ring every 0.5 s for 5 s (10 rings).
-      for (let n = 0; n < 10 && e.alive; n++) {
+      for (let n = 0; n < 10; n++) {
         ring(e, 8, shot, 100);
         yield* waitSeconds(0.5);
       }
@@ -236,7 +236,7 @@ for (let i = 0; i < 5; i++) {
 }
 
 // Boss idles while the wall does its thing.
-while (self.alive) yield 60;
+while (true) yield 60;
 ```
 
 If you want the wall to enter as a single beat (all 5 spawning at the
@@ -253,7 +253,7 @@ fill, large slow ones for read-the-room moments.
 const fill = bulletStyle({ color: 0xffffff, radius: 2 });
 const heavy = bulletStyle({ color: 0xff5577, radius: 6, shape: 'square' });
 
-while (self.alive) {
+while (true) {
   ring(self, 24, fill, 180);
   yield* waitSeconds(0.15);
   ring(self, 24, fill, 180, Math.PI / 24);
@@ -286,7 +286,7 @@ const blueD = bulletStyle({ color: 0x66bbff, radius: 3, shape: 'diamond' });
 const falling = move(Math.PI / 2, 30, 80);   // down, accelerating
 
 let beat = 0;
-while (self.alive) {
+while (true) {
   // Single-row hex sweep at the top. `x0` shifts by dx/2 every other
   // beat for the tessellation; `speed: Infinity` makes the whole row
   // spawn on the same frame (no horizontal sweep).
@@ -378,7 +378,7 @@ when to throw the next stroke.
 const redSq = bulletStyle({ color: 0xff5577, radius: 2, shape: 'square' });
 const LIFE = 180;   // 3 seconds at 60 fps
 
-while (self.alive) {
+while (true) {
   // Three crossing strokes — diagonal, horizontal, vertical — all
   // lethal for 3s. Player has to find the one safe pocket between
   // them before they vanish.

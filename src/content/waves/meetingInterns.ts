@@ -77,7 +77,6 @@ const EXIT_SPEED = 320;
 // player drifts during the launch. Each camera is rotated to face along
 // the aim vector so the lenses point at the player.
 function* fireBowlingArrow(self: Entity): Generator<ScriptYield, void, void> {
-  if (!self.alive) return;
   const aim = self.angleToPlayer();
   // Forward unit vector (direction of travel) and the perpendicular
   // sideways vector (90° CCW from forward).
@@ -88,7 +87,6 @@ function* fireBowlingArrow(self: Entity): Generator<ScriptYield, void, void> {
   const vx = fx * ARROW_SPEED;
   const vy = fy * ARROW_SPEED;
   for (let row = 0; row < ARROW_ROWS; row++) {
-    if (!self.alive) return;
     if (row > 0) yield ROW_DELAY_FRAMES;
     shoot();
     const count = row + 1;
@@ -108,7 +106,6 @@ function* fireBowlingArrow(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function fireRandomShot(self: Entity): void {
-  if (!self.alive) return;
   shoot();
   const aim = self.angleToPlayer() + (Math.random() - 0.5) * 2 * RANDOM_JITTER;
   self.spawn(bullet, self.x, self.y, Math.cos(aim) * RANDOM_SPEED, Math.sin(aim) * RANDOM_SPEED);
@@ -125,7 +122,6 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
     // formations rather than all at once.
     const subWait = Math.floor(BARRAGE_GAP / (RANDOM_SHOTS_PER_GAP + 1));
     for (let i = 0; i < BARRAGES; i++) {
-      if (!self.alive) return;
       yield* fireBowlingArrow(self);
       // After the last formation, head straight for the front rather than
       // serving out the inter-barrage random shots and gap.

@@ -287,11 +287,11 @@ export function* wave(
   const minProj = projected[0]?.proj ?? 0;
 
   let lap = 0;
-  while (lap < loops && self.alive) {
+  while (lap < loops) {
     let cursor = 0;
     let elapsed = 0;
     shoot();
-    while (cursor < projected.length && self.alive) {
+    while (cursor < projected.length) {
       while (cursor < projected.length) {
         const item = projected[cursor];
         if (!item) break;
@@ -318,7 +318,7 @@ export function* wave(
       elapsed++;
     }
     lap++;
-    if (lap < loops && self.alive && loopDelay > 0) yield loopDelay;
+    if (lap < loops && loopDelay > 0) yield loopDelay;
   }
 }
 
@@ -393,7 +393,7 @@ export function* tiledScroll(
   // re-syncs body.prev so velocity stays consistent through the wrap;
   // setVelocity restores the drift since reset zeros it.
   let elapsed = 0;
-  while (elapsed < duration && self.alive) {
+  while (elapsed < duration) {
     yield 1;
     elapsed++;
     for (const b of bullets) {

@@ -39,7 +39,6 @@ function* barrage(self: Entity): Generator<ScriptYield, void, void> {
   // that fixed line; the player dodges by stepping out of the column.
   const [vx, vy] = self.vectorToPlayer(STREAM_SPEED);
   for (let i = 0; i < STREAM_BULLETS; i++) {
-    if (!self.alive) return;
     if (i % STREAM_SFX_EVERY === 0) shoot();
     self.spawn(questionBullet, self.x, self.y, vx, vy);
     yield STREAM_GAP;
@@ -62,7 +61,6 @@ function* oversleeperScript(self: Entity) {
   }
 
   for (let i = 0; i < BARRAGES; i++) {
-    if (!self.alive) return;
     const line = QUESTIONS[i];
     if (line) self.say(line, SAY_FRAMES);
     yield 35;

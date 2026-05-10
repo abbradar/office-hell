@@ -58,7 +58,6 @@ function makeVacationScript(role: Role): EntityScript {
 
     const lines = LINES_BY_ROLE[role];
     for (let i = 0; i < BARRAGES; i++) {
-      if (!self.alive) return;
       const intro = checkStageOnce(self, 'vacationPhotos:intro');
       self.say(intro ? 'Look — vacation photos!' : (lines[i] ?? 'Look look!'), SAY_FRAMES);
       yield PRE_FIRE_GAP;

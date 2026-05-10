@@ -6,7 +6,6 @@ import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
-import { isTouchDevice } from '../input/device';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
@@ -86,13 +85,6 @@ export class Player extends Entity {
   // scripts can then reach kind-specific config (like character) without a cast.
   declare kind: PlayerKind;
 
-  private leftKey: Phaser.Input.Keyboard.Key;
-  private rightKey: Phaser.Input.Keyboard.Key;
-  private upKey: Phaser.Input.Keyboard.Key;
-  private downKey: Phaser.Input.Keyboard.Key;
-  private focusKey: Phaser.Input.Keyboard.Key;
-  private fireKey: Phaser.Input.Keyboard.Key;
-  private bombKey: Phaser.Input.Keyboard.Key;
   private lastFireMs = 0;
   // True while the player is moving via keyboard with Shift held — speed
   // scales by FOCUS_SPEED_RATIO and updateAnim forces 'walk'. Set in
@@ -185,15 +177,27 @@ export class Player extends Entity {
     this.hitboxGfx.strokeCircle(0, 0, kind.hitboxRadius);
     this.hitboxGfx.setDepth(199);
 
-    const kb = scene.input.keyboard;
-    if (!kb) throw new Error('Keyboard input plugin missing');
-    this.leftKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
-    this.rightKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
-    this.upKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
-    this.downKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
-    this.focusKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
-    this.fireKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
-    this.bombKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    // Bomb input flows in via the scene's `bombInput` event — touch bomb
+    // button + keyboard X both emit it (see GameScene). The Player owns
+    // the eligibility checks (alive, controlsEnabled, bombs > 0) so the
+    // dispatcher in GameScene stays a one-line emit. The listener is
+    // tied to the scene's lifetime, which matches Player's own lifetime
+    // (Player is destroyed when the scene tears down), so no manual
+    // off() is needed.
+    scene.events.on('bombInput', this.tryFireBomb, this);
+  }
+
+  // Fire a bomb if conditions allow — entry point from the `bombInput`
+  // event. Gates on stage.paused so a tap on the visible bomb button
+  // during a dialogue / pause overlay / continue overlay can't burn a
+  // bomb (the event still fires for the intro skip / bomb tutorial poll
+  // to catch — they listen to the same event).
+  private tryFireBomb(): void {
+    if (this.stage.paused) return;
+    if (!this.alive || !this.controlsEnabled) return;
+    if (this.kind.bombs <= 0) return;
+    this.kind.consumeBomb(this);
+    activateBomb(this, this.stage);
   }
 
   get character(): CharacterDef {
@@ -351,7 +355,7 @@ export class Player extends Entity {
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 
-  controlUpdate(): void {
+  controlUpdate(input: PlayerControlInput): void {
     this.hitboxGfx.setPosition(this.x, this.y);
     this.hitboxGfx.setVisible(this.alive);
 
@@ -370,10 +374,8 @@ export class Player extends Entity {
     const minY = HEADER_H + halfH;
     const maxY = GAME_H - halfH;
 
-    const kbDirX = (this.leftKey.isDown ? -1 : 0) + (this.rightKey.isDown ? 1 : 0);
-    const kbDirY = (this.upKey.isDown ? -1 : 0) + (this.downKey.isDown ? 1 : 0);
-    const kbActive = kbDirX !== 0 || kbDirY !== 0;
-    this.focused = kbActive && this.focusKey.isDown;
+    const kbActive = input.kbDirX !== 0 || input.kbDirY !== 0;
+    this.focused = kbActive && input.focusHeld;
 
     let newVx = 0;
     let newVy = 0;
@@ -385,8 +387,8 @@ export class Player extends Entity {
       // Zero the component(s) pressed *into* a wall before normalising
       // so a diagonal press against a single wall keeps full speed
       // along the unblocked axis instead of dropping to sqrt(2)/2.
-      let dx = kbDirX;
-      let dy = kbDirY;
+      let dx = input.kbDirX;
+      let dy = input.kbDirY;
       if (dx < 0 && this.x <= minX) dx = 0;
       if (dx > 0 && this.x >= maxX) dx = 0;
       if (dy < 0 && this.y <= minY) dy = 0;
@@ -409,7 +411,7 @@ export class Player extends Entity {
       // behind the player and gap flips sign — the player overshoots,
       // reverses, and bounces around the eventual target. That
       // bouncing reads as a visible twitch on every finger-up.
-      const finger = this.scene.getTouchTarget();
+      const finger = input.touchTarget;
       if (finger === null) {
         this.targetSamples.length = 0;
         this.touchTarget = { x: this.x, y: this.y };
@@ -467,8 +469,7 @@ export class Player extends Entity {
     this.x = Phaser.Math.Clamp(this.x, minX, maxX);
     this.y = Phaser.Math.Clamp(this.y, minY, maxY);
 
-    const firing = this.firingEnabled && (isTouchDevice || this.fireKey.isDown);
-    if (firing) {
+    if (input.firing && this.firingEnabled) {
       const now = this.scene.time.now;
       if (now - this.lastFireMs >= FIRE_INTERVAL_MS) {
         this.lastFireMs = now;
@@ -480,19 +481,27 @@ export class Player extends Entity {
         shoot();
       }
     }
-
-    // Drain JustDown unconditionally — Phaser leaves the `_justDown`
-    // flag set until something reads it, so skipping the read while
-    // bombs=0 would queue a press that fires the moment bombs unlock
-    // (intro tutorial). The touch tap queue is the opposite: only drain
-    // it when a bomb is actually available, otherwise the intro's bomb
-    // tutorial poll loses every press to this same consumer (controls
-    // run every frame, the script polls every other frame, so half the
-    // taps got eaten here before the tutorial saw them).
-    const bombJustDown = Phaser.Input.Keyboard.JustDown(this.bombKey);
-    if (this.kind.bombs > 0 && (bombJustDown || this.scene.consumeBombPress())) {
-      this.kind.consumeBomb(this);
-      activateBomb(this, this.stage);
-    }
   }
 }
+
+// Per-frame input snapshot the GameScene assembles from keyboard +
+// touch state and hands to Player.controlUpdate. Keeping the input
+// reading on the scene side means the Player has no dependency on
+// Phaser keys / touch helpers — it just acts on what it's told.
+export type PlayerControlInput = {
+  // Keyboard movement direction per axis: -1 / 0 / 1. Player normalises
+  // diagonals (so |v| stays at PLAYER_SPEED) and zeroes whichever axis
+  // is pressed into a wall before normalising.
+  kbDirX: number;
+  kbDirY: number;
+  // Whether the focus modifier (Shift) is held. Only meaningful when at
+  // least one kbDir component is non-zero; Player gates focused-mode on
+  // both being true.
+  focusHeld: boolean;
+  // Touch finger position in logical coords (smoothed by Player), or
+  // null when no movement finger is held / the platform is desktop.
+  touchTarget: { x: number; y: number } | null;
+  // Whether the auto-fire stream should be live this frame. True on
+  // touch (auto-fire) or when the keyboard fire key is held.
+  firing: boolean;
+};

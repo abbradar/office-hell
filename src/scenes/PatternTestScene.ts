@@ -132,7 +132,7 @@ const DEFAULT_CODE = `// Helpers in scope:
 const red = bulletStyle({ color: 0xff5577, radius: 4 });
 const blue = bulletStyle({ color: 0x66bbff, radius: 4, shape: 'diamond' });
 
-while (self.alive) {
+while (true) {
   ring(self, 12, red, 130);
   yield* waitSeconds(0.25);
   ring(self, 12, blue, 130, Math.PI / 12);
@@ -246,7 +246,7 @@ const DEFAULT_BLOCKS: Block[] = [
 function generateBlocksCode(blocks: Block[], loopForever: boolean): string {
   const lines: string[] = [];
   const indent = loopForever ? '  ' : '';
-  if (loopForever) lines.push('while (self.alive) {');
+  if (loopForever) lines.push('while (true) {');
   for (const b of blocks) lines.push(indent + BLOCK_SPECS[b.type].emit(b.params));
   if (loopForever) lines.push('}');
   return lines.join('\n');

@@ -20,7 +20,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // Every entity in this codebase is constructed inside GameScene (StageManager
   // is created there and is the only `spawn` caller), so narrow the inherited
   // Phaser.Scene typing to GameScene — call sites can reach scene-specific
-  // methods (consumeBombPress) without casts.
+  // methods (getTouchTarget, etc.) without casts.
   declare scene: GameScene;
 
   stage!: StageManager;

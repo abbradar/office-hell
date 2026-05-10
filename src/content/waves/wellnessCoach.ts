@@ -193,7 +193,7 @@ function makeExhaleBulletScript(stream: ExhaleStream): EntityScript {
     // Peak lateral velocity: amp * ω, where ω = freq * SCRIPT_FPS rad/sec.
     const lateralVScale = stream.amp * stream.freq * SCRIPT_FPS;
     let localTick = 0;
-    while (self.alive) {
+    while (true) {
       const phase = localTick * stream.freq;
       const lateralV = lateralVScale * Math.cos(phase);
       self.body.setVelocity(baseVx + perpX * lateralV, baseVy + perpY * lateralV);

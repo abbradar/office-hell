@@ -267,9 +267,9 @@ function* fireBarMaze(self: Entity, gapIndex: number): Generator<ScriptYield, vo
 // --- Colleague scripts ---------------------------------------------------
 
 function* pieFireSequence(self: Entity): Generator<ScriptYield, void, void> {
-  if (self.alive) yield* firePieBarrage(self);
+  yield* firePieBarrage(self);
   yield VOLLEY_GAP_FRAMES;
-  if (self.alive) yield* firePieBarrage(self);
+  yield* firePieBarrage(self);
 }
 
 function* pieColleagueScript(self: Entity): Generator<ScriptYield, void, void> {
@@ -325,7 +325,7 @@ const PIE_SIDE_RING_INTERVAL = 10;
 
 function* fireSideRings(self: Entity, interval: number): Generator<ScriptYield, void, void> {
   while (true) {
-    if (self.alive) ring(self, SIDE_RING_COUNT, bullet, SIDE_RING_SPEED, Math.random() * Math.PI * 2);
+    ring(self, SIDE_RING_COUNT, bullet, SIDE_RING_SPEED, Math.random() * Math.PI * 2);
     yield interval;
   }
 }
@@ -333,7 +333,6 @@ function* fireSideRings(self: Entity, interval: number): Generator<ScriptYield, 
 function* barFireSequence(self: Entity): Generator<ScriptYield, void, void> {
   let prevGap: number | null = null;
   for (let v = 0; v < COLUMN_VOLLEYS; v++) {
-    if (!self.alive) break;
     const gap = nextGapIndex(prevGap);
     yield* fireBarMaze(self, gap);
     prevGap = gap;
