@@ -189,6 +189,13 @@ export class StageManager {
   // independent — see tutorialPrompt for the physics-only freeze that
   // keeps script polling alive.
   paused = false;
+  // The top-level "stage" entity — the one spawned by GameScene that
+  // runs the chain script (`stageBody` / `makeWaveStage` / etc.). Set
+  // by GameScene right after it spawns the entity; consumers that
+  // iterate `stage.active` for mass-purge operations (e.g. the
+  // final-boss death sweep) MUST skip this entity, or the chain
+  // script dies with it and the wave never proceeds.
+  stageEntity: Entity | null = null;
   // Name shown in the HUD header during a boss fight. Set and cleared by
   // the boss's own script — the manager/HUD don't infer it from entity
   // state.
@@ -266,7 +273,7 @@ export class StageManager {
   // per-tick resolver retries until one appears or the timeout fires.
   private pendingDrops: { tier: EntityTier; framesLeft: number }[] = [];
 
-  private readonly active: Entity[] = [];
+  readonly active: Entity[] = [];
   // Two waiting queues, one per "clock":
   //
   //   physicsWaiting — drained one tick per Phaser WORLD_STEP. Auto-pauses

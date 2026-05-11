@@ -1,5 +1,5 @@
 import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIALOG_KEY } from '../../audio/keys';
-import { getMusicTime, stopMusicLoop } from '../../audio/music/loop';
+import { fadeOutMusic, getMusicTime, stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { becomeHittable, bossShudder, nextBossPhase, PhasedBossKind, waitPhaseDown } from '../../script/boss';
@@ -7,7 +7,6 @@ import { aimed, arc, cameraPunch, lineExplosion, lineStrokeTelegraph, moveTo, ri
 import {
   type BeatmapBeat,
   type BeatmapSpec,
-  clearBullets,
   markWave,
   prepareForBoss,
   race,
@@ -22,7 +21,7 @@ import {
   waitSeconds,
   waitTrackEnded,
 } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { EntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
 import {
   blueExplosion,
   blueLongerDroplet,
@@ -61,13 +60,13 @@ import { RED_EXPLOSION_FRAMES } from '../textures';
 const BOSS_ENTRY_SPEED = 110;
 const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
-// Total boss HP across all three phases: 650 = 400 (phase 1, until
-// 250 hp remaining) + 150 (phase 2, until 100 hp remaining) + 100
+// Total boss HP across all three phases: 800 = 400 (phase 1, until
+// 400 hp remaining) + 200 (phase 2, until 200 hp remaining) + 200
 // (phase 3, lethal). PhasedBossKind decrements per-phase, so the
 // debug HUD's bossHp readout shows the current phase pool draining.
 const PHASE1_HP = 400;
-const PHASE2_HP = 150;
-const PHASE3_HP = 100;
+const PHASE2_HP = 200;
+const PHASE3_HP = 200;
 
 // Beat math — 113 BPM, beat = 0.531 s, bar = 2.124 s. Intro is
 // exactly 32 beats / 8 bars; loop body is 80 beats / 20 bars. See
@@ -219,7 +218,8 @@ function makeFanSpiralController(durationS: number): EntityKind {
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= durationS) break;
       }
 
       ring(self, 5, blueLongerDroplet, 110, angle);
@@ -273,7 +273,8 @@ function* counterPetalScript(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= COUNTER_PETAL_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= COUNTER_PETAL_DURATION_S) break;
     }
 
     ring(self, 2, redDiamondMd, COUNTER_PETAL_SPEED1, angle1 - 0.08);
@@ -351,7 +352,8 @@ function* bossWalkSegment(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= BOSS_WALK_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= BOSS_WALK_DURATION_S) break;
     }
 
     // Reject-sample a target ≥ MIN_DIST from current position. After
@@ -448,7 +450,8 @@ function makeVertExplosionDirector(
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= durationS) break;
       }
 
       // Reject-sample an x that's at least MIN_SEPARATION_PX from
@@ -534,7 +537,8 @@ function* emailVolleySegment(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
     }
     aimed(self, EMAIL_VOLLEY_COUNT, emailBordered, EMAIL_VOLLEY_SPEED, EMAIL_VOLLEY_SPREAD_RAD);
     yield* waitSeconds(EMAIL_VOLLEY_INTERVAL_S);
@@ -583,7 +587,8 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= ARC_WAVE_DURATION_S) break;
+        if (m === null) break;
+        if (m.time - startT >= ARC_WAVE_DURATION_S) break;
       }
 
       // Lead arc — slower lava-droplet pair on the inner cone.
@@ -667,14 +672,28 @@ function makeOrbitController(opts: {
 
     const segmentStartMs = self.scene.time.now;
     const startT = getMusicTime()?.time ?? null;
-    let nextFireMs = opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
+    let nextFireMs =
+      opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
 
+    // Two exit paths:
+    //   - duration cap reached → kill the orbiter children as part of
+    //     normal cleanup (so the next loop iteration's controller
+    //     spawn starts fresh).
+    //   - boss gone (death script cleared `stage.bossEntity`) →
+    //     leave the children alive so the boss-death bullet sweep can
+    //     fling them along with the rest of the cluster.
+    let bossLost = false;
     while (self.alive) {
+      if (stage.bossEntity === null) {
+        bossLost = true;
+        break;
+      }
       // Music-time duration gate — same shape as the other
       // controllers, so each loop iteration re-runs the full segment.
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= opts.durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= opts.durationS) break;
       }
 
       const c = centerOf();
@@ -687,7 +706,7 @@ function makeOrbitController(opts: {
       // registers.
       for (let i = 0; i < children.length; i++) {
         const e = children[i];
-        if (!e || !e.alive) continue;
+        if (!e?.alive) continue;
         const base = baseAngles[i] ?? 0;
         const a = base + angleOffset;
         const x = c.x + Math.cos(a) * opts.radius;
@@ -704,7 +723,7 @@ function makeOrbitController(opts: {
         const fireAngleOffset = fireElapsedS * opts.angularVelocity;
         for (let i = 0; i < children.length; i++) {
           const e = children[i];
-          if (!e || !e.alive) continue;
+          if (!e?.alive) continue;
           const base = baseAngles[i] ?? 0;
           const a = base + fireAngleOffset;
           const vx = Math.cos(a) * ORBIT_FIRE_SPEED;
@@ -718,8 +737,12 @@ function makeOrbitController(opts: {
       yield 1;
     }
 
-    for (const e of children) {
-      if (e.alive) e.die();
+    // Normal duration exit cleans up the orbiter children; the
+    // boss-lost path leaves them so the death sweep can fling them.
+    if (!bossLost) {
+      for (const e of children) {
+        if (e.alive) e.die();
+      }
     }
     self.die();
   }
@@ -827,7 +850,8 @@ function* topAssistantDirectorScript(self: Entity): Generator<ScriptYield, void,
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
     }
 
     // Pick a random visible door + a random wall side. Filter out
@@ -1102,7 +1126,7 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
     lines: [
-      { speaker: 'right', text: 'Why are not at your desk?' },
+      { speaker: 'right', text: 'Why are you not at your desk?' },
       { speaker: 'left', text: "It's 11 PM. I just want to go home." },
       { speaker: 'right', text: "No, today you don't." },
       { speaker: 'right', text: 'The requests are piling up. You need get back to work.' },
@@ -1126,15 +1150,17 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
 
   self.say('Performance review.', 90);
 
-  yield* race(
-    runBeatmap(self, phase1Spec),
-    bossLoopRacers(self),
-    untilPhaseEndOrTime(self, PHASE1_TIME_CAP_S),
-  );
+  yield* race(runBeatmap(self, phase1Spec), bossLoopRacers(self), untilPhaseEndOrTime(self, PHASE1_TIME_CAP_S));
   if (!self.alive) return;
   yield* nextBossPhase(self);
   yield* theBossPhase2Script(self);
 }
+
+// How long each phase-entry bubble stays up (frames @ 60fps). 90 = 1.5 s.
+// The second bubble's `yield 90` is the wait *before* it appears so
+// the first line has time to read; we let the second one fall off
+// naturally as the patterns ramp up.
+const PHASE_ENTRY_BUBBLE_FRAMES = 90;
 
 function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
   // For practice entries jumping straight to phase 2: claim the boss
@@ -1142,13 +1168,11 @@ function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> 
   // claimBoss + becomeHittable are both idempotent.
   claimBoss(self);
   becomeHittable(self);
-  self.say('We are not done.', 90);
+  self.say('How are talking to your BOSS?!', PHASE_ENTRY_BUBBLE_FRAMES);
+  yield PHASE_ENTRY_BUBBLE_FRAMES;
+  self.say('I will SHRINK the whole DEPARTMENT!', PHASE_ENTRY_BUBBLE_FRAMES);
 
-  yield* race(
-    runBeatmap(self, phase2Spec),
-    bossLoopRacers(self),
-    untilPhaseEndOrTime(self, PHASE2_TIME_CAP_S),
-  );
+  yield* race(runBeatmap(self, phase2Spec), bossLoopRacers(self), untilPhaseEndOrTime(self, PHASE2_TIME_CAP_S));
   if (!self.alive) return;
   yield* nextBossPhase(self);
   yield* theBossPhase3Script(self);
@@ -1157,7 +1181,9 @@ function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> 
 function* theBossPhase3Script(self: Entity): Generator<ScriptYield, void, void> {
   claimBoss(self);
   becomeHittable(self);
-  self.say('Final notice.', 90);
+  self.say('No EEXCUSES!', PHASE_ENTRY_BUBBLE_FRAMES);
+  yield PHASE_ENTRY_BUBBLE_FRAMES;
+  self.say('Your work worth NOTHING!', PHASE_ENTRY_BUBBLE_FRAMES);
 
   // Lethal phase — no time cap; race the patterns against entity
   // death (PhasedBossKind.takeDamage routes the killing blow through
@@ -1185,19 +1211,157 @@ function* bossLoopRacers(self: Entity): Generator<ScriptYield, void, void> {
 
 // --- Death ---
 
+// Two-stage post-death bullet defusal. Stage 1 (50 ms): retexture
+// every live enemy bullet as the default round `bullet` sprite and
+// pin its velocity to 0 — visually "the bullets all become harmless
+// dots". Stage 2 (250 ms): point each bullet's velocity away from
+// the player and accelerate from `START_SPEED` to `END_SPEED`, so
+// the cluster fans out and clears the field. Whatever's still on
+// screen at the 250 ms mark is `die()`'d so the wave's hand-off to
+// the ending scene starts on a clean slate.
+const BULLET_DEFUSE_FREEZE_S = 0.05;
+const BULLET_DEFUSE_LAUNCH_S = 0.25;
+const BULLET_DEFUSE_START_SPEED = 200;
+const BULLET_DEFUSE_END_SPEED = 1600;
+
+function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void> {
+  const stage = self.stage;
+  const player = stage.player;
+
+  // Snapshot every live projectile currently on the field. The boss's
+  // bullets are a mix of EntityKind variants (`redDroplet`,
+  // `redDiamondMd`, `redCross`, `emailBordered`, etc.) — using
+  // `EnemyBulletEntityKind` as the filter only catches the basic
+  // round `bullet` and misses everything else, so we partition by
+  // "lives in damages.player AND isn't HP-bearing AND has no
+  // defaultScript". That keeps the boss (HP) and side-door
+  // assistants (have a defaultScript) out of the cluster while
+  // pulling in every projectile + orbiter + explosion tile.
+  const bullets: Entity[] = [];
+  for (const child of stage.damages.player.getChildren()) {
+    const e = child as Entity;
+    if (!e.alive) continue;
+    if (e.kind instanceof HPEntityKind) continue;
+    if (e.kind.defaultScript !== undefined) continue;
+    bullets.push(e);
+  }
+  if (bullets.length === 0) return;
+
+  // Stage 1 — freeze + reskin to the default bullet so the cluster
+  // reads as a single tidy thing rather than the chaotic mix it was
+  // mid-fight.
+  for (const e of bullets) {
+    if (!e.alive) continue;
+    e.setTexture('bullet');
+    e.body.setVelocity(0, 0);
+  }
+  // The player can't take damage during the defuse — the fight's
+  // over, and bullets flying *through* the player on their way out
+  // shouldn't undo the win.
+  player.pushInvincible();
+
+  yield* waitSeconds(BULLET_DEFUSE_FREEZE_S);
+
+  // Stage 2 — radial outward from the player, accelerating.
+  const trajectories: { entity: Entity; ux: number; uy: number }[] = [];
+  for (const e of bullets) {
+    if (!e.alive) continue;
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-3) {
+      // Bullet sitting on the player — pick a random direction so it
+      // still leaves the field instead of stalling on the origin.
+      const a = Math.random() * Math.PI * 2;
+      trajectories.push({ entity: e, ux: Math.cos(a), uy: Math.sin(a) });
+    } else {
+      trajectories.push({ entity: e, ux: dx / dist, uy: dy / dist });
+    }
+  }
+
+  const startMs = self.scene.time.now;
+  while (true) {
+    const elapsedS = (self.scene.time.now - startMs) / 1000;
+    if (elapsedS >= BULLET_DEFUSE_LAUNCH_S) break;
+    const k = elapsedS / BULLET_DEFUSE_LAUNCH_S;
+    const speed = BULLET_DEFUSE_START_SPEED + (BULLET_DEFUSE_END_SPEED - BULLET_DEFUSE_START_SPEED) * k;
+    for (const t of trajectories) {
+      if (!t.entity.alive) continue;
+      t.entity.body.setVelocity(t.ux * speed, t.uy * speed);
+    }
+    yield 1;
+  }
+
+  // Anything still on the field after the launch window — kill it.
+  for (const t of trajectories) {
+    if (t.entity.alive) t.entity.die();
+  }
+
+  // Belt-and-braces purge: kill every active entity that isn't the
+  // player or the boss. The directors all bailed when the music
+  // stopped (see the `m === null` checks in each controller loop),
+  // but anything they had in flight at that moment — line-explosion
+  // runners mid-sweep, top-assistant entities mid-walk-back, etc. —
+  // is still happily ticking out its own timeline and would keep
+  // spawning fresh tiles / pose threats into the ending walk-home.
+  // One pass over `stage.active` after the visible flourish gives
+  // the scene a clean handoff.
+  for (const e of stage.active) {
+    if (e === self) continue;
+    if (e === player) continue;
+    // The chain script lives on `stage.stageEntity` — killing it
+    // here would terminate the wave hand-off into endingScene and
+    // the game would just sit there with a frozen `wave: ending`
+    // label.
+    if (e === stage.stageEntity) continue;
+    if (e.alive) e.die();
+  }
+
+  player.popInvincible();
+}
+
+// Music phase-out window, in ms, kicked off the moment the boss takes
+// the lethal hit (= the death script starts). User-spec: "phase out
+// the track 0.2 s after boss defeat" — the metal loop ramps to zero
+// over 200 ms so the dialog/shudder beat plays out under silence.
+const BOSS_DEATH_MUSIC_FADE_MS = 500;
+
 function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
   self.body.enable = false;
+
+  // Phase out the metal track immediately so the death sequence
+  // (dialog → shudder → bullet sweep → die) plays out under silence.
+  // Fired off the audio context's clock — runs in parallel with the
+  // dialog freeze, no `yield` needed.
+  fadeOutMusic(BOSS_DEATH_MUSIC_FADE_MS);
+
+  // Signal any live orbit controllers to bail out (and leave their
+  // orbiter children alive for the upcoming bullet sweep). claimBoss's
+  // `onDeath` would clear this later from `self.die()`, but the
+  // controllers need the signal NOW — they re-position orbiters every
+  // physics frame, and once the dialog dismisses and physics resumes
+  // their `setPosition`/`body.reset` calls would overwrite the
+  // sweep's velocity changes.
+  self.stage.bossEntity = null;
 
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
-    lines: [{ speaker: 'right', text: 'TODO: final boss defeat line.' }],
+    lines: [
+      { speaker: 'right', text: 'I-I! Ne.. Breath!.' }, 
+      { speaker: 'right', text: 'Light... shrinking...' },
+    ],
   });
 
-  clearBullets(self);
   yield* bossShudder(self);
+  // Bullet sweep replaces the old `clearBullets(self)` snap-removal:
+  // bullets first morph into default rounds (50 ms), then radially
+  // accelerate away from the player (250 ms) until they leave the
+  // field. Runs after the shudder so the boss is already visually
+  // gone and the screen-clear flourish reads as the aftermath.
+  yield* bossBulletDeathSweep(self);
   self.die();
 }
 
@@ -1257,11 +1421,7 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
 // / music swap. The phase script claims the boss slot + enables damage
 // and the patterns run against whatever (or no) music is currently
 // playing. Mirrors `wellnessCoach`'s practice variant pattern.
-function* theBossWaveFromPhase(
-  self: Entity,
-  kind: PhasedBossKind,
-  label: string,
-): Generator<ScriptYield, void, void> {
+function* theBossWaveFromPhase(self: Entity, kind: PhasedBossKind, label: string): Generator<ScriptYield, void, void> {
   markWave(self, label);
   self.stage.scheduleMultDrop('boss');
   // Start the metal track before spawning so the phase script's

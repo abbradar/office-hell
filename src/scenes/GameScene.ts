@@ -14,8 +14,8 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { StageManager } from '../script/StageManager';
 import { MultDropKind } from '../script/multDrop';
+import { StageManager } from '../script/StageManager';
 import { addMult, onContinue } from '../script/score';
 import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -434,7 +434,11 @@ export class GameScene extends Phaser.Scene {
       : this.state.practiceWave
         ? makeWaveStage(this.state.practiceWave)
         : stage;
-    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: DEVELOPER_MODE });
+    // Stash the top-level chain entity on the manager so mass-purge
+    // operations (e.g. the final-boss death sweep) can iterate
+    // `stage.active` without accidentally killing the script-host
+    // that drives the rest of the wave / ending chain.
+    this.stage.stageEntity = this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: DEVELOPER_MODE });
 
     for (const c of DAMAGE_CLASSES) {
       this.physics.add.overlap(this.stage.damages[c], this.stage.damagedBy[c], (a, b) => {
@@ -983,7 +987,7 @@ export class GameScene extends Phaser.Scene {
   // physics group every frame. Returns null when no boss is up.
   private findBossHp(): number | null {
     const e = this.stage.bossEntity;
-    if (!e || !e.alive) return null;
+    if (!e?.alive) return null;
     if (!(e.kind instanceof HPEntityKind)) return null;
     return (e.vars as HPVars).hp;
   }
