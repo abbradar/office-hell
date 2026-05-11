@@ -16,7 +16,7 @@ import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
 import { StageManager } from '../script/StageManager';
 import { addMult, MultDropKind, onContinue } from '../script/score';
-import { DAMAGE_CLASSES, type HPVars } from '../script/types';
+import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -968,10 +968,28 @@ export class GameScene extends Phaser.Scene {
     const wave = this.stage.wave;
     const secondLineParts: string[] = [];
     if (wave) secondLineParts.push(`wave: ${wave}`);
+    const bossHp = this.findBossHp();
+    if (bossHp !== null) secondLineParts.push(`bossHp: ${bossHp}`);
     const reason = this.stage.lastYieldReason;
     if (reason) secondLineParts.push(`yield: ${reason}`);
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
+  }
+
+  // Walk `damages.player` for a live tier-boss entity and return its HP.
+  // Null when no boss is on the field — keeps the debug line clean
+  // between fights. O(n) over the group but only called once per frame
+  // and only in DEVELOPER_MODE (formatDebugLine is gated upstream by the
+  // debugHud existence check).
+  private findBossHp(): number | null {
+    for (const child of this.stage.damages.player.getChildren()) {
+      const e = child as Entity;
+      if (!e.alive) continue;
+      if (e.kind.tier !== 'boss') continue;
+      if (!(e.kind instanceof HPEntityKind)) continue;
+      return (e.vars as HPVars).hp;
+    }
+    return null;
   }
 }
 
