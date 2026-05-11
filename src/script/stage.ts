@@ -360,10 +360,7 @@ export function* runBeatmap(
 // for the intro pass and each loop iteration; exposed implicitly via
 // the array-shape `runBeatmap(self, beats)` overload for back-compat
 // callers that don't need looping.
-function* runBeatmapOnce(
-  self: Entity,
-  beats: readonly BeatmapBeat[],
-): Generator<ScriptYield, void, void> {
+function* runBeatmapOnce(self: Entity, beats: readonly BeatmapBeat[]): Generator<ScriptYield, void, void> {
   const musicTicking = getMusicTime() !== null;
   let prev = 0;
   for (let i = 0; i < beats.length; i++) {
@@ -430,10 +427,7 @@ export function* untilPhaseEnd(
   hpThreshold: number,
   maxAudioSeconds: number,
 ): Generator<ScriptYield, void, void> {
-  yield* race(
-    untilHpBelow(self, hpThreshold),
-    waitAudioTimeAtLeast(maxAudioSeconds),
-  );
+  yield* race(untilHpBelow(self, hpThreshold), waitAudioTimeAtLeast(maxAudioSeconds));
 }
 
 // --- world-state waits ----------------------------------------------------

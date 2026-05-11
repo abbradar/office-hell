@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_H, GAME_W } from '../config';
+import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
@@ -70,9 +70,9 @@ class RunState {
   readonly headerTexts: Phaser.GameObjects.Text[] = [];
   // Filtered subsets of HEADERS / WAVES that are actually shown.
   // Production builds restrict headers to the pattern-sandbox shortcut
-  // and waves to ones the player has unlocked; dev mode shows all of
-  // them. Cursor / refresh / start all index into these lists, so the
-  // production menu's keyboard navigation skips hidden items
+  // and waves to ones the player has unlocked; DEVELOPER_MODE shows all
+  // of them. Cursor / refresh / start all index into these lists, so
+  // the production menu's keyboard navigation skips hidden items
   // automatically.
   visibleHeaders: HeaderButton[] = [];
   visibleWaves: WaveDef[] = [];
@@ -117,17 +117,15 @@ export class TestMenuScene extends Phaser.Scene {
   // diagnostics shortcuts and the full-stage entry are hidden) and
   // wave rows whose id has an unlock entry in the registry (waves
   // the player has reached during a real-stage run, hydrated from
-  // localStorage on scene boot). Dev mode shows everything.
+  // localStorage on scene boot). DEVELOPER_MODE shows everything.
   private computeVisibleLists(): void {
-    if (import.meta.env.DEV) {
+    if (DEVELOPER_MODE) {
       this.state.visibleHeaders = HEADERS.slice();
       this.state.visibleWaves = WAVES.slice();
       return;
     }
     this.state.visibleHeaders = HEADERS.filter((h) => h.scene === 'PatternTest');
-    this.state.visibleWaves = WAVES.filter((w) =>
-      this.registry.get(PRACTICE_UNLOCK_KEY_PREFIX + w.id) === true,
-    );
+    this.state.visibleWaves = WAVES.filter((w) => this.registry.get(PRACTICE_UNLOCK_KEY_PREFIX + w.id) === true);
   }
 
   create(): void {

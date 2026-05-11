@@ -1,12 +1,12 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
-import type { Entity } from '../entities/Entity';
 import { blueExplosion, bullet, redExplosion } from '../content/kinds';
 import {
   BLUE_EXPLOSION_FRAME_DURATION_FRAMES,
   BLUE_EXPLOSION_FRAME_W,
   RED_EXPLOSION_FRAMES,
 } from '../content/textures';
+import type { Entity } from '../entities/Entity';
 import { type EntityKind, INERT_KIND, type ScriptYield } from './types';
 
 // True once the entity's center is past any screen edge — i.e. it's at least
@@ -806,7 +806,7 @@ export function* lineExplosion(
   // Cleanup — any tile still alive at the end (shouldn't happen if
   // totalTicks is right) gets killed defensively.
   for (const slot of slots) {
-    if (slot && slot.entity.alive) slot.entity.die();
+    if (slot?.entity.alive) slot.entity.die();
   }
 }
 

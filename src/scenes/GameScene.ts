@@ -16,10 +16,11 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { addMult, MultDropKind, onContinue } from '../script/score';
 import { StageManager } from '../script/StageManager';
+import { addMult, MultDropKind, onContinue } from '../script/score';
 import { DAMAGE_CLASSES, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import {
   COLOR_ACCENT_GOLD,
   COLOR_ACCENT_GOLD_STR,
@@ -32,7 +33,6 @@ import {
   COLOR_TEXT_PRIMARY_STR,
   COLOR_WALL,
 } from '../ui/palette';
-import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 

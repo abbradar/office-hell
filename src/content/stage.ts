@@ -9,8 +9,8 @@ import {
 } from '../audio/keys';
 import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
-import { moveTo } from '../script/patterns';
 import { PRACTICE_UNLOCK_KEY_PREFIX } from '../scenes/GameScene';
+import { moveTo } from '../script/patterns';
 import {
   clearScreen,
   markWave,

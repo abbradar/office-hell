@@ -1,17 +1,9 @@
 import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIALOG_KEY } from '../../audio/keys';
-import { getMusicTime } from '../../audio/music/loop';
+import { getMusicTime, stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
-import {
-  aimed,
-  arc,
-  cameraPunch,
-  lineExplosion,
-  lineStrokeTelegraph,
-  moveTo,
-  ring,
-} from '../../script/patterns';
+import { aimed, arc, cameraPunch, lineExplosion, lineStrokeTelegraph, moveTo, ring } from '../../script/patterns';
 import {
   type BeatmapBeat,
   type BeatmapSpec,
@@ -29,7 +21,6 @@ import {
   waitEntityDead,
   waitSeconds,
 } from '../../script/stage';
-import { stopMusicLoop } from '../../audio/music/loop';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import {
   blueLongerDroplet,
@@ -120,7 +111,6 @@ export const loopBarBeat = (loopBar: number, beatInBar: 1 | 2 | 3 | 4): number =
 //   arc    3-bullet lava+red droplet fan from a bottom corner; arc-R
 //          is the horizontal mirror of arc-L with 0.2124 s lag
 
-
 const RING_COUNT = 48;
 const RING_SPEED = 130;
 const LINE_TELEGRAPH_MS = 1410;
@@ -144,12 +134,7 @@ const LINE_STROKE_OPTS = { kind: LINE_STROKE_KIND, spacing: LINE_STROKE_SPACING_
 // is on a screen boundary; that's the exit. Guard against a degenerate
 // zero-length ray (caller standing exactly on the origin) by falling
 // back to the through-point itself.
-function extendRayToBounds(
-  fromX: number,
-  fromY: number,
-  throughX: number,
-  throughY: number,
-): { x: number; y: number } {
+function extendRayToBounds(fromX: number, fromY: number, throughX: number, throughY: number): { x: number; y: number } {
   const dx = throughX - fromX;
   const dy = throughY - fromY;
   if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return { x: throughX, y: throughY };
@@ -416,10 +401,7 @@ const vertExplosionRunner = new EntityKind({
   defaultScript: vertExplosionRunnerScript,
 });
 
-function makeVertExplosionDirector(
-  durationS: number,
-  intervalS: number = VERT_EXPLOSION_INTERVAL_S,
-): EntityKind {
+function makeVertExplosionDirector(durationS: number, intervalS: number = VERT_EXPLOSION_INTERVAL_S): EntityKind {
   function* script(self: Entity): Generator<ScriptYield, void, void> {
     // Spawn-anchored — see `makeFanSpiralController` rationale.
     const startT = getMusicTime()?.time ?? null;
@@ -633,18 +615,11 @@ function* topAssistantScript(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* moveTo(self, enterX, self.y, TOP_ASSISTANT_ENTER_SPEED);
 
-  const line =
-    TOP_ASSISTANT_LINES[Math.floor(Math.random() * TOP_ASSISTANT_LINES.length)] ?? '';
+  const line = TOP_ASSISTANT_LINES[Math.floor(Math.random() * TOP_ASSISTANT_LINES.length)] ?? '';
   self.say(line, TOP_ASSISTANT_BUBBLE_FRAMES);
   yield* waitSeconds(TOP_ASSISTANT_PAUSE_S);
 
-  aimed(
-    self,
-    TOP_ASSISTANT_AIMED_COUNT,
-    greedDiamondXs,
-    TOP_ASSISTANT_AIMED_SPEED,
-    TOP_ASSISTANT_AIMED_SPREAD_RAD,
-  );
+  aimed(self, TOP_ASSISTANT_AIMED_COUNT, greedDiamondXs, TOP_ASSISTANT_AIMED_SPEED, TOP_ASSISTANT_AIMED_SPREAD_RAD);
 
   // Walk back out the same side they came in.
   yield* moveTo(self, exitX, self.y, TOP_ASSISTANT_EXIT_SPEED);
@@ -734,20 +709,34 @@ function buildPhase1Spec(): BeatmapSpec {
     { t: BAR_S + 0.1, fire: (self) => cameraPunch(self, -SHAKE_DX) },
     {
       t: 2 * BAR_S,
-      fire: (self) =>
-        lineStrokeTelegraph(self, 0, 300, 400, 300, LINE_TELEGRAPH_MS, LINE_STROKE_OPTS),
+      fire: (self) => lineStrokeTelegraph(self, 0, 300, 400, 300, LINE_TELEGRAPH_MS, LINE_STROKE_OPTS),
     },
 
     // Vertical-explosion rain — was music 4.248 → 16.991 s (12.743 s).
-    { t: 4.248, fire: (self) => { self.spawn(vertExplosionDirector, self.x, self.y, 0, 0); } },
+    {
+      t: 4.248,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector, self.x, self.y, 0, 0);
+      },
+    },
 
     // Fan-spiral — was music 8.496 → 14.867 s (6.371 s).
-    { t: 8.496, fire: (self) => { self.spawn(fanSpiralController, self.x, self.y, 0, 0); } },
+    {
+      t: 8.496,
+      fire: (self) => {
+        self.spawn(fanSpiralController, self.x, self.y, 0, 0);
+      },
+    },
 
     // Top-assistant — was music 15.9 → 25.487 s (9.587 s). The
     // segment straddles the intro→loop seam, but the director is
     // spawn-anchored so its duration carries cleanly past the seam.
-    { t: 15.9, fire: (self) => { self.spawn(topAssistantDirector, self.x, self.y, 0, 0); } },
+    {
+      t: 15.9,
+      fire: (self) => {
+        self.spawn(topAssistantDirector, self.x, self.y, 0, 0);
+      },
+    },
   );
 
   // --- loop section (t relative to loop start = music INTRO_DUR_S) ---
@@ -761,16 +750,36 @@ function buildPhase1Spec(): BeatmapSpec {
   //   50.973 → 33.982  (arc-wave)
   loop.push(
     // Counter-rotating petals — duration 8.495 s, spawn-anchored.
-    { t: 8.496, fire: (self) => { self.spawn(counterPetalController, self.x, self.y, 0, 0); } },
+    {
+      t: 8.496,
+      fire: (self) => {
+        self.spawn(counterPetalController, self.x, self.y, 0, 0);
+      },
+    },
 
     // Vertical-explosion rain pass 2 — duration 8.496 s.
-    { t: 14.867, fire: (self) => { self.spawn(vertExplosionDirector2, self.x, self.y, 0, 0); } },
+    {
+      t: 14.867,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector2, self.x, self.y, 0, 0);
+      },
+    },
 
     // Vertical-explosion rain pass 3 — sparser cadence, duration 8.496 s.
-    { t: 23.363, fire: (self) => { self.spawn(vertExplosionDirector3, self.x, self.y, 0, 0); } },
+    {
+      t: 23.363,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector3, self.x, self.y, 0, 0);
+      },
+    },
 
     // Fan-spiral encore — duration 12.743 s.
-    { t: 25.487, fire: (self) => { self.spawn(fanSpiralController2, self.x, self.y, 0, 0); } },
+    {
+      t: 25.487,
+      fire: (self) => {
+        self.spawn(fanSpiralController2, self.x, self.y, 0, 0);
+      },
+    },
 
     // Arc-wave from the bottom corners — duration 6.372 s.
     {
@@ -842,11 +851,7 @@ function* theBossScript(self: Entity) {
   // segment racers as each one's `waitEntityDead` pad finishes —
   // simplest: race the beatmap against a self-restarting segment
   // pair via `race(...).then(loop)`. Implemented inline below.
-  yield* race(
-    runBeatmap(self, phase1Spec),
-    phase1LoopRacers(self),
-    waitEntityDead(self),
-  );
+  yield* race(runBeatmap(self, phase1Spec), phase1LoopRacers(self), waitEntityDead(self));
   yield* waitEntityDead(self);
 }
 
@@ -863,11 +868,7 @@ function* phase1LoopRacers(self: Entity): Generator<ScriptYield, void, void> {
   const iterStartT0 = (getMusicTime()?.time ?? 0) + INTRO_DUR_S;
   yield* waitAudioTimeAtLeast(iterStartT0);
   while (self.alive) {
-    yield* race(
-      bossWalkSegment(self),
-      emailVolleySegment(self),
-      waitSeconds(LOOP_DUR_S),
-    );
+    yield* race(bossWalkSegment(self), emailVolleySegment(self), waitSeconds(LOOP_DUR_S));
   }
 }
 
