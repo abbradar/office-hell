@@ -23,12 +23,12 @@ export const SECTIONS: Section[] = [
   {
     heading: 'MUSIC',
     entries: [
-      { name: 'DOS-88 Music Library', url: 'dos88.itch.io/dos-88-music-library' },
-      {
-        name: 'Crack the Underground Base',
-        url: 'opengameart.org/users/kaedalus',
-      },
-      { name: 'nene', url: 'opengameart.org/users/nene' },
+      { name: 'DOS-88 Music Library — CC BY 4.0', url: 'dos88.itch.io/dos-88-music-library' },
+      // Kaedalus's track is CC BY-SA 3.0 with a verbatim credit
+      // requirement of "Kaedalus (kaedalus.com)" — keep this string
+      // intact; the licensor specifically asked for this wording.
+      { name: 'Kaedalus (kaedalus.com) — CC BY-SA 3.0', url: 'opengameart.org/users/kaedalus' },
+      { name: 'nene — Boss Battle #8 / #9, Unchained Destiny — CC0', url: 'opengameart.org/users/nene' },
     ],
   },
   {

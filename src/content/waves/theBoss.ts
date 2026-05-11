@@ -7,7 +7,6 @@ import { aimed, arc, cameraPunch, lineExplosion, lineStrokeTelegraph, moveTo, ri
 import {
   type BeatmapBeat,
   type BeatmapSpec,
-  clearBullets,
   markWave,
   prepareForBoss,
   race,
@@ -22,7 +21,7 @@ import {
   waitSeconds,
   waitTrackEnded,
 } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { EnemyBulletEntityKind, EntityKind, type ScriptYield } from '../../script/types';
 import {
   blueExplosion,
   blueLongerDroplet,
@@ -61,13 +60,13 @@ import { RED_EXPLOSION_FRAMES } from '../textures';
 const BOSS_ENTRY_SPEED = 110;
 const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
-// Total boss HP across all three phases: 650 = 400 (phase 1, until
-// 250 hp remaining) + 150 (phase 2, until 100 hp remaining) + 100
+// Total boss HP across all three phases: 800 = 400 (phase 1, until
+// 400 hp remaining) + 200 (phase 2, until 200 hp remaining) + 200
 // (phase 3, lethal). PhasedBossKind decrements per-phase, so the
 // debug HUD's bossHp readout shows the current phase pool draining.
 const PHASE1_HP = 400;
-const PHASE2_HP = 150;
-const PHASE3_HP = 100;
+const PHASE2_HP = 200;
+const PHASE3_HP = 200;
 
 // Beat math — 113 BPM, beat = 0.531 s, bar = 2.124 s. Intro is
 // exactly 32 beats / 8 bars; loop body is 80 beats / 20 bars. See
@@ -1185,6 +1184,83 @@ function* bossLoopRacers(self: Entity): Generator<ScriptYield, void, void> {
 
 // --- Death ---
 
+// Two-stage post-death bullet defusal. Stage 1 (50 ms): retexture
+// every live enemy bullet as the default round `bullet` sprite and
+// pin its velocity to 0 — visually "the bullets all become harmless
+// dots". Stage 2 (250 ms): point each bullet's velocity away from
+// the player and accelerate from `START_SPEED` to `END_SPEED`, so
+// the cluster fans out and clears the field. Whatever's still on
+// screen at the 250 ms mark is `die()`'d so the wave's hand-off to
+// the ending scene starts on a clean slate.
+const BULLET_DEFUSE_FREEZE_S = 0.05;
+const BULLET_DEFUSE_LAUNCH_S = 0.25;
+const BULLET_DEFUSE_START_SPEED = 200;
+const BULLET_DEFUSE_END_SPEED = 1600;
+
+function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void> {
+  const stage = self.stage;
+  const player = stage.player;
+
+  // Snapshot every live enemy bullet currently on the field.
+  const bullets: Entity[] = [];
+  for (const child of stage.damages.player.getChildren()) {
+    const e = child as Entity;
+    if (e.alive && e.kind instanceof EnemyBulletEntityKind) bullets.push(e);
+  }
+  if (bullets.length === 0) return;
+
+  // Stage 1 — freeze + reskin to the default bullet so the cluster
+  // reads as a single tidy thing rather than the chaotic mix it was
+  // mid-fight.
+  for (const e of bullets) {
+    if (!e.alive) continue;
+    e.setTexture('bullet');
+    e.body.setVelocity(0, 0);
+  }
+  // The player can't take damage during the defuse — the fight's
+  // over, and bullets flying *through* the player on their way out
+  // shouldn't undo the win.
+  player.pushInvincible();
+
+  yield* waitSeconds(BULLET_DEFUSE_FREEZE_S);
+
+  // Stage 2 — radial outward from the player, accelerating.
+  const trajectories: { entity: Entity; ux: number; uy: number }[] = [];
+  for (const e of bullets) {
+    if (!e.alive) continue;
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-3) {
+      // Bullet sitting on the player — pick a random direction so it
+      // still leaves the field instead of stalling on the origin.
+      const a = Math.random() * Math.PI * 2;
+      trajectories.push({ entity: e, ux: Math.cos(a), uy: Math.sin(a) });
+    } else {
+      trajectories.push({ entity: e, ux: dx / dist, uy: dy / dist });
+    }
+  }
+
+  const startMs = self.scene.time.now;
+  while (true) {
+    const elapsedS = (self.scene.time.now - startMs) / 1000;
+    if (elapsedS >= BULLET_DEFUSE_LAUNCH_S) break;
+    const k = elapsedS / BULLET_DEFUSE_LAUNCH_S;
+    const speed = BULLET_DEFUSE_START_SPEED + (BULLET_DEFUSE_END_SPEED - BULLET_DEFUSE_START_SPEED) * k;
+    for (const t of trajectories) {
+      if (!t.entity.alive) continue;
+      t.entity.body.setVelocity(t.ux * speed, t.uy * speed);
+    }
+    yield 1;
+  }
+
+  // Anything still on the field after the launch window — kill it.
+  for (const t of trajectories) {
+    if (t.entity.alive) t.entity.die();
+  }
+  player.popInvincible();
+}
+
 function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
   self.body.enable = false;
@@ -1196,8 +1272,13 @@ function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
     lines: [{ speaker: 'right', text: 'TODO: final boss defeat line.' }],
   });
 
-  clearBullets(self);
   yield* bossShudder(self);
+  // Bullet sweep replaces the old `clearBullets(self)` snap-removal:
+  // bullets first morph into default rounds (50 ms), then radially
+  // accelerate away from the player (250 ms) until they leave the
+  // field. Runs after the shudder so the boss is already visually
+  // gone and the screen-clear flourish reads as the aftermath.
+  yield* bossBulletDeathSweep(self);
   self.die();
 }
 
