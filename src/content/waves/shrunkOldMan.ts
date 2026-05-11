@@ -1,5 +1,5 @@
 import { KAEDALUS_SHORT_KEY } from '../../audio/keys';
-import { GAME_W } from '../../config';
+import { BULLET_RADIUS, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
   BossKind,
@@ -12,7 +12,7 @@ import {
 } from '../../script/boss';
 import { aimed, arc, moveTo, ring } from '../../script/patterns';
 import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
-import type { ScriptYield } from '../../script/types';
+import { EnemyBulletEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { reportBullet } from './reportBullet';
 
@@ -51,6 +51,40 @@ const PHASE_C_REPEATS = 5;
 const PHASE_C_GAP = 36;
 const PHASE_C_COUNT = 9;
 const PHASE_C_SPEED = 115;
+
+// Phase D — "they keep coming back": two satellites orbit Hodges at radius
+// R, each spawning a 5-bullet ring whose lead bullet points along 5·θ —
+// so the rings precess five times per orbital revolution and rake the
+// field as twin spirals. The orbiter's tangent velocity is folded into
+// each spawned bullet (vx/vy include ±sin/cos · R·ω), so the spirals
+// lean with the rotation instead of firing as a clean star, and rotation
+// is baked from the resulting velocity vector. Meanwhile Hodges himself
+// lays a tight 3-shot aimed fan straight at the player on a 40-frame
+// cadence. One orbiter's shots are tinted yellow so the two spirals read
+// as separate sources. R = 100 puts the orbiters at the field edges on a
+// 200-wide stage — intentional; the orbital ring sweeps the entire field
+// width.
+const PHASE_D_REPEATS = 12;
+const PHASE_D_GAP = 40;
+const PHASE_D_R = 100;
+const PHASE_D_PERIOD_F = 700;
+const PHASE_D_OMEGA = (Math.PI * 2) / (PHASE_D_PERIOD_F / 60);
+const PHASE_D_FIRE_EVERY = 5;
+const PHASE_D_SHOT_SPEED = 100;
+const PHASE_D_SPREAD_COUNT = 3;
+const PHASE_D_SPREAD_SPEED = 200;
+const PHASE_D_SPREAD_RAD = (40 * Math.PI) / 180;
+const PHASE_D_TINTS: (number | null)[] = [null, 0xffff55];
+
+// Scriptless variant of reportBullet for the orbiter spirals — the
+// canonical reportBullet kind has a homing default script, which would
+// re-aim every spawned bullet at the player and erase the spiral. We
+// want the carried tangent velocity to define each bullet's trajectory,
+// so we use the sprite without the homing behaviour.
+const orbiterShot = new EnemyBulletEntityKind({
+  sprite: 'reportBullet',
+  hitboxRadius: BULLET_RADIUS,
+});
 
 // Beat between Hodges's bubble going up and the shudder starting, so
 // the line has time to read before he begins juddering.
@@ -139,13 +173,66 @@ function* shrunkOldManScript(self: Entity) {
       yield PHASE_C_GAP;
     }
     yield PHASE_GAP;
+
+    self.say('They keep coming back to me…', 110);
+    const orbiters: Entity[] = [];
+    for (let i = 0; i < 2; i++) {
+      const phase = i * Math.PI;
+      const tint = PHASE_D_TINTS[i] ?? null;
+      const x0 = self.x + Math.cos(phase) * PHASE_D_R;
+      const y0 = self.y + Math.sin(phase) * PHASE_D_R;
+      const o = self.spawn(bullet, x0, y0, 0, 0, {
+        script: function* (e) {
+          let t = 0;
+          while (e.alive) {
+            const theta = phase + (t / PHASE_D_PERIOD_F) * Math.PI * 2;
+            e.body.reset(self.x + Math.cos(theta) * PHASE_D_R, self.y + Math.sin(theta) * PHASE_D_R);
+            if (t % PHASE_D_FIRE_EVERY === 0) {
+              const ovx = -Math.sin(theta) * PHASE_D_R * PHASE_D_OMEGA;
+              const ovy = Math.cos(theta) * PHASE_D_R * PHASE_D_OMEGA;
+              const aim = 5 * theta;
+              const step = (Math.PI * 2) / 5;
+              for (let k = 0; k < 5; k++) {
+                const a = aim + k * step;
+                const vx = Math.cos(a) * PHASE_D_SHOT_SPEED + ovx;
+                const vy = Math.sin(a) * PHASE_D_SHOT_SPEED + ovy;
+                const b = e.spawn(orbiterShot, e.x, e.y, vx, vy);
+                // reportBullet sprite faces up; +π/2 rotates it to align
+                // with the actual velocity vector after the tangent carry.
+                b.setRotation(Math.PI / 2 + Math.atan2(vy, vx));
+                if (tint !== null) b.setTint(tint);
+                else b.clearTint();
+              }
+            }
+            yield 1;
+            t++;
+          }
+        },
+      });
+      orbiters.push(o);
+      // If Hodges takes lethal damage mid-phase, runScript swaps the boss
+      // script for shrunkOldManDeath and the post-phase cleanup loop below
+      // never runs — without this hook the orbiters would survive into the
+      // next wave, still orbiting a dead boss.
+      self.onDeath(() => {
+        if (o.alive) o.die();
+      });
+    }
+    for (let i = 0; i < PHASE_D_REPEATS; i++) {
+      aimed(self, PHASE_D_SPREAD_COUNT, bullet, PHASE_D_SPREAD_SPEED, PHASE_D_SPREAD_RAD);
+      yield PHASE_D_GAP;
+    }
+    // Tear the orbiters down before yielding back to phase A so the next
+    // cycle starts from a clean field.
+    for (const o of orbiters) if (o.alive) o.die();
+    yield PHASE_GAP;
   }
 }
 
 export const shrunkOldMan = new BossKind({
   sprite: 'geezer',
   hitboxRadius: 22,
-  hp: 72,
+  hp: 200,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: shrunkOldManScript,
