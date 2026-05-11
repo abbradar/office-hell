@@ -28,6 +28,7 @@ import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
 import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
+import { fashionExpertWave } from './waves/fashionExpert';
 import { fridayPartyWave } from './waves/fridayParty';
 import { gymBroPhase2Wave, gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
@@ -343,6 +344,15 @@ function* fromAllDoorsSpam(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(allDoorsSpamWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
+  yield* fromFashionExpert(self);
+}
+
+function* fromFashionExpert(self: Entity): Generator<ScriptYield, void, void> {
+  markReached(self, 'r-fashion-expert');
+  yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
+
+  yield* self.stage.separateWave(fashionExpertWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromSalesClient(self);
 }
 
@@ -524,6 +534,7 @@ export const WAVES: WaveDef[] = [
   { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: fromWaterCooler },
   { id: 'r-it-admin', name: 'IT Admin', script: fromItAdmin },
   { id: 'r-all-doors-spam', name: 'All-Doors Spam', script: fromAllDoorsSpam },
+  { id: 'r-fashion-expert', name: 'Fashion Expert', script: fromFashionExpert },
   { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },

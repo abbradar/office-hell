@@ -13,6 +13,7 @@ import salesUrl from '../assets/characters/coworker_sales1.png';
 import sysopUrl from '../assets/characters/coworker_sysop1.png';
 import whiteFemale1Url from '../assets/characters/coworker_white_female1.png';
 import whiteMale1Url from '../assets/characters/coworker_white_male1.png';
+import fashionExpertUrl from '../assets/characters/fashion_expert1.png';
 import mcFemaleUrl from '../assets/characters/mc_female.png';
 import mcMaleUrl from '../assets/characters/mc_male.png';
 import vipUrl from '../assets/characters/vip1.png';
@@ -28,6 +29,7 @@ export const CHARACTER_SHEETS: Record<string, string> = {
   // Named coworkers and bosses.
   boss: bossUrl,
   coach1: coachUrl,
+  fashionExpert: fashionExpertUrl,
   janitor: janitorUrl,
   vacationItaly: vacationItalyUrl,
   geezer: geezerUrl,
