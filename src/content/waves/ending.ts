@@ -15,7 +15,7 @@ import {
   COLOR_TEXT_MUTED_STR,
   COLOR_TEXT_PRIMARY_STR,
 } from '../../ui/palette';
-import { SECTIONS, type Section } from '../credits';
+import { breakLongUrl, SECTIONS, type Section } from '../credits';
 
 // Ending scene (practice-only for now): the player walks to the corridor
 // centre, monologues "Finally, some quiet.", the music swells in with
@@ -314,7 +314,7 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
     // within the safe character budget before handing the text to the
     // text style's wordWrap (which still clips any line longer than
     // TEXT_WRAP on the rare case the broken line still overflows).
-    const subText = entry.url ? breakLongUrl(entry.url) : entry.role;
+    const subText = entry.url ? breakLongUrl(entry.url, URL_BREAK_CHARS) : entry.role;
     if (subText) {
       cursor += NAME_GAP_BELOW;
       const sub = scene.add
@@ -350,17 +350,6 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
   drawPanelBg(scene, container, maxChildW, cursor);
   container.y = cy - cursor / 2;
   return container;
-}
-
-// Pre-break a URL at the last slash that fits within `URL_BREAK_CHARS`
-// so Phaser's whitespace-only word-wrap has somewhere to break it.
-// Short URLs pass through untouched.
-function breakLongUrl(url: string): string {
-  if (url.length <= URL_BREAK_CHARS) return url;
-  const head = url.slice(0, URL_BREAK_CHARS + 1);
-  const slashIdx = head.lastIndexOf('/');
-  if (slashIdx <= 0) return url;
-  return `${url.slice(0, slashIdx + 1)}\n${url.slice(slashIdx + 1)}`;
 }
 
 // Draws the semi-transparent rounded backdrop behind the laid-out text

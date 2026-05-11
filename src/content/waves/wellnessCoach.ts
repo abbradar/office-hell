@@ -505,7 +505,7 @@ function* coachPhase1Script(self: Entity): Generator<ScriptYield, void, void> {
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
     lines: [
-      { speaker: 'right', text: `Hi again, I'm ${ch.name}! Welcome to your wellness improvement session!` },
+      { speaker: 'right', text: `Hi again, I'm Karen! Welcome to your wellness improvement session!` },
       { speaker: 'left', text: "I'm fine, actually. I just want to leave." },
       { speaker: 'right', text: 'Your cortisol is screaming, sweetie.' },
       { speaker: 'left', text: '…that does not feel optional.' },
