@@ -81,7 +81,7 @@ export class CreditsScene extends Phaser.Scene {
           ...FONT_MENU,
           color: COLOR_ACCENT_GOLD_STR,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5, 0);
       this.listContainer.add(heading);
       cursorY += HEADING_TO_FIRST_ENTRY;
 
@@ -91,7 +91,7 @@ export class CreditsScene extends Phaser.Scene {
             ...FONT_DIALOGUE_LG,
             color: COLOR_TEXT_PRIMARY_STR,
           })
-          .setOrigin(0.5);
+          .setOrigin(0.5, 0);
         this.listContainer.add(name);
         if (entry.url) {
           cursorY += ENTRY_TO_URL;
@@ -100,7 +100,7 @@ export class CreditsScene extends Phaser.Scene {
               ...FONT_DEBUG,
               color: COLOR_TEXT_DIM_STR,
             })
-            .setOrigin(0.5);
+            .setOrigin(0.5, 0);
           this.listContainer.add(url);
           cursorY += URL_TO_NEXT;
         } else if (entry.role) {
@@ -110,7 +110,7 @@ export class CreditsScene extends Phaser.Scene {
               ...FONT_DEBUG,
               color: COLOR_TEXT_DIM_STR,
             })
-            .setOrigin(0.5);
+            .setOrigin(0.5, 0);
           this.listContainer.add(role);
           cursorY += URL_TO_NEXT;
         } else {

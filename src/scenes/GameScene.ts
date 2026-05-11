@@ -1,12 +1,10 @@
 import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { DEADZONE_Y, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
+import { DEADZONE_Y, DEVELOPER_MODE, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
 import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
 import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
-import { stageKaedalus } from '../content/kaedalusStage';
-import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
@@ -16,10 +14,11 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { liftMultFloor, MultDropKind, onContinue, refreshChainTimer } from '../script/score';
 import { StageManager } from '../script/StageManager';
-import { DAMAGE_CLASSES, type HPVars } from '../script/types';
+import { addMult, MultDropKind, onContinue } from '../script/score';
+import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
+import { addMuteButton } from '../ui/muteButton';
 import {
   COLOR_ACCENT_GOLD,
   COLOR_ACCENT_GOLD_STR,
@@ -32,7 +31,6 @@ import {
   COLOR_TEXT_PRIMARY_STR,
   COLOR_WALL,
 } from '../ui/palette';
-import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -123,6 +121,36 @@ function pointerLogicalY(y: number): number {
 }
 
 export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
+// Per-wave unlock marker. Set to `true` when the player has reached
+// that wave in a real-stage run (see `markReached` in content/stage.ts).
+// Production builds use this to gate which entries appear in the
+// TestMenu practice list — only sections the player has actually
+// played through are surfaced as replay options. Mirrored to
+// `localStorage` so unlocks persist across reloads (Phaser's registry
+// is in-memory only).
+export const PRACTICE_UNLOCK_KEY_PREFIX = 'unlock:';
+
+// Hydrate registry-backed unlock flags from `localStorage` so per-wave
+// unlocks survive page reloads. Phaser's registry doesn't persist; we
+// mirror writes (see `markReached`) to `localStorage` and pull them
+// back into the registry on entry. Called from both GameScene and
+// TestMenuScene — either consumer reaching the registry first will
+// populate it for the rest of the session. Cheap and idempotent
+// (a few dozen keys total).
+export function hydrateUnlocksFromStorage(scene: Phaser.Scene): void {
+  try {
+    const reg = scene.game.registry;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === null) continue;
+      if (!key.startsWith(PRACTICE_UNLOCK_KEY_PREFIX)) continue;
+      reg.set(key, true);
+    }
+  } catch {
+    // localStorage may be unavailable (private mode, SSR). Unlock flow
+    // degrades to in-memory only — still works for the current session.
+  }
+}
 
 export type GameSceneData = {
   practice?: WaveDef;
@@ -130,10 +158,6 @@ export type GameSceneData = {
   // of the normal stage. Surfaces an extra debug HUD line built from the
   // music clock + stage queue introspection.
   test?: boolean;
-  // Music-test stages — same debug HUD treatment as `test`, different
-  // stage definition. Mutually exclusive; if more than one is set, the
-  // first one in `chooseStageKind` wins.
-  music?: 'kaedalus' | 'monster-rpg';
 };
 
 // Per-run state container. Phaser reuses the same Scene instance across
@@ -153,7 +177,6 @@ class RunState {
   // From init data — set once at scene entry.
   readonly practiceWave: WaveDef | null;
   readonly testMode: boolean;
-  readonly musicMode: 'kaedalus' | 'monster-rpg' | null;
   // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
   // we share the same physics/script freeze (set stage.paused + physics.pause)
   // but track this flag so X can route to "exit to menu" only while the
@@ -200,7 +223,6 @@ class RunState {
   constructor(data: GameSceneData | undefined) {
     this.practiceWave = data?.practice ?? null;
     this.testMode = data?.test ?? false;
-    this.musicMode = data?.music ?? null;
   }
 }
 
@@ -253,6 +275,11 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.state = new RunState(data);
+    // Pull persisted per-wave unlock flags into the registry so the
+    // TestMenu can read them via `registry.get(PRACTICE_UNLOCK_KEY_PREFIX + id)`.
+    // No-op after the first scene entry (registry already populated),
+    // but cheap enough to run every time.
+    hydrateUnlocksFromStorage(this);
     // pauseGame() sets `scene.time.paused = true` to freeze realSeconds
     // waits during the ESC pause overlay. Phaser's Clock.shutdown() does
     // NOT reset `paused`, and the same Clock instance is reused across
@@ -383,9 +410,9 @@ export class GameScene extends Phaser.Scene {
       throw new Error('GameScene started without a selected character — go through CharacterSelect first');
 
     // Real stage: bombs start at 0; the intro's wellness-coach drop-in
-    // unlocks them. Practice / test / music modes get the full pile so
-    // they're usable straight from the menu.
-    const isRealStage = !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
+    // unlocks them. Practice / test modes get the full pile so they're
+    // usable straight from the menu.
+    const isRealStage = !this.state.practiceWave && !this.state.testMode;
     this.playerKind = new PlayerKind({
       hpText: this.hpText,
       bombsText: this.bombsText,
@@ -396,22 +423,17 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, this.stage, this.playerKind);
     this.stage.player = this.player;
 
-    // Music + sync test stages: pin player invincible for the whole run so
-    // dying doesn't interrupt the timing checks. Pushed once with no pop —
+    // Sync test stage: pin player invincible for the whole run so dying
+    // doesn't interrupt the timing checks. Pushed once with no pop —
     // bombs still push/pop on top, but the base depth stays at 1.
-    if (this.state.testMode || this.state.musicMode !== null) this.player.pushInvincible();
+    if (this.state.testMode) this.player.pushInvincible();
 
-    const stageKind =
-      this.state.musicMode === 'kaedalus'
-        ? stageKaedalus
-        : this.state.musicMode === 'monster-rpg'
-          ? stageMonsterRpg
-          : this.state.testMode
-            ? stageTest
-            : this.state.practiceWave
-              ? makeWaveStage(this.state.practiceWave)
-              : stage;
-    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: true });
+    const stageKind = this.state.testMode
+      ? stageTest
+      : this.state.practiceWave
+        ? makeWaveStage(this.state.practiceWave)
+        : stage;
+    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: DEVELOPER_MODE });
 
     for (const c of DAMAGE_CLASSES) {
       this.physics.add.overlap(this.stage.damages[c], this.stage.damagedBy[c], (a, b) => {
@@ -428,17 +450,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Multiplier-drop pickup: one-way overlap with the player. Reading
-    // `floorLift` off MultDropKind lifts the per-stage floor (boss
-    // drops bump it most), refreshes the chain timer (so quiet beats
-    // between waves don't break the chain), and kills the drop. See
-    // src/docs/scoring-system.md.
+    // `multLift` off MultDropKind bumps the live mult (boss drops bump
+    // it most) and kills the drop. See src/docs/scoring-system.md.
     this.physics.add.overlap(this.player, this.stage.drops, (_p, d) => {
       const drop = d as Entity;
       if (!drop.alive) return;
       const kind = drop.kind;
       if (!(kind instanceof MultDropKind)) return;
-      if (kind.floorLift > 0) liftMultFloor(this.stage.score, kind.floorLift);
-      refreshChainTimer(this.stage.score);
+      if (kind.multLift > 0) addMult(this.stage.score, kind.multLift);
       drop.die();
     });
 
@@ -498,20 +517,26 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
 
     // Debug HUD (track / t / next / blocked) shown for the real stage and
-    // every test/music stage. Test/music modes get the green tint as a
-    // "you're in test mode" cue; real-stage version is greyer so it recedes.
+    // every test stage. Test mode gets the green tint as a "you're in
+    // test mode" cue; real-stage version is greyer so it recedes.
     // x is nudged past the wall column so it sits inside the playfield
     // rather than getting clipped by the side wall. Depth sits below every
     // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
     // dialogue=200) so any of them draw on top of the debug line.
-    const debugTinted = this.state.testMode || this.state.musicMode !== null;
-    this.debugHud = this.add
-      .text(WALL_W + 8, HEADER_H + 20, '', {
-        ...FONT_DEBUG,
-        color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
-      })
-      .setScrollFactor(0)
-      .setDepth(10);
+    //
+    // Gated on DEVELOPER_MODE — prod builds skip the Text construction
+    // entirely; the null check in update()'s setText call handles the
+    // missing widget without a separate branch.
+    if (DEVELOPER_MODE) {
+      const debugTinted = this.state.testMode;
+      this.debugHud = this.add
+        .text(WALL_W + 8, HEADER_H + 20, '', {
+          ...FONT_DEBUG,
+          color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
+        })
+        .setScrollFactor(0)
+        .setDepth(10);
+    }
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');
@@ -624,7 +649,7 @@ export class GameScene extends Phaser.Scene {
     c.add(resume);
 
     const menuTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <bomb>  MENU';
-    const menu = makePrompt(this, GAME_W / 2, GAME_H * 0.62, menuTpl, {
+    const menu = makePrompt(this, GAME_W / 2, GAME_H * 0.6, menuTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -647,7 +672,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private allowsContinue(): boolean {
-    return !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
+    return !this.state.practiceWave && !this.state.testMode;
   }
 
   private showContinueOverlay(): void {
@@ -671,7 +696,7 @@ export class GameScene extends Phaser.Scene {
     c.add(continueBtn);
 
     const quitTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <back>  QUIT';
-    const quitBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.62, quitTpl, {
+    const quitBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.6, quitTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -841,6 +866,7 @@ export class GameScene extends Phaser.Scene {
     // even while paused so the dialogue's first frame doesn't show a stale anim
     // from before the cutscene started.
     this.player.updateAnim();
+    this.player.updateHitbox();
 
     this.state.hudAccumMs += delta;
     if (this.state.hudAccumMs >= HUD_REFRESH_MS) {
@@ -943,10 +969,28 @@ export class GameScene extends Phaser.Scene {
     const wave = this.stage.wave;
     const secondLineParts: string[] = [];
     if (wave) secondLineParts.push(`wave: ${wave}`);
+    const bossHp = this.findBossHp();
+    if (bossHp !== null) secondLineParts.push(`bossHp: ${bossHp}`);
     const reason = this.stage.lastYieldReason;
     if (reason) secondLineParts.push(`yield: ${reason}`);
 
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
+  }
+
+  // Walk `damages.player` for a live tier-boss entity and return its HP.
+  // Null when no boss is on the field — keeps the debug line clean
+  // between fights. O(n) over the group but only called once per frame
+  // and only in DEVELOPER_MODE (formatDebugLine is gated upstream by the
+  // debugHud existence check).
+  private findBossHp(): number | null {
+    for (const child of this.stage.damages.player.getChildren()) {
+      const e = child as Entity;
+      if (!e.alive) continue;
+      if (e.kind.tier !== 'boss') continue;
+      if (!(e.kind instanceof HPEntityKind)) continue;
+      return (e.vars as HPVars).hp;
+    }
+    return null;
   }
 }
 

@@ -5,8 +5,8 @@
 //
 // Run: PROBE_URL=http://localhost:5174/ node scripts/leak-churn.mjs
 
-import { chromium } from 'playwright';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { chromium } from 'playwright';
 
 const URL = process.env.PROBE_URL ?? 'http://localhost:5173/';
 const CYCLES = Number(process.env.PROBE_CYCLES ?? 8);
@@ -51,7 +51,14 @@ async function main() {
 
   // Helper: push the menu through a scene transition + come back.
   async function snapshot(label) {
-    await page.evaluate(() => { if (typeof window.gc === 'function') try { window.gc(); } catch (_) { /* */ } });
+    await page.evaluate(() => {
+      if (typeof window.gc === 'function')
+        try {
+          window.gc();
+        } catch (_) {
+          /* */
+        }
+    });
     await sleep(200);
     const m = await cdp.send('Performance.getMetrics');
     const mm = Object.fromEntries(m.metrics.map((x) => [x.name, x.value]));
@@ -60,14 +67,19 @@ async function main() {
       const out = { scenes: [], totalGameObjects: 0, totalTweens: 0, totalTimers: 0 };
       for (const s of g.scene.scenes) {
         let n = 0;
-        const visit = (o) => { n++; if (o.list) for (const c of o.list) visit(c); };
+        const visit = (o) => {
+          n++;
+          if (o.list) for (const c of o.list) visit(c);
+        };
         for (const c of s.children?.list ?? []) visit(c);
         const tweens = s.tweens?._active?.length ?? 0;
         const timers = s.time?._active?.length ?? 0;
         out.scenes.push({
           k: s.scene.key,
           active: s.scene.isActive(),
-          obj: n, tweens, timers,
+          obj: n,
+          tweens,
+          timers,
           listeners: s.events?._eventsCount ?? 0,
           inputListeners: s.input?._eventsCount ?? 0,
         });
@@ -77,11 +89,17 @@ async function main() {
       }
       return out;
     });
-    console.log(`[${label}] heapUsed=${(mm.JSHeapUsedSize / 1024).toFixed(0)}KB nodes=${mm.Nodes} listeners=${mm.JSEventListeners} audio=${mm.AudioHandlers}`);
-    console.log(`[${label}] totalGameObj=${counts.totalGameObjects} tweens=${counts.totalTweens} timers=${counts.totalTimers}`);
+    console.log(
+      `[${label}] heapUsed=${(mm.JSHeapUsedSize / 1024).toFixed(0)}KB nodes=${mm.Nodes} listeners=${mm.JSEventListeners} audio=${mm.AudioHandlers}`,
+    );
+    console.log(
+      `[${label}] totalGameObj=${counts.totalGameObjects} tweens=${counts.totalTweens} timers=${counts.totalTimers}`,
+    );
     for (const s of counts.scenes) {
       if (s.active || s.obj > 0) {
-        console.log(`  ${s.active ? '*' : ' '} ${s.k.padEnd(16)} obj=${s.obj} tw=${s.tweens} tm=${s.timers} ev=${s.listeners} inEv=${s.inputListeners}`);
+        console.log(
+          `  ${s.active ? '*' : ' '} ${s.k.padEnd(16)} obj=${s.obj} tw=${s.tweens} tm=${s.timers} ev=${s.listeners} inEv=${s.inputListeners}`,
+        );
       }
     }
     return mm;
@@ -121,12 +139,18 @@ async function main() {
   console.log('\n[summary]');
   const keys = ['JSHeapUsedSize', 'JSHeapTotalSize', 'Nodes', 'JSEventListeners', 'AudioHandlers'];
   for (const k of keys) {
-    const a = baseline[k] ?? 0, b = final[k] ?? 0;
-    const fmt = k.includes('Heap') ? `${(a / 1024).toFixed(0)}KB → ${(b / 1024).toFixed(0)}KB (Δ${((b - a) / 1024).toFixed(1)}KB)` : `${a} → ${b} (Δ${b - a})`;
+    const a = baseline[k] ?? 0,
+      b = final[k] ?? 0;
+    const fmt = k.includes('Heap')
+      ? `${(a / 1024).toFixed(0)}KB → ${(b / 1024).toFixed(0)}KB (Δ${((b - a) / 1024).toFixed(1)}KB)`
+      : `${a} → ${b} (Δ${b - a})`;
     console.log(`  ${k}: ${fmt}`);
   }
 
   await browser.close();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

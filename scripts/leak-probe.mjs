@@ -15,9 +15,9 @@
 //   PROBE_SECS   default 75
 //   PROBE_STEP   default 2
 
-import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { chromium } from 'playwright';
 
 const URL = process.env.PROBE_URL ?? 'http://localhost:5173/';
 const RUN_SECS = Number(process.env.PROBE_SECS ?? 75);
@@ -83,7 +83,7 @@ async function main() {
   await page.waitForFunction(
     () => {
       const g = window.__game;
-      if (!g || !g.scene) return false;
+      if (!g?.scene) return false;
       return g.scene.getScene && !!g.scene.getScene('Menu');
     },
     { timeout: 30_000 },
@@ -115,110 +115,113 @@ async function main() {
   await sleep(500);
 
   // Inject probe.
-  await page.evaluate(({ stepMs }) => {
-    const g = window.__game;
-    if (!g) {
-      console.log('[leak-probe] __game missing; aborting');
-      return;
-    }
-
-    // Snapshot the prototype-level event names so we can spot listener
-    // counts that grow over the run.
-    function gameObjectsAlive(scene) {
-      let n = 0;
-      const visit = (o) => {
-        n += 1;
-        if (o.list) for (const c of o.list) visit(c);
-      };
-      for (const c of scene.children?.list ?? []) visit(c);
-      return n;
-    }
-
-    function tweenStats(scene) {
-      const tm = scene.tweens;
-      if (!tm) return { tweens: 0, pending: 0 };
-      // Phaser 3.85: TweenManager keeps `_active` and `_pending` (or .tweens)
-      const active = tm._active?.length ?? tm.getTweens?.()?.length ?? 0;
-      const pending = tm._pending?.length ?? 0;
-      return { tweens: active, pending };
-    }
-
-    function timerStats(scene) {
-      const tc = scene.time;
-      if (!tc) return 0;
-      // Phaser TimerEvent list lives on `_active` (Clock).
-      return tc._active?.length ?? tc._pendingInsertion?.length ?? 0;
-    }
-
-    function soundStats(game) {
-      const sm = game.sound;
-      if (!sm) return 0;
-      return sm.sounds?.length ?? 0;
-    }
-
-    function activeSceneStats(game) {
-      const out = [];
-      for (const s of game.scene.scenes) {
-        if (!s.scene.isActive() && !s.scene.isVisible()) continue;
-        out.push({
-          key: s.scene.key,
-          gameObjects: gameObjectsAlive(s),
-          ...tweenStats(s),
-          timers: timerStats(s),
-        });
+  await page.evaluate(
+    ({ stepMs }) => {
+      const g = window.__game;
+      if (!g) {
+        console.log('[leak-probe] __game missing; aborting');
+        return;
       }
-      return out;
-    }
 
-    function listenerCounts(game) {
-      // Phaser's EventEmitter exposes `_eventsCount`. We sample a few suspects.
-      const out = {};
-      const probe = (name, emitter) => {
-        if (!emitter) return;
-        out[name] = emitter._eventsCount ?? -1;
+      // Snapshot the prototype-level event names so we can spot listener
+      // counts that grow over the run.
+      function gameObjectsAlive(scene) {
+        let n = 0;
+        const visit = (o) => {
+          n += 1;
+          if (o.list) for (const c of o.list) visit(c);
+        };
+        for (const c of scene.children?.list ?? []) visit(c);
+        return n;
+      }
+
+      function tweenStats(scene) {
+        const tm = scene.tweens;
+        if (!tm) return { tweens: 0, pending: 0 };
+        // Phaser 3.85: TweenManager keeps `_active` and `_pending` (or .tweens)
+        const active = tm._active?.length ?? tm.getTweens?.()?.length ?? 0;
+        const pending = tm._pending?.length ?? 0;
+        return { tweens: active, pending };
+      }
+
+      function timerStats(scene) {
+        const tc = scene.time;
+        if (!tc) return 0;
+        // Phaser TimerEvent list lives on `_active` (Clock).
+        return tc._active?.length ?? tc._pendingInsertion?.length ?? 0;
+      }
+
+      function soundStats(game) {
+        const sm = game.sound;
+        if (!sm) return 0;
+        return sm.sounds?.length ?? 0;
+      }
+
+      function activeSceneStats(game) {
+        const out = [];
+        for (const s of game.scene.scenes) {
+          if (!s.scene.isActive() && !s.scene.isVisible()) continue;
+          out.push({
+            key: s.scene.key,
+            gameObjects: gameObjectsAlive(s),
+            ...tweenStats(s),
+            timers: timerStats(s),
+          });
+        }
+        return out;
+      }
+
+      function listenerCounts(game) {
+        // Phaser's EventEmitter exposes `_eventsCount`. We sample a few suspects.
+        const out = {};
+        const probe = (name, emitter) => {
+          if (!emitter) return;
+          out[name] = emitter._eventsCount ?? -1;
+        };
+        probe('game.events', game.events);
+        probe('game.sound', game.sound);
+        probe('game.scale', game.scale);
+        const menu = game.scene.scenes.find((s) => s.scene.key === 'Menu');
+        probe('menu.events', menu?.events);
+        probe('menu.input', menu?.input);
+        probe('menu.tweens', menu?.tweens);
+        probe('menu.time', menu?.time);
+        return out;
+      }
+
+      const t0 = performance.now();
+      let tickN = 0;
+
+      const sample = () => {
+        tickN += 1;
+        const mem = performance.memory ?? null;
+        const used = mem ? Math.round(mem.usedJSHeapSize / 1024) : -1;
+        const total = mem ? Math.round(mem.totalJSHeapSize / 1024) : -1;
+        const limit = mem ? Math.round(mem.jsHeapSizeLimit / 1024) : -1;
+        const sceneStats = activeSceneStats(g);
+        const sndCount = soundStats(g);
+        const listeners = listenerCounts(g);
+        const fps = Math.round(g.loop?.actualFps ?? 0);
+        const ts = ((performance.now() - t0) / 1000).toFixed(1);
+        const row = {
+          t: ts,
+          n: tickN,
+          fps,
+          usedKB: used,
+          totalKB: total,
+          limitKB: limit,
+          sounds: sndCount,
+          scenes: sceneStats,
+          listeners,
+        };
+        console.log('[leak-probe]', JSON.stringify(row));
       };
-      probe('game.events', game.events);
-      probe('game.sound', game.sound);
-      probe('game.scale', game.scale);
-      const menu = game.scene.scenes.find((s) => s.scene.key === 'Menu');
-      probe('menu.events', menu?.events);
-      probe('menu.input', menu?.input);
-      probe('menu.tweens', menu?.tweens);
-      probe('menu.time', menu?.time);
-      return out;
-    }
 
-    const t0 = performance.now();
-    let tickN = 0;
-
-    const sample = () => {
-      tickN += 1;
-      const mem = performance.memory ?? null;
-      const used = mem ? Math.round(mem.usedJSHeapSize / 1024) : -1;
-      const total = mem ? Math.round(mem.totalJSHeapSize / 1024) : -1;
-      const limit = mem ? Math.round(mem.jsHeapSizeLimit / 1024) : -1;
-      const sceneStats = activeSceneStats(g);
-      const sndCount = soundStats(g);
-      const listeners = listenerCounts(g);
-      const fps = Math.round(g.loop?.actualFps ?? 0);
-      const ts = ((performance.now() - t0) / 1000).toFixed(1);
-      const row = {
-        t: ts,
-        n: tickN,
-        fps,
-        usedKB: used,
-        totalKB: total,
-        limitKB: limit,
-        sounds: sndCount,
-        scenes: sceneStats,
-        listeners,
-      };
-      console.log('[leak-probe]', JSON.stringify(row));
-    };
-
-    sample();
-    window.__leakProbeInterval = setInterval(sample, stepMs);
-  }, { stepMs: STEP_SECS * 1000 });
+      sample();
+      window.__leakProbeInterval = setInterval(sample, stepMs);
+    },
+    { stepMs: STEP_SECS * 1000 },
+  );
 
   // Snapshot some CDP-level metrics at the start.
   const cdp = await context.newCDPSession(page);
@@ -234,7 +237,11 @@ async function main() {
   await page.evaluate(() => {
     clearInterval(window.__leakProbeInterval);
     if (typeof window.gc === 'function') {
-      try { window.gc(); } catch (_) { /* ignore */ }
+      try {
+        window.gc();
+      } catch (_) {
+        /* ignore */
+      }
     }
   });
   await sleep(500);

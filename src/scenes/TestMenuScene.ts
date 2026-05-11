@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_H, GAME_W } from '../config';
+import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS } from '../content/characters';
 import { WAVES, type WaveDef } from '../content/stage';
 import { isTouchDevice } from '../input/device';
@@ -17,7 +17,7 @@ import {
 import { makePrompt } from '../ui/prompt';
 import { addScrollIndicators, type ScrollIndicators } from '../ui/scrollIndicator';
 import { onTap } from '../ui/tap';
-import { PRACTICE_HITS_KEY_PREFIX } from './GameScene';
+import { hydrateUnlocksFromStorage, PRACTICE_HITS_KEY_PREFIX, PRACTICE_UNLOCK_KEY_PREFIX } from './GameScene';
 
 const ROW_SPACING = 44;
 const HEADER_Y = 60;
@@ -52,8 +52,6 @@ type HeaderButton = {
 const HEADERS: HeaderButton[] = [
   { label: 'FULL STAGE (real)' },
   { label: 'STAGE TEST (sync)', data: { test: true } },
-  { label: 'KAEDALUS (music test)', data: { music: 'kaedalus' } },
-  { label: 'MONSTER RPG (music test)', data: { music: 'monster-rpg' } },
   { label: 'PATTERN SANDBOX', scene: 'PatternTest' },
 ];
 
@@ -68,12 +66,20 @@ type CursorTarget = { kind: 'header'; index: number } | { kind: 'wave'; index: n
 class RunState {
   readonly rows: Phaser.GameObjects.Text[] = [];
   readonly headerTexts: Phaser.GameObjects.Text[] = [];
-  // 0..HEADERS.length-1 = headers, then HEADERS.length..HEADERS.length+WAVES.length-1 = waves
+  // Filtered subsets of HEADERS / WAVES that are actually shown.
+  // Production builds restrict headers to the pattern-sandbox shortcut
+  // and waves to ones the player has unlocked; DEVELOPER_MODE shows all
+  // of them. Cursor / refresh / start all index into these lists, so
+  // the production menu's keyboard navigation skips hidden items
+  // automatically.
+  visibleHeaders: HeaderButton[] = [];
+  visibleWaves: WaveDef[] = [];
+  // 0..visibleHeaders.length-1 = headers, then visibleHeaders.length..N = waves
   cursor = 0;
   scrollY = 0;
   maxScroll = 0;
   gesture: { downY: number; startScroll: number; moved: boolean } | null = null;
-  // Computed at create time from HEADERS — wave list starts below the
+  // Computed at create time from visibleHeaders — wave list starts below the
   // last header button + a small gap.
   listViewTop = 0;
   listViewHeight = 0;
@@ -90,21 +96,41 @@ export class TestMenuScene extends Phaser.Scene {
 
   init(): void {
     this.state = new RunState();
+    // Pull persisted per-wave unlock flags into the registry before
+    // computeVisibleLists() reads them. Idempotent — a single boot's
+    // worth of writes if GameScene already ran first this session.
+    hydrateUnlocksFromStorage(this);
   }
 
   private get itemCount(): number {
-    return HEADERS.length + WAVES.length;
+    return this.state.visibleHeaders.length + this.state.visibleWaves.length;
   }
 
   private cursorTarget(c: number): CursorTarget {
-    if (c < HEADERS.length) return { kind: 'header', index: c };
-    return { kind: 'wave', index: c - HEADERS.length };
+    if (c < this.state.visibleHeaders.length) return { kind: 'header', index: c };
+    return { kind: 'wave', index: c - this.state.visibleHeaders.length };
+  }
+
+  // Production builds expose only the pattern-sandbox header (other
+  // diagnostics shortcuts and the full-stage entry are hidden) and
+  // wave rows whose id has an unlock entry in the registry (waves
+  // the player has reached during a real-stage run, hydrated from
+  // localStorage on scene boot). DEVELOPER_MODE shows everything.
+  private computeVisibleLists(): void {
+    if (DEVELOPER_MODE) {
+      this.state.visibleHeaders = HEADERS.slice();
+      this.state.visibleWaves = WAVES.slice();
+      return;
+    }
+    this.state.visibleHeaders = HEADERS.filter((h) => h.scene === 'PatternTest');
+    this.state.visibleWaves = WAVES.filter((w) => this.registry.get(PRACTICE_UNLOCK_KEY_PREFIX + w.id) === true);
   }
 
   create(): void {
     bindLogicalCamera(this);
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
+    this.computeVisibleLists();
     this.add
       .text(GAME_W / 2, HEADER_Y, 'PRACTICE', {
         ...FONT_TITLE,
@@ -128,7 +154,7 @@ export class TestMenuScene extends Phaser.Scene {
     this.listContainer = this.add.container(0, this.state.listViewTop);
 
     // Header shortcuts — full stage + each diagnostics test stage.
-    for (let i = 0; i < HEADERS.length; i++) {
+    for (let i = 0; i < this.state.visibleHeaders.length; i++) {
       const y = i * HEADER_BUTTON_SPACING + HEADER_BUTTON_SPACING / 2;
       const text = this.add
         .text(GAME_W / 2, y, '', {
@@ -151,11 +177,11 @@ export class TestMenuScene extends Phaser.Scene {
       this.state.headerTexts.push(text);
     }
 
-    const wavesTop = HEADERS.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
+    const wavesTop = this.state.visibleHeaders.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
 
-    for (let i = 0; i < WAVES.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
-      const wave = WAVES[i]!;
+    for (let i = 0; i < this.state.visibleWaves.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by visibleWaves.length
+      const wave = this.state.visibleWaves[i]!;
       const row = this.add
         .text(GAME_W / 2, wavesTop + i * ROW_SPACING + ROW_SPACING / 2, this.rowText(wave), {
           ...FONT_MENU,
@@ -168,7 +194,7 @@ export class TestMenuScene extends Phaser.Scene {
         // On touch, pointerover fires on tap and would yank the cursor mid-swipe.
         // On desktop, ignore it during a held drag so the cursor doesn't chase the mouse.
         if (isTouchDevice || p.isDown) return;
-        this.state.cursor = HEADERS.length + i;
+        this.state.cursor = this.state.visibleHeaders.length + i;
         this.refresh();
       });
       // onTap registers its scene-level pointerup before the gesture-clearing
@@ -176,7 +202,7 @@ export class TestMenuScene extends Phaser.Scene {
       // `.moved` to distinguish swipes from taps.
       onTap(this, row, () => {
         if (this.state.gesture?.moved) return;
-        this.state.cursor = HEADERS.length + i;
+        this.state.cursor = this.state.visibleHeaders.length + i;
         this.start();
       });
       this.listContainer.add(row);
@@ -188,7 +214,7 @@ export class TestMenuScene extends Phaser.Scene {
     maskGraphics.fillRect(0, this.state.listViewTop, GAME_W, this.state.listViewHeight);
     this.listContainer.setMask(maskGraphics.createGeometryMask());
 
-    const totalHeight = wavesTop + WAVES.length * ROW_SPACING;
+    const totalHeight = wavesTop + this.state.visibleWaves.length * ROW_SPACING;
     this.state.maxScroll = Math.max(0, totalHeight - this.state.listViewHeight);
     this.indicators = addScrollIndicators(this, this.state.listViewTop, LIST_VIEW_BOTTOM);
     this.indicators.update(this.state.scrollY, this.state.maxScroll);
@@ -244,11 +270,13 @@ export class TestMenuScene extends Phaser.Scene {
     const kb = this.input.keyboard;
     if (kb) {
       kb.on('keydown-UP', () => {
+        if (this.itemCount === 0) return;
         this.state.cursor = (this.state.cursor - 1 + this.itemCount) % this.itemCount;
         this.refresh();
         this.scrollToCursor();
       });
       kb.on('keydown-DOWN', () => {
+        if (this.itemCount === 0) return;
         this.state.cursor = (this.state.cursor + 1) % this.itemCount;
         this.refresh();
         this.scrollToCursor();
@@ -272,6 +300,7 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private scrollToCursor(): void {
+    if (this.itemCount === 0) return;
     const target = this.cursorTarget(this.state.cursor);
     let top: number;
     let height: number;
@@ -279,7 +308,7 @@ export class TestMenuScene extends Phaser.Scene {
       top = target.index * HEADER_BUTTON_SPACING;
       height = HEADER_BUTTON_SPACING;
     } else {
-      const wavesTop = HEADERS.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
+      const wavesTop = this.state.visibleHeaders.length * HEADER_BUTTON_SPACING + HEADER_WAVE_GAP;
       top = wavesTop + target.index * ROW_SPACING;
       height = ROW_SPACING;
     }
@@ -297,11 +326,12 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private refresh(): void {
+    if (this.itemCount === 0) return;
     const target = this.cursorTarget(this.state.cursor);
 
-    for (let i = 0; i < HEADERS.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
-      const header = HEADERS[i]!;
+    for (let i = 0; i < this.state.visibleHeaders.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by visibleHeaders.length
+      const header = this.state.visibleHeaders[i]!;
       // biome-ignore lint/style/noNonNullAssertion: bounded by headerTexts.length
       const text = this.state.headerTexts[i]!;
       const selected = target.kind === 'header' && target.index === i;
@@ -310,8 +340,8 @@ export class TestMenuScene extends Phaser.Scene {
     }
 
     for (let i = 0; i < this.state.rows.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by WAVES.length
-      const wave = WAVES[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounded by visibleWaves.length
+      const wave = this.state.visibleWaves[i]!;
       // biome-ignore lint/style/noNonNullAssertion: bounded by rows.length
       const row = this.state.rows[i]!;
       const selected = target.kind === 'wave' && target.index === i;
@@ -321,10 +351,11 @@ export class TestMenuScene extends Phaser.Scene {
   }
 
   private start(): void {
+    if (this.itemCount === 0) return;
     const target = this.cursorTarget(this.state.cursor);
     if (target.kind === 'header') {
-      // biome-ignore lint/style/noNonNullAssertion: bounded by HEADERS.length
-      const header = HEADERS[target.index]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounded by visibleHeaders.length
+      const header = this.state.visibleHeaders[target.index]!;
       this.registry.set(CHARACTER_REGISTRY_KEY, CHARACTERS[0]);
       // `?? {}` for the same reason as CharSelect.confirm — Phaser's
       // Systems.start only overwrites settings.data when the new data is
@@ -334,7 +365,7 @@ export class TestMenuScene extends Phaser.Scene {
       this.scene.start(header.scene ?? 'Game', header.data ?? {});
       return;
     }
-    const wave = WAVES[target.index];
+    const wave = this.state.visibleWaves[target.index];
     if (!wave) return;
     // Test menu always uses Jane (CHARACTERS[0], mc_female) — there's no
     // mechanical difference between roster entries, so the character-select

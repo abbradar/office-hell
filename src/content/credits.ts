@@ -17,7 +17,7 @@ export const SECTIONS: Section[] = [
       { name: 'abbradar', role: 'code, stage design, pattern design' },
       { name: 'vuvko', role: 'code, sound design, stage design, pattern design' },
       { name: 'const', role: 'code, pattern design' },
-      { name: 'nclbrt', role: 'art design, character design' },
+      { name: 'nclbrt', role: 'art direction, character design, concept design' },
     ],
   },
   {
@@ -57,6 +57,10 @@ export const SECTIONS: Section[] = [
       'Other search engines and platform-specific ' +
       'searches were used that could have AI incorporated. No AI was ' +
       'used to generate any asset or text for the game.',
+  },
+  {
+    heading: 'CREATED FOR BULLET HELL JAM 7',
+    body: 'itch.io/jam/bullet-jam-7',
   },
   {
     heading: 'SOURCE CODE',

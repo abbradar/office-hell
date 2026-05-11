@@ -24,16 +24,25 @@ export const FINAL_BOSS_METAL_LOOP_KEY = 'finalBossMetalLoop';
 export const ENDING_OPENING_KEY = 'endingOpening';
 export const ENDING_LOOP_KEY = 'endingLoop';
 
-// Kaedalus test stage — same arrangement at two lengths. Long version
-// loops as the regular stage music; short version loops under the boss
-// fight after a hand-off triggered mid-stage.
-export const KAEDALUS_LONG_KEY = 'kaedalusLong';
+// Kaedalus stage. The pre-Hodge intro is a one-shot built from the 1..70
+// bar chunks, played through once over the four pre-boss waves. The short
+// version loops under the post-Hodge waves before the boss enters.
+export const KAEDALUS_STAGE2_INTRO_KEY = 'kaedalusStage2Intro';
 export const KAEDALUS_SHORT_KEY = 'kaedalusShort';
 
-// Monster RPG 2 test stage — four tracks driving a four-phase progression.
-// 12okt + battle play once (no native loop seam, so we treat them as
-// one-shots); chase + final_boss loop under the two boss fights.
-export const MONSTER_INTRO_KEY = 'monsterIntro';
-export const MONSTER_BATTLE_KEY = 'monsterBattle';
-export const MONSTER_CHASE_KEY = 'monsterChase';
-export const MONSTER_FINAL_BOSS_KEY = 'monsterFinalBoss';
+// Chunks split from the kaedalus long arrangement, anchored to the Hodge
+// encounter — see content/waves/shrunkOldMan.ts:
+//   - dialog: the 71 chunk, short loop under the pre-fight dialogue
+//   - fight: 74 + 75-f concatenated, one-shot under the fight itself
+export const KAEDALUS_HODGE_DIALOG_KEY = 'kaedalusHodgeDialog';
+export const KAEDALUS_HODGE_FIGHT_KEY = 'kaedalusHodgeFight';
+
+// Beats-per-bar for the kaedalus fight track. 120 BPM with 1.5-beat bars
+// (or equivalently 2/4 at 60 = 3 s/bar) per the composer; the early-kill
+// bonus rounds up to the next bar boundary before hard-cutting.
+export const KAEDALUS_FIGHT_BAR_S = 3;
+
+// Nene's pre-fight loop. Plays under the final-boss opening dialog;
+// the boss-track intro hands off at the loop's next seam after the
+// dialog is dismissed.
+export const NENE_BOSS_DIALOG_KEY = 'neneBossDialog';

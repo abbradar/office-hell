@@ -1,7 +1,12 @@
 import Phaser from 'phaser';
 import { GAME_H, GAME_W } from '../config';
 import { CHARACTER_REGISTRY_KEY, CHARACTERS, type CharacterDef } from '../content/characters';
-import { addElevatorBackdrop, ELEVATOR_CLOSE_ANIM, ELEVATOR_FRAME_OPEN } from '../content/elevator';
+import {
+  addElevatorBackdrop,
+  ELEVATOR_BACKDROP_TINT,
+  ELEVATOR_CLOSE_ANIM,
+  ELEVATOR_FRAME_OPEN,
+} from '../content/elevator';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_DIALOGUE_SM, FONT_MENU } from '../ui/fonts';
@@ -96,8 +101,10 @@ export class CharacterSelectScene extends Phaser.Scene {
 
     // Carry the open elevator across from MenuScene's open animation as a
     // full-screen backdrop. Sits behind the title + cards so the dark
-    // interior of the open frame doubles as the scene background.
+    // interior of the open frame doubles as the scene background. Same
+    // tint as MenuScene so the brightness doesn't pop at the transition.
     const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_OPEN);
+    elevator.setTint(ELEVATOR_BACKDROP_TINT);
 
     const goBack = (): void => {
       if (this.state.closing) return;

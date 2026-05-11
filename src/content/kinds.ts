@@ -186,15 +186,21 @@ export const redDropletHard = new EntityKind({
 });
 
 // Multiplier-drop pickup, three flavours keyed by the tier of the wave
-// that emitted them. Visually identical (8×8 green square; replace
-// with tier-distinguished art when the wider pass arrives); the
-// per-tier difference is the `floorLift` MultDropKind reads off
-// `tier`. Damage classes are empty so these route into the dedicated
+// that emitted them. Visually identical (16×16 white-square-with-green-
+// M tile; replace with tier-distinguished art when the wider pass
+// arrives); the per-tier difference is the `multLift` MultDropKind reads
+// off `tier`. Damage classes are empty so these route into the dedicated
 // `stage.drops` group at spawn, not the damages/damagedBy graph — see
 // StageManager.spawn and src/docs/scoring-system.md.
+//
+// Hitbox radius is intentionally larger than the rendered tile (32-px
+// square, 2× the sprite). Pickup needs to feel forgiving — the player's
+// own hitbox is Touhou-tiny by design, so collecting drops shouldn't
+// demand the same pixel precision as bullet-dodging. The body extends
+// past the sprite via the standard center offset.
 const multDropOpts = {
   sprite: MULT_DROP_KEY,
-  hitboxRadius: 4,
+  hitboxRadius: 16,
   hitboxShape: 'square' as const,
   damageClass: [] as never[],
   damagedByClass: [] as never[],
@@ -204,7 +210,7 @@ export const multDropMiniBoss = new MultDropKind({ ...multDropOpts, tier: 'miniB
 export const multDropBoss = new MultDropKind({ ...multDropOpts, tier: 'boss' });
 
 // Tier → drop kind lookup, used by StageManager.scheduleMultDrop to
-// pick the right floor-lift on a wave-end drop.
+// pick the right mult-lift on a wave-end drop.
 export const MULT_DROP_BY_TIER: Record<EntityTier, MultDropKind> = {
   regular: multDropRegular,
   miniBoss: multDropMiniBoss,

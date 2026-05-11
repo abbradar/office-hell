@@ -1,17 +1,9 @@
-import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY } from '../../audio/keys';
-import { getMusicTime } from '../../audio/music/loop';
+import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIALOG_KEY } from '../../audio/keys';
+import { getMusicTime, stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
-import {
-  aimed,
-  arc,
-  cameraPunch,
-  lineExplosion,
-  lineStrokeTelegraph,
-  moveTo,
-  ring,
-} from '../../script/patterns';
+import { aimed, arc, cameraPunch, lineExplosion, lineStrokeTelegraph, moveTo, ring } from '../../script/patterns';
 import {
   type BeatmapBeat,
   type BeatmapSpec,
@@ -21,6 +13,7 @@ import {
   race,
   runBeatmap,
   sideSpawnX,
+  startMusicLoop,
   startMusicWithIntro,
   suspendRunning,
   visibleDoorCenters,
@@ -118,7 +111,6 @@ export const loopBarBeat = (loopBar: number, beatInBar: 1 | 2 | 3 | 4): number =
 //   arc    3-bullet lava+red droplet fan from a bottom corner; arc-R
 //          is the horizontal mirror of arc-L with 0.2124 s lag
 
-
 const RING_COUNT = 48;
 const RING_SPEED = 130;
 const LINE_TELEGRAPH_MS = 1410;
@@ -142,12 +134,7 @@ const LINE_STROKE_OPTS = { kind: LINE_STROKE_KIND, spacing: LINE_STROKE_SPACING_
 // is on a screen boundary; that's the exit. Guard against a degenerate
 // zero-length ray (caller standing exactly on the origin) by falling
 // back to the through-point itself.
-function extendRayToBounds(
-  fromX: number,
-  fromY: number,
-  throughX: number,
-  throughY: number,
-): { x: number; y: number } {
+function extendRayToBounds(fromX: number, fromY: number, throughX: number, throughY: number): { x: number; y: number } {
   const dx = throughX - fromX;
   const dy = throughY - fromY;
   if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return { x: throughX, y: throughY };
@@ -414,10 +401,7 @@ const vertExplosionRunner = new EntityKind({
   defaultScript: vertExplosionRunnerScript,
 });
 
-function makeVertExplosionDirector(
-  durationS: number,
-  intervalS: number = VERT_EXPLOSION_INTERVAL_S,
-): EntityKind {
+function makeVertExplosionDirector(durationS: number, intervalS: number = VERT_EXPLOSION_INTERVAL_S): EntityKind {
   function* script(self: Entity): Generator<ScriptYield, void, void> {
     // Spawn-anchored — see `makeFanSpiralController` rationale.
     const startT = getMusicTime()?.time ?? null;
@@ -531,7 +515,7 @@ function* emailVolleySegment(self: Entity): Generator<ScriptYield, void, void> {
 // Duration: 57.345 − 50.973 = 6.372 s. Spawn-anchored — the
 // controller runs for the segment length from its own spawn moment,
 // so phase 1's loop iterations re-trigger cleanly.
-const ARC_WAVE_DURATION_S = 6.372;
+const ARC_WAVE_DURATION_S = 1.4;
 const ARC_WAVE_SPEED1 = 90;
 const ARC_WAVE_LEFT_X = 56;
 const ARC_WAVE_RIGHT_X = GAME_W - 56;
@@ -562,7 +546,7 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
       arc(self, 3, redDropletHard, ARC_WAVE_SPEED1 + 5, baseAngle + 0.11 * side, baseAngle + 0.19 * side);
       arc(self, 3, redDropletHard, ARC_WAVE_SPEED1 + 5, baseAngle + 0.09 * side, baseAngle + 0.21 * side);
       yield* waitSeconds(0.1823);
-      baseAngle -= 0.14 * side;
+      baseAngle -= 0.35 * side;
     }
     self.die();
   }
@@ -631,18 +615,11 @@ function* topAssistantScript(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* moveTo(self, enterX, self.y, TOP_ASSISTANT_ENTER_SPEED);
 
-  const line =
-    TOP_ASSISTANT_LINES[Math.floor(Math.random() * TOP_ASSISTANT_LINES.length)] ?? '';
+  const line = TOP_ASSISTANT_LINES[Math.floor(Math.random() * TOP_ASSISTANT_LINES.length)] ?? '';
   self.say(line, TOP_ASSISTANT_BUBBLE_FRAMES);
   yield* waitSeconds(TOP_ASSISTANT_PAUSE_S);
 
-  aimed(
-    self,
-    TOP_ASSISTANT_AIMED_COUNT,
-    greedDiamondXs,
-    TOP_ASSISTANT_AIMED_SPEED,
-    TOP_ASSISTANT_AIMED_SPREAD_RAD,
-  );
+  aimed(self, TOP_ASSISTANT_AIMED_COUNT, greedDiamondXs, TOP_ASSISTANT_AIMED_SPEED, TOP_ASSISTANT_AIMED_SPREAD_RAD);
 
   // Walk back out the same side they came in.
   yield* moveTo(self, exitX, self.y, TOP_ASSISTANT_EXIT_SPEED);
@@ -732,20 +709,34 @@ function buildPhase1Spec(): BeatmapSpec {
     { t: BAR_S + 0.1, fire: (self) => cameraPunch(self, -SHAKE_DX) },
     {
       t: 2 * BAR_S,
-      fire: (self) =>
-        lineStrokeTelegraph(self, 0, 300, 400, 300, LINE_TELEGRAPH_MS, LINE_STROKE_OPTS),
+      fire: (self) => lineStrokeTelegraph(self, 0, 300, 400, 300, LINE_TELEGRAPH_MS, LINE_STROKE_OPTS),
     },
 
     // Vertical-explosion rain — was music 4.248 → 16.991 s (12.743 s).
-    { t: 4.248, fire: (self) => { self.spawn(vertExplosionDirector, self.x, self.y, 0, 0); } },
+    {
+      t: 4.248,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector, self.x, self.y, 0, 0);
+      },
+    },
 
     // Fan-spiral — was music 8.496 → 14.867 s (6.371 s).
-    { t: 8.496, fire: (self) => { self.spawn(fanSpiralController, self.x, self.y, 0, 0); } },
+    {
+      t: 8.496,
+      fire: (self) => {
+        self.spawn(fanSpiralController, self.x, self.y, 0, 0);
+      },
+    },
 
     // Top-assistant — was music 15.9 → 25.487 s (9.587 s). The
     // segment straddles the intro→loop seam, but the director is
     // spawn-anchored so its duration carries cleanly past the seam.
-    { t: 15.9, fire: (self) => { self.spawn(topAssistantDirector, self.x, self.y, 0, 0); } },
+    {
+      t: 15.9,
+      fire: (self) => {
+        self.spawn(topAssistantDirector, self.x, self.y, 0, 0);
+      },
+    },
   );
 
   // --- loop section (t relative to loop start = music INTRO_DUR_S) ---
@@ -759,16 +750,36 @@ function buildPhase1Spec(): BeatmapSpec {
   //   50.973 → 33.982  (arc-wave)
   loop.push(
     // Counter-rotating petals — duration 8.495 s, spawn-anchored.
-    { t: 8.496, fire: (self) => { self.spawn(counterPetalController, self.x, self.y, 0, 0); } },
+    {
+      t: 8.496,
+      fire: (self) => {
+        self.spawn(counterPetalController, self.x, self.y, 0, 0);
+      },
+    },
 
     // Vertical-explosion rain pass 2 — duration 8.496 s.
-    { t: 14.867, fire: (self) => { self.spawn(vertExplosionDirector2, self.x, self.y, 0, 0); } },
+    {
+      t: 14.867,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector2, self.x, self.y, 0, 0);
+      },
+    },
 
     // Vertical-explosion rain pass 3 — sparser cadence, duration 8.496 s.
-    { t: 23.363, fire: (self) => { self.spawn(vertExplosionDirector3, self.x, self.y, 0, 0); } },
+    {
+      t: 23.363,
+      fire: (self) => {
+        self.spawn(vertExplosionDirector3, self.x, self.y, 0, 0);
+      },
+    },
 
     // Fan-spiral encore — duration 12.743 s.
-    { t: 25.487, fire: (self) => { self.spawn(fanSpiralController2, self.x, self.y, 0, 0); } },
+    {
+      t: 25.487,
+      fire: (self) => {
+        self.spawn(fanSpiralController2, self.x, self.y, 0, 0);
+      },
+    },
 
     // Arc-wave from the bottom corners — duration 6.372 s.
     {
@@ -791,7 +802,11 @@ export const phase1Spec: BeatmapSpec = buildPhase1Spec();
 // --- Boss script ---
 
 function* theBossScript(self: Entity) {
-  // Entry — boss flies down from above to his fight position.
+  // Entry — boss flies down from above to his fight position. The wave
+  // already cut the kaedalus-short loop and queued the nene battle-9
+  // loop (with a 1 s silence beat) before spawning the boss, so the
+  // boss walks in under the looping layer1_1 track without any extra
+  // music wrangling in here.
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
 
@@ -813,9 +828,14 @@ function* theBossScript(self: Entity) {
   });
   becomeHittable(self);
 
-  // Hard-cut to the metal track. `t0 = 0` is the first sample of
-  // the intro; the beatmap timestamps are anchored to it.
-  yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
+  // Hard-cut to the metal track right when the dialog dismisses. `t0 = 0`
+  // is the first sample of the intro; the beatmap timestamps are anchored
+  // to it. Gated on the nene loop being live (set up by the wave) so a
+  // future reuser spawning the boss with different music isn't trampled.
+  const inKaedalusChain = getMusicTime()?.key === NENE_BOSS_DIALOG_KEY;
+  if (inKaedalusChain) {
+    yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
+  }
 
   self.say('Performance review.', 90);
 
@@ -831,11 +851,7 @@ function* theBossScript(self: Entity) {
   // segment racers as each one's `waitEntityDead` pad finishes —
   // simplest: race the beatmap against a self-restarting segment
   // pair via `race(...).then(loop)`. Implemented inline below.
-  yield* race(
-    runBeatmap(self, phase1Spec),
-    phase1LoopRacers(self),
-    waitEntityDead(self),
-  );
+  yield* race(runBeatmap(self, phase1Spec), phase1LoopRacers(self), waitEntityDead(self));
   yield* waitEntityDead(self);
 }
 
@@ -852,11 +868,7 @@ function* phase1LoopRacers(self: Entity): Generator<ScriptYield, void, void> {
   const iterStartT0 = (getMusicTime()?.time ?? 0) + INTRO_DUR_S;
   yield* waitAudioTimeAtLeast(iterStartT0);
   while (self.alive) {
-    yield* race(
-      bossWalkSegment(self),
-      emailVolleySegment(self),
-      waitSeconds(LOOP_DUR_S),
-    );
+    yield* race(bossWalkSegment(self), emailVolleySegment(self), waitSeconds(LOOP_DUR_S));
   }
 }
 
@@ -898,8 +910,23 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
   self.stage.scheduleMultDrop('boss');
   yield* prepareForBoss(self);
+
+  // Pre-entry beat: cut whatever's playing (crack_short in the live
+  // chain, menu loop in a practice run), hold 1 s of silence as the
+  // boss starts walking, then bring the nene battle-9 layer1 loop up
+  // under the entry + dialog.
+  stopMusicLoop();
+  yield* waitSeconds(1);
+  yield* startMusicLoop(NENE_BOSS_DIALOG_KEY);
+
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
   });
+
+  // Final boss is down — freeze the scoreboard for everything that
+  // follows (outro, endingScene). The score the player banked through
+  // the fight is the final number; idle alive-ticks and stray drops
+  // during the slow-walk-home ending shouldn't bump it any further.
+  self.stage.scoringActive = false;
 }

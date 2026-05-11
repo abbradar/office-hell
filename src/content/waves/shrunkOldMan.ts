@@ -1,4 +1,11 @@
-import { KAEDALUS_SHORT_KEY } from '../../audio/keys';
+import {
+  KAEDALUS_FIGHT_BAR_S,
+  KAEDALUS_HODGE_DIALOG_KEY,
+  KAEDALUS_HODGE_FIGHT_KEY,
+  KAEDALUS_SHORT_KEY,
+  KAEDALUS_STAGE2_INTRO_KEY,
+} from '../../audio/keys';
+import { getCurrentTrackInfo, getMusicTime } from '../../audio/music/loop';
 import { BULLET_RADIUS, GAME_H, GAME_W, SCRIPT_FPS, WALL_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
@@ -8,11 +15,19 @@ import {
   FLICKER_INTERVAL_FRAMES,
   FLICKER_TOGGLES,
   POST_FLICKER_HOLD_FRAMES,
-  pauseMusicForDefeat,
 } from '../../script/boss';
 import { aimed, moveTo } from '../../script/patterns';
-import { markWave, prepareForBoss, suspendRunning } from '../../script/stage';
-import { EnemyBulletEntityKind, type ScriptYield } from '../../script/types';
+import { addMult } from '../../script/score';
+import {
+  markWave,
+  prepareForBoss,
+  race,
+  startMusicLoop,
+  suspendRunning,
+  waitAudioTimeAtLeast,
+  waitMusicComplete,
+} from '../../script/stage';
+import { EnemyBulletEntityKind, type HPVars, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { emailBullet } from './checkEmail';
 
@@ -53,15 +68,15 @@ const PHASE_A_OFFSET_F = 5; // CW ring fires this many frames after the CCW ring
 const PHASE_A_TINT_RED = 0xff3344;
 const PHASE_A_DURATION_F = PHASE_A_TURN_F; // exactly one pivot revolution
 
-// Phase B — "filing the whole desk at once": 40 red rings sweep from
-// vertically down clockwise, 1-second break, then 40 blue rings sweep
+// Phase B — "filing the whole desk at once": 20 red rings sweep from
+// vertically down clockwise, 1-second break, then 20 blue rings sweep
 // counterclockwise from the same starting angle. Rings are 12 red/blue-
 // tinted paper bullets fired radially at 300 px/s; the pivot bullet
-// rotates through 2π over 12 s (so each 40-ring sweep covers 120°).
-// Concurrent wall fill: a vertical-up shot from the bottom every 30
-// frames and a pair of side-cross shots from the inner walls every 15
+// rotates through 2π over 24 s (so each 20-ring sweep covers a fraction).
+// Concurrent wall fill: a vertical-up shot from the bottom every 90
+// frames and a pair of side-cross shots from the inner walls every 45
 // frames, all at 70 px/s — a baseline density the player weaves through
-// while the rings sweep overhead. Total duration ~10 s.
+// while the rings sweep overhead. Total duration ~20 s (two cycles).
 const PHASE_B_RINGS = 20;
 const PHASE_B_SUB_F = 240; // 4 s per color sub-phase
 const PHASE_B_RING_GAP_F = PHASE_B_SUB_F / PHASE_B_RINGS; // 6 frames between rings
@@ -93,8 +108,8 @@ const PHASE_C_REPEATS = 4;
 const PHASE_C_BOSS_SPEED = 400;
 const PHASE_C_GRAVITY = 100;
 const PHASE_C_LEFT_X = 50;
-const PHASE_C_RIGHT_X = GAME_W - 50; // 350
-const PHASE_C_CENTER_X = GAME_W / 2; // 200
+const PHASE_C_RIGHT_X = GAME_W - 50;
+const PHASE_C_CENTER_X = GAME_W / 2;
 const PHASE_C_TINT_YELLOW = 0xffff55;
 const PHASE_C_TINT_RED = 0xff3344;
 // Bullets inherit this fraction of the boss's horizontal velocity at spawn —
@@ -109,14 +124,10 @@ const PHASE_C_SPAWN_Y_JITTER = 100;
 // R, each spawning a 5-bullet ring whose lead bullet points along 5·θ —
 // so the rings precess five times per orbital revolution and rake the
 // field as twin spirals. The orbiter's tangent velocity is folded into
-// each spawned bullet (vx/vy include ±sin/cos · R·ω), so the spirals
-// lean with the rotation instead of firing as a clean star, and rotation
-// is baked from the resulting velocity vector. Meanwhile Hodges himself
-// lays a tight 3-shot aimed fan straight at the player on a 40-frame
-// cadence. One orbiter's shots are tinted yellow so the two spirals read
-// as separate sources. R = 100 puts the orbiters at the field edges on a
-// 200-wide stage — intentional; the orbital ring sweeps the entire field
-// width.
+// each spawned bullet, so the spirals lean with the rotation. Meanwhile
+// Hodges himself lays a tight 3-shot aimed fan straight at the player on
+// a 40-frame cadence. One orbiter's shots are tinted yellow so the two
+// spirals read as separate sources.
 const PHASE_D_REPEATS = 12;
 const PHASE_D_CYCLES = 2; // re-spawn orbiters + spread loop this many times
 const PHASE_D_GAP = 40;
@@ -133,11 +144,20 @@ const PHASE_D_TINTS: (number | null)[] = [null, 0xffff55];
 // Scriptless variant of reportBullet for radial spreads — the canonical
 // reportBullet kind has a homing default script that would re-aim every
 // spawned bullet at the player and erase any precise geometric pattern.
-// Shared by Phase B's red/blue rotating rings and Phase D's orbiter
-// spirals — both need straight-line trajectories.
+// Shared by Phase A's interleaved rings, Phase B's red/blue rotating
+// rings, and Phase D's orbiter spirals — all three need straight-line
+// trajectories.
 const straightReport = new EnemyBulletEntityKind({
   sprite: 'reportBullet',
   hitboxRadius: BULLET_RADIUS,
+});
+
+// Hodges's Phase-D three-shot aimed spread. Larger and pink so the
+// punctuation reads cleanly over the orbiter spirals — see the texture
+// generator in content/textures.ts for the matching 12×12 sprite.
+const hodgesSpreadBullet = new EnemyBulletEntityKind({
+  sprite: 'pinkBullet',
+  hitboxRadius: 6,
 });
 
 // Phase A helper: spawn one 8-spoke × 8-bullet radial ring. Each spoke
@@ -181,14 +201,6 @@ function firePhaseBRing(self: Entity, tint: number, pivotAngle: number): void {
   }
 }
 
-// Hodges's Phase-D three-shot aimed spread. Larger and pink so the
-// punctuation reads cleanly over the orbiter spirals — see the texture
-// generator in content/textures.ts for the matching 12×12 sprite.
-const hodgesSpreadBullet = new EnemyBulletEntityKind({
-  sprite: 'pinkBullet',
-  hitboxRadius: 6,
-});
-
 // Phase C helper: drive the boss horizontally from its current x to `targetX`
 // at PHASE_C_BOSS_SPEED, dropping a tinted email bullet at every random
 // 1–10-frame interval. Tint follows direction of motion (yellow leftward,
@@ -225,64 +237,64 @@ const DEFEAT_PRE_SHUDDER_FRAMES = 24;
 const DEFEAT_BUBBLE_FRAMES =
   DEFEAT_PRE_SHUDDER_FRAMES + FLICKER_TOGGLES * FLICKER_INTERVAL_FRAMES + POST_FLICKER_HOLD_FRAMES + 14;
 
-// Hodges's lethal-hit script. Stage-2 part 1's KAEDALUS_LONG halts for
-// the dramatic beat; the bubble goes up, then the standard shudder
-// runs and KAEDALUS_SHORT — the next sub-stage's loop — is restarted
-// from t=0 just before die(), so part 2 can be timed against a known
-// music clock. The next chain function's idempotent `startMusicLoop`
-// observes KAEDALUS_SHORT already running and is a no-op.
+// How close to the end of the 75-f fight track Hodge gets force-killed if
+// the player hasn't put him down yet. The fight's pacing is gated on the
+// music's natural end (see chain in content/stage.ts → fromHrTrio), so
+// leaving Hodge alive past the music finish would leak into the next
+// section. 3 s gives the shudder room to land before the track wraps.
+const HODGE_FIGHT_TIMEOUT_PAD_S = 3;
+
+// Per-spawn vars for Hodge. `timedOut` is raised by the music-time killer
+// when the fight track is about to end; the death script reads it to
+// suppress the mult-drop payout — the player didn't earn it.
+type HodgeVars = HPVars & { timedOut: boolean };
+
+// Whether this Hodge instance was set up under the stage-2 chain (i.e.
+// the wave kicked off with the kaedalus stage-2 intro or already swapped
+// into the dialog loop). Reused at multiple transition points, so
+// factored out as a music-key probe.
+function inKaedalusChain(): boolean {
+  const key = getMusicTime()?.key;
+  return key === KAEDALUS_HODGE_DIALOG_KEY || key === KAEDALUS_STAGE2_INTRO_KEY;
+}
+
+// Hodges's lethal-hit script. Visuals only — the 75-f fight track keeps
+// playing through the shudder so the music can wrap naturally and hand
+// off to crack_short via the chain. The mult drop is scheduled here
+// (rather than up-front in the wave) so the timed-out variant can skip
+// it without having to surgery the carrier's onDeath queue.
 function* shrunkOldManDeath(self: Entity): Generator<ScriptYield, void, void> {
-  const m = pauseMusicForDefeat(KAEDALUS_SHORT_KEY);
   self.body.setVelocity(0, 0);
   self.body.enable = false;
   self.say('Thirty-one years… all gone…', DEFEAT_BUBBLE_FRAMES);
   yield DEFEAT_PRE_SHUDDER_FRAMES;
   yield* bossShudder(self);
-  m.restart();
+  const vars = self.vars as HodgeVars;
+  if (!vars.timedOut) self.stage.scheduleMultDrop('boss');
   self.die();
 }
 
-function* shrunkOldManScript(self: Entity) {
-  // Slow shuffle to anchor. BossKind makes him unhittable on spawn so
-  // the player can't melt him before he's said his piece; becomeHittable
-  // below opts back into damage after the dialogue.
-  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-  yield 30;
+// Music-time gate: if the player still hasn't killed Hodge with
+// HODGE_FIGHT_TIMEOUT_PAD_S left on the 75-f track, replace his pattern
+// loop with the death script. The timeout path tags `vars.timedOut` so
+// the death script knows to skip the mult drop. Only fires while the
+// fight track itself is active — practice runs that spawn Hodge under a
+// different track skip the timeout entirely.
+function* hodgeFightTimeout(self: Entity): Generator<ScriptYield, void, void> {
+  const info = getCurrentTrackInfo();
+  if (info === null || info.loopDuration <= HODGE_FIGHT_TIMEOUT_PAD_S) return;
+  const triggerT = info.loopDuration - HODGE_FIGHT_TIMEOUT_PAD_S;
+  yield* waitAudioTimeAtLeast(triggerT);
+  if (!self.alive) return;
+  const vars = self.vars as HodgeVars;
+  vars.timedOut = true;
+  // Lock damage off so a stray bullet that lands a frame later can't
+  // re-enter takeDamage and re-fire the death script.
+  self.setDamagedByClasses([]);
+  self.stage.runScript(self, shrunkOldManDeath);
+}
 
-  const ch = self.stage.player.character;
-  yield self.dialogue({
-    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    right: { sprite: 'geezer', frame: 1, name: 'Mr. Hodges' },
-    lines: [
-      { speaker: 'right', text: 'Excuse me… do you have a minute?' },
-      { speaker: 'left', text: 'Who are you?' },
-      {
-        speaker: 'right',
-        text: "Hodges. Thirty-one years with the firm. They 'shrunk' my position this morning.",
-      },
-      {
-        speaker: 'right',
-        text: 'Security gave me ten minutes to clear my desk. There are still… a few things to hand over.',
-      },
-      { speaker: 'left', text: "I'm not staying late for someone else's backlog." },
-      { speaker: 'right', text: 'Please. I have nowhere else to leave them.' },
-    ],
-  });
-
-  // Claim the HUD header now that the fight is actually starting; release it
-  // on death (covers both natural defeat and forced cleanup via release(),
-  // which calls die() too).
-  self.stage.bossName = 'Mr. Hodges';
-  self.onDeath(() => {
-    self.stage.bossName = null;
-  });
-
-  becomeHittable(self);
-  self.say('Just a few old tasks…', 110);
-  yield 60;
-
-  // Loops until the lethal hit lands, at which point takeDamage swaps
-  // this script out for shrunkOldManDeath via runScript.
+function* shrunkOldManPatterns(self: Entity): Generator<ScriptYield, void, void> {
   while (true) {
     self.say('Could you finish these reports?', 100);
     {
@@ -403,10 +415,75 @@ function* shrunkOldManScript(self: Entity) {
   }
 }
 
+function* shrunkOldManScript(self: Entity) {
+  // Initialise the timeout latch on every spawn.
+  (self.vars as HodgeVars).timedOut = false;
+
+  // Slow shuffle to anchor. BossKind makes him unhittable on spawn so
+  // the player can't melt him before he's said his piece; becomeHittable
+  // below opts back into damage after the dialogue.
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
+  yield 30;
+
+  // Music-key probe: gate the kaedalus-specific music swaps to runs
+  // that actually entered through the stage-2 chain. Defensive guard —
+  // a future reuser that spawns Hodge under different music keeps its
+  // own context instead of having it overwritten.
+  const kaedalusChain = inKaedalusChain();
+  if (kaedalusChain) yield* startMusicLoop(KAEDALUS_HODGE_DIALOG_KEY);
+
+  const ch = self.stage.player.character;
+  yield self.dialogue({
+    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
+    right: { sprite: 'geezer', frame: 1, name: 'Mr. Hodges' },
+    lines: [
+      { speaker: 'right', text: 'Excuse me… do you have a minute?' },
+      { speaker: 'left', text: 'Who are you?' },
+      {
+        speaker: 'right',
+        text: "Hodges. Thirty-one years with the firm. They 'shrunk' my position this morning.",
+      },
+      {
+        speaker: 'right',
+        text: 'Security gave me ten minutes to clear my desk. There are still… a few things to hand over.',
+      },
+      { speaker: 'left', text: "I'm not staying late for someone else's backlog." },
+      { speaker: 'right', text: 'Please. I have nowhere else to leave them.' },
+    ],
+  });
+
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.stage.bossName = 'Mr. Hodges';
+  self.onDeath(() => {
+    self.stage.bossName = null;
+  });
+
+  // Switch from the 71 dialog loop to the 75-f one-shot fight track.
+  // becomeHittable is delayed until after the swap so the damaging flag
+  // and the fight music kick in together.
+  if (kaedalusChain) yield* startMusicLoop(KAEDALUS_HODGE_FIGHT_KEY, { loop: false });
+
+  becomeHittable(self);
+  self.say('Just a few old tasks…', 110);
+  yield 60;
+
+  // Patterns loop until the lethal hit lands (takeDamage routes through
+  // shrunkOldManDeath) or, in the chain run, until the 75-f track is
+  // ~3 s from ending — the timeout racer then force-swaps Hodge into
+  // the death script with `timedOut` set.
+  if (kaedalusChain) {
+    yield* race(shrunkOldManPatterns(self), hodgeFightTimeout(self));
+  } else {
+    yield* shrunkOldManPatterns(self);
+  }
+}
+
 export const shrunkOldMan = new BossKind({
   sprite: 'geezer',
   hitboxRadius: 22,
-  hp: 450,
+  hp: 350,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: shrunkOldManScript,
@@ -415,19 +492,56 @@ export const shrunkOldMan = new BossKind({
 
 export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'mr. hodges');
-  self.stage.scheduleMultDrop('boss');
-  // Music setup (KAEDALUS_LONG) is owned by the chain function
-  // (`fromShrunkOldMan`) — both the live chain and the standalone
-  // practice entry route through it. The lethal-hit script below
-  // performs the mid-stage hand-off to KAEDALUS_SHORT.
+  // Music + mult-drop are deferred to the boss script itself: the dialog
+  // loop is started just before the dialogue beat (so the cue lines up
+  // with the user's mental model of "music starts on dialog"), and the
+  // drop is scheduled inside the death script so the timeout-kill variant
+  // can suppress it.
   // Same opening beat as the final-boss wave: don't bring him on while
   // leftover enemies are still drifting around, sweep stragglers, brief
   // pause for funereal tone, then he shuffles in. BossKind keeps him
   // unhittable on spawn; his script calls becomeHittable after the
   // dialogue.
   yield* prepareForBoss(self);
+  let boss: Entity | null = null;
   yield* suspendRunning(self, function* () {
-    const boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0);
+    boss = self.spawn(shrunkOldMan, GAME_W / 2, -30, 0, 0);
     yield { until: boss };
   });
+
+  // Post-death music routing. The 74+75-f fight track is a one-shot, so
+  // the kill point splits two ways:
+  //   - Player kill (vars.timedOut === false): round the current music
+  //     timestamp up to the next 3-second bar boundary, award one mult
+  //     floor lift per bar of fight track skipped from there to the
+  //     natural end, then hard-cut to crack_short.
+  //   - Timeout kill (vars.timedOut === true): the fight track is
+  //     already within a few seconds of its natural end. Let it run out
+  //     and `waitMusicComplete` triggers crack_short on the seam — no
+  //     bonus, since the player didn't actually finish the fight.
+  if (getMusicTime()?.key === KAEDALUS_HODGE_FIGHT_KEY && boss !== null) {
+    yield* finishHodgeMusic(self, boss);
+  }
+}
+
+function* finishHodgeMusic(self: Entity, boss: Entity): Generator<ScriptYield, void, void> {
+  const vars = boss.vars as HodgeVars | null;
+  const timedOut = vars?.timedOut === true;
+  if (timedOut) {
+    yield* waitMusicComplete();
+    yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+    return;
+  }
+  const m = getMusicTime();
+  const info = getCurrentTrackInfo();
+  if (m === null || info === null) {
+    yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+    return;
+  }
+  const totalDur = info.loopDuration;
+  const barAlignedT = Math.ceil(m.time / KAEDALUS_FIGHT_BAR_S) * KAEDALUS_FIGHT_BAR_S;
+  yield* waitAudioTimeAtLeast(barAlignedT);
+  const barsSkipped = Math.max(0, Math.floor((totalDur - barAlignedT) / KAEDALUS_FIGHT_BAR_S));
+  if (barsSkipped > 0) addMult(self.stage.score, barsSkipped);
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
 }

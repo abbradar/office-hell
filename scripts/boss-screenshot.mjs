@@ -6,9 +6,9 @@
 // Output: /tmp/boss-frames/frame_NN.png + a manifest of music
 // times.
 
-import { chromium } from 'playwright';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { chromium } from 'playwright';
 
 const URL = process.env.PROBE_URL ?? 'http://localhost:5174/';
 const OUT = '/tmp/boss-frames';
@@ -56,9 +56,7 @@ async function main() {
     const tm = window.__game.scene.getScene('TestMenu');
     const state = tm.state;
     const headers = state.headerTexts?.length ?? 0;
-    const bossIdx = state.rows.findIndex((r) =>
-      (r.text ?? '').toLowerCase().includes('final boss'),
-    );
+    const bossIdx = state.rows.findIndex((r) => (r.text ?? '').toLowerCase().includes('final boss'));
     if (bossIdx < 0) throw new Error('boss row not found');
     state.cursor = headers + bossIdx;
     tm.start();
@@ -74,7 +72,7 @@ async function main() {
   // starts (== music time becomes a real number > 0).
   const dialogDeadline = Date.now() + 30_000;
   while (Date.now() < dialogDeadline) {
-    const musicTime = await page.evaluate(() => {
+    await page.evaluate(() => {
       const g = window.__game;
       const game = g.scene.getScene('Game');
       // Music time is exposed on the stage manager via getMusicTime
@@ -99,9 +97,9 @@ async function main() {
       // Heuristic: boss exists and is alive AND no dialogue is active.
       const stage = game.stage;
       if (!stage) return false;
-      if (stage.paused) return false;  // dialog freeze flips this on
+      if (stage.paused) return false; // dialog freeze flips this on
       // Confirm the boss has entered.
-      return !stage.dialogue;  // optimistic
+      return !stage.dialogue; // optimistic
     });
     if (isReady) break;
     await page.keyboard.press('Space');

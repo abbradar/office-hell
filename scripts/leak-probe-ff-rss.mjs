@@ -10,9 +10,9 @@
 //   PROBE_URL=http://localhost:5174/ node scripts/leak-probe-ff-rss.mjs
 //   PROBE_URL=... PROBE_MODE=churn node scripts/leak-probe-ff-rss.mjs
 
-import { firefox } from 'playwright';
+import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { readFileSync, readdirSync } from 'node:fs';
+import { firefox } from 'playwright';
 
 const URL = process.env.PROBE_URL ?? 'http://localhost:5173/';
 const RUN_SECS = Number(process.env.PROBE_SECS ?? 90);
@@ -28,7 +28,9 @@ function descendants(rootPid) {
   let added = true;
   let pids = [];
   try {
-    pids = readdirSync('/proc').filter((d) => /^\d+$/.test(d)).map(Number);
+    pids = readdirSync('/proc')
+      .filter((d) => /^\d+$/.test(d))
+      .map(Number);
   } catch {
     return out;
   }
@@ -46,7 +48,9 @@ function descendants(rootPid) {
           out.add(pid);
           added = true;
         }
-      } catch { /* gone */ }
+      } catch {
+        /* gone */
+      }
     }
   }
   return out;
@@ -57,7 +61,9 @@ function rssKB(pid) {
     const status = readFileSync(`/proc/${pid}/status`, 'utf8');
     const m = status.match(/VmRSS:\s+(\d+)\s+kB/);
     return m ? Number(m[1]) : 0;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
 
 function commName(pid) {
@@ -66,7 +72,9 @@ function commName(pid) {
     const open = stat.indexOf('(');
     const close = stat.lastIndexOf(')');
     return stat.slice(open + 1, close);
-  } catch { return '?'; }
+  } catch {
+    return '?';
+  }
 }
 
 function totalRSS(rootPid, ourPidsAtStart) {
@@ -113,7 +121,10 @@ async function readPhaserCounts(page) {
     const scenes = [];
     for (const s of g.scene.scenes) {
       let n = 0;
-      const visit = (o) => { n += 1; if (o.list) for (const c of o.list) visit(c); };
+      const visit = (o) => {
+        n += 1;
+        if (o.list) for (const c of o.list) visit(c);
+      };
       for (const c of s.children?.list ?? []) visit(c);
       const tw = s.tweens?._active?.length ?? 0;
       const tm = s.time?._active?.length ?? 0;
@@ -126,7 +137,10 @@ async function readPhaserCounts(page) {
     }
     const probe = (e) => e?._eventsCount ?? -1;
     return {
-      totalObj, totalTw, totalTm, scenes,
+      totalObj,
+      totalTw,
+      totalTm,
+      scenes,
       dom: document.getElementsByTagName('*').length,
       sounds: g.sound?.sounds?.length ?? 0,
       gameEv: probe(g.events),
@@ -138,15 +152,28 @@ async function readPhaserCounts(page) {
 function listFirefoxPids() {
   const out = new Set();
   let pids = [];
-  try { pids = readdirSync('/proc').filter((d) => /^\d+$/.test(d)).map(Number); } catch { return out; }
+  try {
+    pids = readdirSync('/proc')
+      .filter((d) => /^\d+$/.test(d))
+      .map(Number);
+  } catch {
+    return out;
+  }
   for (const pid of pids) {
     try {
       const c = readFileSync(`/proc/${pid}/comm`, 'utf8').trim();
-      if (/^(firefox|MainThread|Web Content|Privileged Content|Isolated Web Co|RDD|Socket Process|Utility Process|GMP)/i.test(c)) out.add(pid);
+      if (
+        /^(firefox|MainThread|Web Content|Privileged Content|Isolated Web Co|RDD|Socket Process|Utility Process|GMP)/i.test(
+          c,
+        )
+      )
+        out.add(pid);
       // Also match by cmdline (FF child processes have varied comm).
       const cmd = readFileSync(`/proc/${pid}/cmdline`, 'utf8');
       if (cmd.includes('firefox') || cmd.includes('-greomni')) out.add(pid);
-    } catch { /* gone */ }
+    } catch {
+      /* gone */
+    }
   }
   return out;
 }
@@ -255,9 +282,14 @@ async function main() {
     const avg = ratesMBperMin.reduce((a, b) => a + b, 0) / ratesMBperMin.length;
     console.log(`  avg rate: ${avg.toFixed(2)} MB/min`);
   }
-  console.log(`  DOM: ${first.dom} → ${last.dom}, gameObj: ${first.obj} → ${last.obj}, tweens: ${first.tw} → ${last.tw}, timers: ${first.tm} → ${last.tm}`);
+  console.log(
+    `  DOM: ${first.dom} → ${last.dom}, gameObj: ${first.obj} → ${last.obj}, tweens: ${first.tw} → ${last.tw}, timers: ${first.tm} → ${last.tm}`,
+  );
 
   await browser.close();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
