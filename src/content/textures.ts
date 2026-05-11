@@ -13,6 +13,7 @@ import lavaDropletHardUrl from '../assets/bullets/lava_droplet_hard.png';
 import missedCallUrl from '../assets/bullets/missedCall.png';
 import necktieUrl from '../assets/bullets/necktie.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
+import pixelFireUrl from '../assets/bullets/pixel_fire.png';
 import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
 import redCrossUrl from '../assets/bullets/red_cross.png';
@@ -291,6 +292,11 @@ export const RED_DROPLET_HARD_KEY = 'redDropletHard';
 // regardless of which direction the bullet is travelling.
 export const NECKTIE_KEY = 'necktie';
 
+// Pixel fire — 8×10 flame sprite used by the project-on-fire panic wave.
+// Non-directional (looks like fire from every angle); kind is built
+// inside the wave file so the bullet stays scoped to its only caller.
+export const PIXEL_FIRE_KEY = 'pixelFire';
+
 // Bordered variant of the 14×10 email bullet sprite — used by the final
 // boss's email volley as a visually distinct accent over the loose
 // `emailBullet` sprite. 1 px #ff5e62 frame around the bbox; inner 14×10
@@ -331,6 +337,7 @@ export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image(LAVA_DROPLET_HARD_KEY, lavaDropletHardUrl);
   scene.load.image(RED_DROPLET_HARD_KEY, redDropletHardUrl);
   scene.load.image(NECKTIE_KEY, necktieUrl);
+  scene.load.image(PIXEL_FIRE_KEY, pixelFireUrl);
 }
 
 // Multiplier-drop pickup — 16×16 white square with a 1 px green border

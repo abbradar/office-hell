@@ -40,6 +40,7 @@ import { janitorsWave } from './waves/janitor';
 import { meetingInternsWave } from './waves/meetingInterns';
 import { moreChartsWave } from './waves/moreCharts';
 import { oversleeperWave } from './waves/oversleeper';
+import { projectOnFireWave } from './waves/projectOnFire';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
 import { theBossPhase2Wave, theBossPhase3Wave, theBossWave } from './waves/theBoss';
@@ -363,6 +364,15 @@ function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(salesClientWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
+  yield* fromProjectOnFire(self);
+}
+
+function* fromProjectOnFire(self: Entity): Generator<ScriptYield, void, void> {
+  markReached(self, 'r-project-on-fire');
+  yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
+
+  yield* self.stage.separateWave(projectOnFireWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromJanitor(self);
 }
 
@@ -554,6 +564,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-all-doors-spam', name: 'All-Doors Spam', script: fromAllDoorsSpam },
   { id: 'r-fashion-expert', name: 'Fashion Expert', script: fromFashionExpert },
   { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
+  { id: 'r-project-on-fire', name: 'Project On Fire', script: fromProjectOnFire },
   { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },
   { id: 'r-work-is-fun', name: 'Work Is Fun', script: fromWorkIsFun },
