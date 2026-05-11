@@ -1,5 +1,5 @@
 import { BULLET_RADIUS } from '../config';
-import { MultDropKind } from '../script/score';
+import { MultDropKind } from '../script/multDrop';
 import { EnemyBulletEntityKind, EntityKind, type EntityTier } from '../script/types';
 import {
   BLUE_EXPLOSION_KEY,

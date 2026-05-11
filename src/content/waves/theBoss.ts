@@ -1264,6 +1264,13 @@ function* theBossWaveFromPhase(
 ): Generator<ScriptYield, void, void> {
   markWave(self, label);
   self.stage.scheduleMultDrop('boss');
+  // Start the metal track before spawning so the phase script's
+  // patterns + music-time force-advance gate (`untilPhaseEndOrTime`)
+  // have a live clock to lock onto. Without this the practice
+  // entries played silent and the patterns fell back to wall-clock
+  // gaps. Same intro+loop shape as the live chain — the practice run
+  // gets the boss music straight from t=0.
+  yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(kind, GAME_W / 2, BOSS_ENTRY_Y, 0, 0);
     yield { until: boss };

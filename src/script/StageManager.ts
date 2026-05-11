@@ -7,7 +7,8 @@ import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
-import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick } from './score';
+import { MultDropKind } from './multDrop';
+import { ALIVE_TICK_FRAMES, GameScore, recordAliveTick } from './score';
 import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
 import { HPEntityKind } from './types';
 
