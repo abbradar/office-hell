@@ -1395,7 +1395,6 @@ export const theBossFromPhase3 = makeTheBoss(2);
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
-  self.stage.scheduleMultDrop('boss');
   yield* prepareForBoss(self);
 
   // Pre-entry beat: cut whatever's playing (crack_short in the live
@@ -1425,7 +1424,6 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
 // playing. Mirrors `wellnessCoach`'s practice variant pattern.
 function* theBossWaveFromPhase(self: Entity, kind: PhasedBossKind, label: string): Generator<ScriptYield, void, void> {
   markWave(self, label);
-  self.stage.scheduleMultDrop('boss');
   // Start the metal track before spawning so the phase script's
   // patterns + music-time force-advance gate (`untilPhaseEndOrTime`)
   // have a live clock to lock onto. Without this the practice

@@ -561,7 +561,6 @@ export const wellnessCoachFromPhase4 = makeWellnessCoach(3);
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
-  self.stage.scheduleMultDrop('boss');
   // Music setup (switch to retro-03 opening → loop) is owned by the chain
   // function (`fromWellnessCoach`) — both the live chain and the
   // standalone practice entry route through it so the music is correct
