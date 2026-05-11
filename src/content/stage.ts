@@ -51,6 +51,7 @@ import {
   wellnessCoachPhase4Wave,
   wellnessCoachWave,
 } from './waves/wellnessCoach';
+import { workIsFunWave } from './waves/workIsFun';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -385,18 +386,35 @@ function* fromShrunkOldMan(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
 
   yield* self.stage.separateWave(shrunkOldManWave(self));
-  yield* fromHrTrio(self);
+  yield* fromWorkIsFun(self);
 }
 
 // === Stage 2 part 2 — kaedalus-short → retro-03 → The Boss ===
 //
-// Three remaining late-day waves (HR trio, oversleeper, Friday-
-// party) before the retro-03 cut and his entrance. Untimed for now.
-// In the live chain, kaedalus-short is already running by the time
-// we get here — Hodges's death script switched it in mid-shudder
-// (pauseMusicForDefeat in shrunkOldMan.ts). The leading
-// `startMusicLoop(kaedalus-short)` is a no-op in that case; from a
-// standalone practice entry it switches in from menu music.
+// Four remaining late-day waves (work-is-fun coworker rally, HR
+// trio, oversleeper, Friday-party) before the retro-03 cut and his
+// entrance. Untimed for now. In the live chain, kaedalus-short is
+// already running by the time we get here — Hodges's death script
+// switched it in mid-shudder (pauseMusicForDefeat in
+// shrunkOldMan.ts). The leading `startMusicLoop(kaedalus-short)` is
+// a no-op in that case; from a standalone practice entry it
+// switches in from menu music. The leading `waitSeconds` covers the
+// breath after Hodges (whose defeat sequence carries its own beat
+// but doesn't trail a gap into the next wave).
+function* fromWorkIsFun(self: Entity): Generator<ScriptYield, void, void> {
+  markReached(self, 'r-work-is-fun');
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  yield* self.stage.separateWave(workIsFunWave(self));
+  yield* fromHrTrio(self);
+}
+
+// HR trio's leading `waitSeconds` is kept for standalone practice
+// entry (switching in from menu music with no preceding wave to
+// supply the breath). In the live chain it stacks with the absence
+// of a trailing gap on `fromWorkIsFun` to give one INTER_WAVE_GAP
+// between them.
 function* fromHrTrio(self: Entity): Generator<ScriptYield, void, void> {
   markReached(self, 'r-hr-trio');
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
@@ -538,6 +556,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },
+  { id: 'r-work-is-fun', name: 'Work Is Fun', script: fromWorkIsFun },
   { id: 'r-hr-trio', name: 'HR Trio', script: fromHrTrio },
   { id: 'r-oversleeper', name: 'Oversleeper', script: fromOversleeper },
   { id: 'r-friday-party', name: 'Friday Party', script: fromFridayParty },
