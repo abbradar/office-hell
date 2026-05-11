@@ -176,7 +176,7 @@ const KBD_COMMENT_HOLD = 70;
 // One kind per character — the spawn path sets the sprite texture from
 // kind.sprite, so a per-char kind lands the right cap on frame 0 with
 // no placeholder flash. All caps share the same 16×16 geometry and
-// hitbox, so they pool together cleanly.
+// hitbox.
 const KBD_CHARS_USED = 'janehoqwrty1234567890psd!';
 const KBD_KINDS: Map<string, EnemyBulletEntityKind> = new Map();
 for (const ch of KBD_CHARS_USED) {

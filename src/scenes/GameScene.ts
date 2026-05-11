@@ -763,7 +763,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
     // Player isn't part of stage.active, so its anim doesn't get the per-tick
-    // refresh that pooled entities get inside stage.update — drive it here. Run
+    // refresh that other entities get inside stage.update — drive it here. Run
     // even while paused so the dialogue's first frame doesn't show a stale anim
     // from before the cutscene started.
     this.player.updateAnim();

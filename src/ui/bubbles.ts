@@ -19,9 +19,6 @@ const SCREEN_PAD = 4;
 
 type Bubble = {
   target: Entity;
-  // Snapshot of target.gen at show time. If the entity dies and is reused (gen bumps),
-  // we drop the bubble instead of pinning it to a stranger that took over the slot.
-  gen: number;
   framesLeft: number;
   container: Phaser.GameObjects.Container;
   graphics: Phaser.GameObjects.Graphics;
@@ -55,7 +52,6 @@ export class BubbleManager {
 
     const bubble: Bubble = {
       target,
-      gen: target.gen,
       framesLeft: Math.max(1, frames),
       container,
       graphics: gfx,
@@ -104,8 +100,7 @@ export class BubbleManager {
       // biome-ignore lint/style/noNonNullAssertion: bounded by active.length
       const b = this.active[i]!;
       b.framesLeft--;
-      const targetGone = !b.target.alive || b.target.gen !== b.gen;
-      if (b.framesLeft <= 0 || targetGone) {
+      if (b.framesLeft <= 0 || !b.target.alive) {
         b.container.destroy();
         const last = this.active.length - 1;
         // biome-ignore lint/style/noNonNullAssertion: bounded by active.length - 1

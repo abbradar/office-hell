@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { onceMusicComplete } from '../audio/music/loop';
-import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
+import { CULL_MARGIN, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
@@ -8,7 +8,7 @@ import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { GameScore } from './score';
 import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from './types';
-import { HPEntityKind, INERT_KIND } from './types';
+import { HPEntityKind } from './types';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
@@ -117,9 +117,10 @@ type Wait = {
   scheduledGeneration: number;
 };
 
-// The runtime that runs a stage: owns the entity pool, the script
-// scheduler (wait queue, races, drops), the dialogue + bubble managers,
-// the pause flag, and the stage scratchpad (`globals` + `beat`).
+// The runtime that runs a stage: owns the active entity list, the
+// script scheduler (wait queue, races, drops), the dialogue + bubble
+// managers, the pause flag, and the stage scratchpad (`globals` +
+// `beat`).
 //
 // Constructed once per `GameScene`; throwing the manager away is the
 // reset for stage-local state. Anything an entity script can yield is
@@ -188,7 +189,6 @@ export class StageManager {
   // GameScene constructs a fresh manager on scene transition.
   readonly score = new GameScore();
 
-  private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
   // Two waiting queues, one per "clock":
   //
@@ -237,8 +237,6 @@ export class StageManager {
     this.bubbles = new BubbleManager(scene);
     this.dialogue = new DialogueManager(scene);
 
-    for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
-
     // Subscribe to arcade physics' per-step event. Each emit corresponds
     // to exactly one fixed simulation step run by World.update / step,
     // and the emit happens AFTER body integration and collider processing
@@ -276,18 +274,6 @@ export class StageManager {
     }
   }
 
-  private makeEntity(): Entity {
-    const e = new Entity(this.scene, 0, 0, 'bullet');
-    e.stage = this;
-    this.scene.add.existing(e);
-    this.scene.physics.add.existing(e);
-    e.setActive(false).setVisible(false);
-    const body = e.body;
-    body.enable = false;
-    body.setAllowGravity(false);
-    return e;
-  }
-
   spawn<TOpts extends SpawnOpts>(
     kind: EntityKind<TOpts>,
     x: number,
@@ -296,59 +282,37 @@ export class StageManager {
     vy: number,
     opts: TOpts = EMPTY_SPAWN_OPTS as TOpts,
   ): Entity {
-    const e = this.free.pop() ?? this.makeEntity();
-
-    const prevFresh = e.x === 0 && e.y === 0;
-    const prevOnScreen = !prevFresh && e.x >= 0 && e.x <= GAME_W && e.y >= 0 && e.y <= GAME_H;
-    if (prevOnScreen || e.visible || e.alive) {
-      console.warn(
-        `[spawn-suspicious t=${performance.now().toFixed(0)}] kind=${kind.sprite} target=(${x.toFixed(1)},${y.toFixed(1)}) prevKind=${e.kind.sprite} prevPos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) visible=${e.visible} alive=${e.alive}`,
-      );
-    }
+    // Fresh entity per spawn — no pooling. Phaser sprites need a texture
+    // even when invisible, so sprite-less kinds (the inert stage
+    // controller) get a dummy bullet texture and setVisible(false).
+    const e = new Entity(this.scene, x, y, kind.sprite ?? 'bullet');
+    e.stage = this;
+    this.scene.add.existing(e);
+    this.scene.physics.add.existing(e);
 
     e.kind = kind;
     e.alive = true;
-    e.gen++;
-    e.hasEnteredScreen = false;
-    e.onDeathQueue = null;
-    e.vars = null;
-    e.walkAnim = false;
-    e.animSuppressed = false;
 
-    if (kind.sprite !== null) {
-      e.setTexture(kind.sprite);
-      e.setVisible(true);
-    } else {
-      e.setVisible(false);
-    }
-    e.anims.stop();
-    // Reset scale to (1, 1) so a pooled entity that was last spawned as a
-    // setScale-driven beam doesn't render the next bullet kind oversized.
-    // The Arcade Body auto-tracks GameObject scale, so this also restores
-    // the body's source size for the upcoming hitbox configuration below.
-    e.setScale(1);
-    // Reset alpha so a pooled entity that was last spawned as a faint
-    // starter-laser cell (setAlpha < 1) doesn't render the next bullet
-    // kind ghostly grey.
-    e.setAlpha(1);
-    e.setActive(true);
+    if (kind.sprite === null) e.setVisible(false);
     // Bullets sit between floor (-10) and walls (-9) so the wall texture
     // occludes a stray bullet, and the doors' transparent middle still lets
     // it show through an open doorway. Criterion is "deals damage, can't be
-    // hurt" — no-HP kinds (bullets, beams) with a damageClass — and it must
-    // re-apply every spawn so a pooled entity reused for a different kind
-    // doesn't keep the previous depth.
+    // hurt" — no-HP kinds (bullets, beams) with a damageClass.
     e.setDepth(!(kind instanceof HPEntityKind) && kind.damageClass.length > 0 ? -9.5 : 0);
 
     // Group.add() runs a createCallback that overwrites body properties
     // (velocity, drag, gravity, etc.) with the group's defaults, so we
-    // must add to groups BEFORE configuring the body.
+    // must add to groups BEFORE configuring the body. The group config
+    // sets allowGravity=false, so adding to any group gives us the
+    // correct gravity setting; for entities that aren't in any group
+    // (no damage classes) we set it directly below.
     for (const c of kind.damageClass) this.damages[c].add(e);
     const damagedBy = opts.damagedByClass ?? kind.damagedByClass;
     e.activeDamagedBy = damagedBy;
     for (const c of damagedBy) this.damagedBy[c].add(e);
 
     const body = e.body;
+    body.setAllowGravity(false);
     if (kind.hitboxRadius > 0) {
       body.enable = true;
       if (kind.hitboxShape === 'square') {
@@ -361,7 +325,6 @@ export class StageManager {
       body.reset(x, y);
       body.setVelocity(vx, vy);
     } else {
-      e.setPosition(x, y);
       body.enable = false;
     }
 
@@ -784,14 +747,7 @@ export class StageManager {
       e.script = null;
     }
 
-    e.alive = false;
-    e.onDeathQueue = null;
-    e.kind = INERT_KIND;
-    e.setActive(false).setVisible(false);
-    const body = e.body;
-    body.setVelocity(0, 0);
-    body.enable = false;
-    this.free.push(e);
+    e.destroy();
   }
 
   update(time: number, delta: number): void {

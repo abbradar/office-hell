@@ -32,9 +32,6 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // entity is released or the script is replaced — pending wakeups
   // then silently expire on the generation check.
   script: SceneScript | null = null;
-  // Bumped on every spawn so deferred callbacks (e.g. onDeath) can detect
-  // that the entity they captured has since died and been reused for something else.
-  gen = 0;
   onDeathQueue: (() => void)[] | null = null;
   hasEnteredScreen = false;
   // Live damagedBy membership — initialised at spawn from kind or SpawnOpts override,
@@ -46,8 +43,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   facing: Direction = 'down';
   // Cutscene flag: when true, updateAnim picks the 'walk' action while
   // moving instead of 'run'. Used by the inter-stage water-cooler scene
-  // and any other ambient walking moment. Reset on spawn so a pooled
-  // entity reused as a normal enemy doesn't inherit the flag.
+  // and any other ambient walking moment.
   walkAnim = false;
   // Cutscene flag: when true, updateAnim treats this entity as if it had
   // zero velocity — so a moveTo set with `silent: true` slides the body
@@ -57,9 +53,8 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // anim into walk/run.
   animSuppressed = false;
   // Per-entity scratchpad for kind-specific flags (e.g. boss phase markers).
-  // Reset to null on spawn so pooled entities don't inherit state from a
-  // previous life. Kinds should write to `vars ??= {}` when they need a slot
-  // and read with optional chaining. Named `vars` rather than `state` because
+  // Kinds should write to `vars ??= {}` when they need a slot and read
+  // with optional chaining. Named `vars` rather than `state` because
   // Phaser's GameObject already owns `state: string | number`.
   vars: Record<string, unknown> | null = null;
 
@@ -135,12 +130,6 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   die(): void {
     this.alive = false;
     this.body.enable = false;
-    // Reset transient render state so the next pool reuse starts clean —
-    // no lingering red tint, shifted origin from a mid-flash death, or
-    // sprite rotation from a previous kind that aimed itself at the player.
-    this.clearTint();
-    this.setOrigin(0.5, 0.5);
-    this.setRotation(0);
     const cbs = this.onDeathQueue;
     if (cbs) for (const cb of cbs) cb();
   }
@@ -152,9 +141,8 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // Visual hit feedback: ~250ms red tint + a small horizontal shake. Called
   // from EntityKind.takeDamage on non-killing hits. The shake is rendered
   // via origin offset (origin is render-only, so the body keeps its real
-  // position — no physics interaction). Both effects gate on alive + gen
-  // so an entity that dies or gets re-spawned mid-flash doesn't stomp the
-  // new state.
+  // position — no physics interaction). Both effects gate on `alive` so
+  // an entity that dies mid-flash doesn't keep mutating after destroy.
   // Pick the run/idle animation to play this frame. Default rule: run when
   // moving, idle when stopped, direction inferred from current velocity.
   // Bullets and other static-texture entities have no character anims
@@ -178,11 +166,10 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
 
   flashDamage(): void {
     if (!this.alive || this.kind.sprite === null) return;
-    const myGen = this.gen;
 
     this.setTint(0xff5555);
     this.scene.time.delayedCall(250, () => {
-      if (this.alive && this.gen === myGen) this.clearTint();
+      if (this.alive) this.clearTint();
     });
 
     // Damped horizontal shake — six steps over ~210ms, amplitudes shrinking
@@ -193,7 +180,7 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
     const px = [3, -3, 2, -2, 1, 0];
     for (let i = 0; i < px.length; i++) {
       this.scene.time.delayedCall(i * stepMs, () => {
-        if (!this.alive || this.gen !== myGen) return;
+        if (!this.alive) return;
         // biome-ignore lint/style/noNonNullAssertion: index bounded by px.length
         this.setOrigin(0.5 + px[i]! / this.width, 0.5);
       });

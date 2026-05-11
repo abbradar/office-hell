@@ -85,7 +85,7 @@ function makeStationaryEmailColleagueScript(
       yield VOLLEY_GAP;
     }
     yield retreatHold;
-    // Exit; the pool releases once off-screen.
+    // Exit; the cull loop releases once off-screen.
     if (exitVia === 'top') {
       self.setVelocity(0, -TRAVEL_SPEED);
     } else {

@@ -15,7 +15,6 @@ export const WALL_W = 18;
 export const HEADER_H = 28;
 
 export const PLAYER_SPEED = 280;
-export const ENTITY_POOL_SIZE = 1024;
 
 export const PLAYER_HITBOX_RADIUS = 4;
 export const PLAYER_Y = GAME_H - 80;

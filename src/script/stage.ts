@@ -310,8 +310,8 @@ export function* waitEntityDead(e: Entity): Generator<ScriptYield, void, void> {
 // Kill every live enemy on the field. Bullets in flight are untouched —
 // only `damagedBy.enemy` (the enemy entities themselves) is swept, so
 // the playfield retains its in-flight projectiles. die() flips the
-// alive flag and fires onDeath; the pool tears the body down on its
-// next sweep.
+// alive flag and fires onDeath; the manager's cull loop tears the body
+// down on its next sweep.
 export function killEnemies(self: Entity): void {
   for (const child of self.stage.damagedBy.enemy.getChildren()) {
     const e = child as Entity;
@@ -461,10 +461,10 @@ export function doorY(self: Entity, idealY: number): number {
 
 // Walk to the door y closest to the entity's current y, then drift off
 // `side` (-1 left, +1 right) at `speed`. Falls back to a straight
-// horizontal exit at the current y if no door is visible — the pool
-// still culls the entity off the far edge. Use this for any enemy whose
-// final beat is a side-exit, so the visual reads as "they left through a
-// door" instead of clipping through the wall.
+// horizontal exit at the current y if no door is visible — the cull
+// loop still releases the entity off the far edge. Use this for any
+// enemy whose final beat is a side-exit, so the visual reads as "they
+// left through a door" instead of clipping through the wall.
 export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
   const exitY = pickDoorCenterY(self, self.y);
   if (exitY !== null && Math.abs(exitY - self.y) > 1) {

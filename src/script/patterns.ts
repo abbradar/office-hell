@@ -324,9 +324,6 @@ export function* wave(
               }
             : undefined;
         const e = self.spawn(kind, item.p.x, item.p.y, m.vx, m.vy, spawnOpts);
-        // Body acceleration persists for the entity's life; `body.reset`
-        // on the next pool reuse clears it, so this can't leak across
-        // spawns.
         if (m.ax !== 0 || m.ay !== 0) e.body.setAcceleration(m.ax, m.ay);
         cursor++;
       }
