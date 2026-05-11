@@ -307,18 +307,37 @@ export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image(RED_DROPLET_HARD_KEY, redDropletHardUrl);
 }
 
-// Multiplier-drop pickup — 8×8 solid green square, drawn at runtime.
-// Placeholder for v1; replace with an asset when the wider art pass
-// arrives. The 8×8 size makes a 4-px-radius square hitbox unambiguous
-// (every visible pixel is collide-able).
+// Multiplier-drop pickup — 16×16 white square with a 1 px green border
+// and a green "M" glyph in the middle. Drawn at runtime via Graphics so
+// the design lives next to its color tokens (no extra asset to ship);
+// pickup hitbox is enlarged separately on the kind (see kinds.ts) so
+// the small visual stays readable while the collection radius is
+// generous.
 export const MULT_DROP_KEY = 'mult_drop';
-const MULT_DROP_SIZE = 8;
-const COLOR_MULT_DROP = 0x66ff8a; // bright office-fluorescent green
+const MULT_DROP_SIZE = 16;
+const COLOR_MULT_DROP_BG = 0xffffff;
+const COLOR_MULT_DROP_FG = 0x33aa44; // saturated office-green
 export function generateMultDropTexture(scene: Phaser.Scene): void {
+  const s = MULT_DROP_SIZE;
   const g = scene.add.graphics();
-  g.fillStyle(COLOR_MULT_DROP, 1);
-  g.fillRect(0, 0, MULT_DROP_SIZE, MULT_DROP_SIZE);
-  g.generateTexture(MULT_DROP_KEY, MULT_DROP_SIZE, MULT_DROP_SIZE);
+  // White fill.
+  g.fillStyle(COLOR_MULT_DROP_BG, 1);
+  g.fillRect(0, 0, s, s);
+  // 1 px green border. Inset by 0.5 so the stroke lands on integer
+  // pixels rather than straddling the seam.
+  g.lineStyle(1, COLOR_MULT_DROP_FG, 1);
+  g.strokeRect(0.5, 0.5, s - 1, s - 1);
+  // "M" glyph — two verticals + a V-notch in the middle, stroked at
+  // 2 px so the legs read at the 16 px tile size.
+  g.lineStyle(2, COLOR_MULT_DROP_FG, 1);
+  g.beginPath();
+  g.moveTo(4, 13);
+  g.lineTo(4, 4);
+  g.lineTo(8, 8);
+  g.lineTo(12, 4);
+  g.lineTo(12, 13);
+  g.strokePath();
+  g.generateTexture(MULT_DROP_KEY, s, s);
   g.destroy();
 }
 
