@@ -9,6 +9,8 @@ import type { ScriptYield } from '../../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU } from '../../ui/fonts';
 import {
   COLOR_ACCENT_GOLD_STR,
+  COLOR_PANEL,
+  COLOR_PANEL_BORDER,
   COLOR_TEXT_DIM_STR,
   COLOR_TEXT_MUTED_STR,
   COLOR_TEXT_PRIMARY_STR,
@@ -52,14 +54,31 @@ const EXIT_Y = -50;
 // player and the text don't overlap.
 const SECTION_X = GAME_W / 2;
 const SECTION_Y = GAME_H * 0.5;
-// Rough wrap width for the body paragraph (AI disclosure). Leaves
-// margin from each wall.
-const BODY_WRAP = GAME_W * 0.75;
-// Per-row vertical spacing inside a section's stack.
-const HEADING_TO_FIRST_ENTRY = 22;
-const ENTRY_TO_SUB = 14;
-const SUB_TO_NEXT = 16;
-const ENTRY_SOLO = 4;
+
+// Backdrop panel — semi-transparent dark card behind the text stack so
+// the credits read against the busy floor tiles. Sized to a fixed width
+// that fits inside the corridor; height is computed per section from
+// the laid-out content.
+const PANEL_W = 260;
+const PANEL_PAD_X = 16;
+const PANEL_PAD_Y = 20;
+const PANEL_RADIUS = 8;
+const PANEL_FILL_ALPHA = 0.85;
+const PANEL_BORDER_ALPHA = 0.7;
+
+// Wrap widths derived from the panel's inner width so roles and the
+// body paragraph break to multiple lines instead of crowding edge-to-
+// edge or spilling outside the card.
+const TEXT_WRAP = PANEL_W - PANEL_PAD_X * 2;
+
+// Vertical rhythm. All gaps are *additional* spacing between adjacent
+// elements — actual element heights are read from `text.height` at
+// layout time, so multi-line wrapped text grows the stack naturally
+// instead of overlapping the next row.
+const HEADING_GAP_BELOW = 14;
+const NAME_GAP_BELOW = 6;
+const SUB_GAP_BELOW = 22;
+const SOLO_ENTRY_GAP_BELOW = 18;
 
 export function* endingScene(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'ending');
@@ -224,7 +243,10 @@ function renderFinalScore(
 // Render a credits section into a Container, then offset the container
 // vertically so the rendered stack is centred on (cx, cy). Reused per
 // section because the widths differ (mostly the body paragraph) and a
-// single fixed layout would either crop or float.
+// single fixed layout would either crop or float. A semi-transparent
+// rounded panel is drawn behind the text once the stack height is
+// known, so it always wraps the actual content (multi-line wrapped
+// roles grow the stack, the backdrop tracks them).
 function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: number): Phaser.GameObjects.Container {
   const container = scene.add.container(cx, 0).setDepth(50);
 
@@ -233,44 +255,64 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
     .text(0, cursor, section.heading, { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
     .setOrigin(0.5, 0);
   container.add(heading);
-  cursor += HEADING_TO_FIRST_ENTRY;
+  cursor += heading.height + HEADING_GAP_BELOW;
 
-  for (const entry of section.entries ?? []) {
+  const entries = section.entries ?? [];
+  for (const [i, entry] of entries.entries()) {
+    const isLast = i === entries.length - 1 && !section.body;
+
     const name = scene.add
       .text(0, cursor, entry.name, { ...FONT_DIALOGUE_LG, color: COLOR_TEXT_PRIMARY_STR })
       .setOrigin(0.5, 0);
     container.add(name);
-    if (entry.url) {
-      cursor += ENTRY_TO_SUB;
-      const url = scene.add.text(0, cursor, entry.url, { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR }).setOrigin(0.5, 0);
-      container.add(url);
-      cursor += SUB_TO_NEXT;
-    } else if (entry.role) {
-      cursor += ENTRY_TO_SUB;
-      const role = scene.add
-        .text(0, cursor, entry.role, { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR })
+    cursor += name.height;
+
+    const subText = entry.url ?? entry.role;
+    if (subText) {
+      cursor += NAME_GAP_BELOW;
+      const sub = scene.add
+        .text(0, cursor, subText, {
+          ...FONT_DEBUG,
+          color: COLOR_TEXT_DIM_STR,
+          align: 'center',
+          wordWrap: { width: TEXT_WRAP },
+        })
         .setOrigin(0.5, 0);
-      container.add(role);
-      cursor += SUB_TO_NEXT;
-    } else {
-      cursor += SUB_TO_NEXT - ENTRY_SOLO;
+      container.add(sub);
+      cursor += sub.height;
     }
+    if (!isLast) cursor += subText ? SUB_GAP_BELOW : SOLO_ENTRY_GAP_BELOW;
   }
 
   if (section.body) {
+    if (entries.length > 0) cursor += SUB_GAP_BELOW;
     const body = scene.add
       .text(0, cursor, section.body, {
         ...FONT_DEBUG,
         color: COLOR_TEXT_MUTED_STR,
         align: 'center',
-        wordWrap: { width: BODY_WRAP },
+        wordWrap: { width: TEXT_WRAP },
       })
       .setOrigin(0.5, 0);
     container.add(body);
     cursor += body.height;
   }
 
-  // Centre the rendered stack vertically around (cx, cy).
+  // Backdrop. Drawn last (after we know the stack height) and inserted
+  // at index 0 so it renders behind the text. Origin of the stack is
+  // y=0 = top of heading; expand `PANEL_PAD_Y` above and below to frame
+  // the content with a comfortable margin.
+  const bg = scene.add.graphics();
+  bg.fillStyle(COLOR_PANEL, PANEL_FILL_ALPHA);
+  bg.fillRoundedRect(-PANEL_W / 2, -PANEL_PAD_Y, PANEL_W, cursor + PANEL_PAD_Y * 2, PANEL_RADIUS);
+  bg.lineStyle(1, COLOR_PANEL_BORDER, PANEL_BORDER_ALPHA);
+  bg.strokeRoundedRect(-PANEL_W / 2, -PANEL_PAD_Y, PANEL_W, cursor + PANEL_PAD_Y * 2, PANEL_RADIUS);
+  container.addAt(bg, 0);
+
+  // Centre the rendered stack (text + backdrop) vertically around
+  // (cx, cy). The backdrop spans [-PANEL_PAD_Y, cursor + PANEL_PAD_Y],
+  // so its midpoint is at cursor/2 — same as the text content's mid —
+  // and a single offset centres both.
   container.y = cy - cursor / 2;
   return container;
 }
