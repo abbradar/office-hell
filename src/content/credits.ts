@@ -58,6 +58,7 @@ export const SECTIONS: Section[] = [
     heading: 'FONTS',
     entries: [
       { name: 'monogram', url: 'datagoblin.itch.io/monogram' },
+      { name: 'Fayte Pixel​', url: 'fonts.adobe.com/fonts/fayte-pixel' },
       { name: 'Press Start 2P', url: 'fonts.google.com/specimen/Press+Start+2P' },
       { name: 'Silkscreen', url: 'fonts.google.com/specimen/Silkscreen' },
     ],
