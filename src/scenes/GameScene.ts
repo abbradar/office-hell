@@ -683,6 +683,13 @@ export class GameScene extends Phaser.Scene {
   private showContinueOverlay(): void {
     if (this.state.continueOverlay) return;
     this.stage.freeze();
+    // Freeze Phaser's clock too — same reason as pauseGame above. Stage
+    // freeze stops the script + physics queues, but `realSeconds` waits
+    // (`waitAudioTimeAtLeast`, `waitTrackEnded` for loops) live on
+    // `scene.time.delayedCall` and would otherwise fire under the
+    // overlay, advancing the script through music swaps that audibly
+    // restart the track while CONTINUE? is up.
+    this.time.paused = true;
     pauseMusic();
 
     const c = this.add.container(0, 0).setDepth(200);
@@ -764,6 +771,7 @@ export class GameScene extends Phaser.Scene {
     p.render();
 
     this.stage.unfreeze();
+    this.time.paused = false;
     resumeMusic();
 
     activateDeathBomb(p, this.stage);
