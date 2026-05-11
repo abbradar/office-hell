@@ -27,6 +27,7 @@ import {
   waitAudioTimeAtLeast,
   waitEntityDead,
   waitSeconds,
+  startMusicLoop,
 } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import {
@@ -531,7 +532,7 @@ function* emailVolleySegment(self: Entity): Generator<ScriptYield, void, void> {
 // Duration: 57.345 − 50.973 = 6.372 s. Spawn-anchored — the
 // controller runs for the segment length from its own spawn moment,
 // so phase 1's loop iterations re-trigger cleanly.
-const ARC_WAVE_DURATION_S = 6.372;
+const ARC_WAVE_DURATION_S = 1.4;
 const ARC_WAVE_SPEED1 = 90;
 const ARC_WAVE_LEFT_X = 56;
 const ARC_WAVE_RIGHT_X = GAME_W - 56;
@@ -562,7 +563,7 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
       arc(self, 3, redDropletHard, ARC_WAVE_SPEED1 + 5, baseAngle + 0.11 * side, baseAngle + 0.19 * side);
       arc(self, 3, redDropletHard, ARC_WAVE_SPEED1 + 5, baseAngle + 0.09 * side, baseAngle + 0.21 * side);
       yield* waitSeconds(0.1823);
-      baseAngle -= 0.14 * side;
+      baseAngle -= 0.35 * side;
     }
     self.die();
   }
@@ -791,6 +792,7 @@ export const phase1Spec: BeatmapSpec = buildPhase1Spec();
 // --- Boss script ---
 
 function* theBossScript(self: Entity) {
+  yield* startMusicLoop();
   // Entry — boss flies down from above to his fight position.
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
