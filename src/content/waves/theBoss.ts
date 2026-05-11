@@ -274,7 +274,7 @@ function* counterPetalScript(self: Entity): Generator<ScriptYield, void, void> {
     if (startT !== null) {
       const m = getMusicTime();
       if (m === null) break;
-        if (m.time - startT >= COUNTER_PETAL_DURATION_S) break;
+      if (m.time - startT >= COUNTER_PETAL_DURATION_S) break;
     }
 
     ring(self, 2, redDiamondMd, COUNTER_PETAL_SPEED1, angle1 - 0.08);
@@ -353,7 +353,7 @@ function* bossWalkSegment(self: Entity): Generator<ScriptYield, void, void> {
     if (startT !== null) {
       const m = getMusicTime();
       if (m === null) break;
-        if (m.time - startT >= BOSS_WALK_DURATION_S) break;
+      if (m.time - startT >= BOSS_WALK_DURATION_S) break;
     }
 
     // Reject-sample a target ≥ MIN_DIST from current position. After
@@ -538,7 +538,7 @@ function* emailVolleySegment(self: Entity): Generator<ScriptYield, void, void> {
     if (startT !== null) {
       const m = getMusicTime();
       if (m === null) break;
-        if (m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
+      if (m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
     }
     aimed(self, EMAIL_VOLLEY_COUNT, emailBordered, EMAIL_VOLLEY_SPEED, EMAIL_VOLLEY_SPREAD_RAD);
     yield* waitSeconds(EMAIL_VOLLEY_INTERVAL_S);
@@ -851,7 +851,7 @@ function* topAssistantDirectorScript(self: Entity): Generator<ScriptYield, void,
     if (startT !== null) {
       const m = getMusicTime();
       if (m === null) break;
-        if (m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
+      if (m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
     }
 
     // Pick a random visible door + a random wall side. Filter out
@@ -1350,7 +1350,7 @@ function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
     lines: [
-      { speaker: 'right', text: 'I-I! Ne.. Breath!.' }, 
+      { speaker: 'right', text: 'I-I! Ne.. Breath!.' },
       { speaker: 'right', text: 'Light... shrinking...' },
     ],
   });
