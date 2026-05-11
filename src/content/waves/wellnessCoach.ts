@@ -149,16 +149,16 @@ const TEST_SAY_FRAMES = TEST_SAY_REPEAT_TICKS + 18;
 
 // --- Phase 4: vitamins --------------------------------------------------
 
-// Twenty-two radial rays around Karen, each ray firing a sequence
-// of tight pill clumps with a micro pause between clumps. 22 rays
-// at ~16° apart leave narrow safe wedges — the player has to thread
+// Sixteen radial rays around Karen, each ray firing a sequence
+// of tight pill clumps with a short pause between clumps. 16 rays
+// at 22.5° apart leave narrow safe wedges — the player has to thread
 // through them along the rotation rather than parking in a sector.
-const VIT_RAYS = 22;
+const VIT_RAYS = 16;
 // Short barrages: only 2 bunches per anchored aim before the next
 // barrage re-locks on the player. Keeps the pressure aggressive
 // instead of letting one long barrage telegraph a single safe arc.
 const VIT_BUNCHES = 2;
-const VIT_BUNCH_GAP = 5;
+const VIT_BUNCH_GAP = 8;
 const VIT_BULLETS_PER_BUNCH = 4;
 const VIT_BUNCH_SPREAD_PX = 14;
 const VIT_SPEED = 260;
