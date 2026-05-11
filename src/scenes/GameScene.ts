@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
-import { DEADZONE_Y, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
+import { DEADZONE_Y, DEVELOPER_MODE, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
 import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
 import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
@@ -446,7 +446,7 @@ export class GameScene extends Phaser.Scene {
             : this.state.practiceWave
               ? makeWaveStage(this.state.practiceWave)
               : stage;
-    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: true });
+    this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: DEVELOPER_MODE });
 
     for (const c of DAMAGE_CLASSES) {
       this.physics.add.overlap(this.stage.damages[c], this.stage.damagedBy[c], (a, b) => {
@@ -536,14 +536,20 @@ export class GameScene extends Phaser.Scene {
     // rather than getting clipped by the side wall. Depth sits below every
     // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
     // dialogue=200) so any of them draw on top of the debug line.
-    const debugTinted = this.state.testMode || this.state.musicMode !== null;
-    this.debugHud = this.add
-      .text(WALL_W + 8, HEADER_H + 20, '', {
-        ...FONT_DEBUG,
-        color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
-      })
-      .setScrollFactor(0)
-      .setDepth(10);
+    //
+    // Gated on DEVELOPER_MODE — prod builds skip the Text construction
+    // entirely; the null check in update()'s setText call handles the
+    // missing widget without a separate branch.
+    if (DEVELOPER_MODE) {
+      const debugTinted = this.state.testMode || this.state.musicMode !== null;
+      this.debugHud = this.add
+        .text(WALL_W + 8, HEADER_H + 20, '', {
+          ...FONT_DEBUG,
+          color: debugTinted ? COLOR_ACCENT_GREEN_STR : COLOR_TEXT_DIM_STR,
+        })
+        .setScrollFactor(0)
+        .setDepth(10);
+    }
 
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin missing');

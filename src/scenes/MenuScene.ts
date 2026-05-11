@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
-import { GAME_H, GAME_W } from '../config';
+import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
 import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
 import { MENU_LOGO_KEY } from '../content/textures';
 import { isTouchDevice } from '../input/device';
@@ -51,7 +51,10 @@ export class MenuScene extends Phaser.Scene {
     // backdrop's frame more dramatically; the anchor lifts to
     // GAME_H × 0.22 so the bigger logo stays clear of the START prompt
     // at GAME_H × 0.5.
-    this.add.image(GAME_W / 2, GAME_H * 0.22, MENU_LOGO_KEY).setOrigin(0.5).setScale(2);
+    this.add
+      .image(GAME_W / 2, GAME_H * 0.22, MENU_LOGO_KEY)
+      .setOrigin(0.5)
+      .setScale(2);
 
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
     const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
@@ -71,12 +74,18 @@ export class MenuScene extends Phaser.Scene {
       repeat: -1,
     });
 
-    const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
-    const practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
-      ...FONT_DIALOGUE_LG,
-      color: COLOR_ACCENT_GOLD_STR,
-    });
-    setLargeHit(practiceText, GAME_W * 0.6, 80);
+    // PRACTICE prompt is dev-only — the TestMenuScene exposes
+    // practice waves, test stages, and music modes, none of which
+    // belong in a shipping build.
+    let practiceText: Phaser.GameObjects.Container | null = null;
+    if (DEVELOPER_MODE) {
+      const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
+      practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
+        ...FONT_DIALOGUE_LG,
+        color: COLOR_ACCENT_GOLD_STR,
+      });
+      setLargeHit(practiceText, GAME_W * 0.6, 80);
+    }
 
     const creditsTemplate = isTouchDevice ? '▷ CREDITS' : '▷ CREDITS  <credits>';
     const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.72, creditsTemplate, {
@@ -110,11 +119,13 @@ export class MenuScene extends Phaser.Scene {
     };
 
     onTap(this, startText, start);
-    onTap(this, practiceText, goPractice);
     onTap(this, creditsText, goCredits);
     this.input.keyboard?.once('keydown-Z', start);
-    this.input.keyboard?.once('keydown-T', goPractice);
     this.input.keyboard?.once('keydown-C', goCredits);
+    if (practiceText) {
+      onTap(this, practiceText, goPractice);
+      this.input.keyboard?.once('keydown-T', goPractice);
+    }
   }
 
   // Schedule a short up/down jitter on the elevator at a random interval

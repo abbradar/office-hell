@@ -36,3 +36,12 @@ export const CULL_MARGIN = 96;
 // frames per simulated tick; a slow render frame catches up by firing extra
 // ticks for both clocks together.
 export const SCRIPT_FPS = 60;
+
+// Developer-mode master switch. Gates: the PRACTICE entry on the title
+// screen (TestMenuScene + the `T` keybind), the GameScene debug HUD line
+// (track / t / wave / yield reason), and the `debugYieldReasons` stamping
+// that feeds the yield label into that line. Bound to Vite's dev flag so
+// `npm run dev` ships with all of them on and `npm run build` strips them
+// from the prod build. Flip locally if you need the dev affordances on top
+// of a prod build.
+export const DEVELOPER_MODE: boolean = import.meta.env.DEV;
