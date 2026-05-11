@@ -282,6 +282,25 @@ export function isMusicFinished(): boolean | null {
   return current.finished;
 }
 
+// Linearly ramp every live sound on the current track to 0 over
+// `durationMs`, then `stopMusicLoop` to release the audio resources.
+// Snapshots `current` before scheduling the teardown so a downstream
+// `playMusicLoop` mid-fade isn't accidentally torn down by our stale
+// timer. Volume is ramped through the underlying `volumeNode` GainNode
+// (same path as `rampGain` for crossfades) — Phaser's per-frame
+// WebAudioSound.update() is left untouched, so we don't fight its
+// reconciliation of `sound.volume`. Returns immediately if no track
+// is playing.
+export function fadeOutMusic(durationMs: number): void {
+  if (!current) return;
+  const target = current;
+  for (const s of target.sounds) rampGain(s, 0, durationMs);
+  if (target.intro) rampGain(target.intro, 0, durationMs);
+  setTimeout(() => {
+    if (current === target) stopMusicLoop();
+  }, durationMs);
+}
+
 export function stopMusicLoop(): void {
   if (!current) return;
   if (current.scheduled !== null) clearTimeout(current.scheduled);

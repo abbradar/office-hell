@@ -1,5 +1,5 @@
 import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIALOG_KEY } from '../../audio/keys';
-import { getMusicTime, stopMusicLoop } from '../../audio/music/loop';
+import { fadeOutMusic, getMusicTime, stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { becomeHittable, bossShudder, nextBossPhase, PhasedBossKind, waitPhaseDown } from '../../script/boss';
@@ -21,7 +21,7 @@ import {
   waitSeconds,
   waitTrackEnded,
 } from '../../script/stage';
-import { EnemyBulletEntityKind, EntityKind, type ScriptYield } from '../../script/types';
+import { EntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
 import {
   blueExplosion,
   blueLongerDroplet,
@@ -668,7 +668,19 @@ function makeOrbitController(opts: {
     const startT = getMusicTime()?.time ?? null;
     let nextFireMs = opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
 
+    // Two exit paths:
+    //   - duration cap reached → kill the orbiter children as part of
+    //     normal cleanup (so the next loop iteration's controller
+    //     spawn starts fresh).
+    //   - boss gone (death script cleared `stage.bossEntity`) →
+    //     leave the children alive so the boss-death bullet sweep can
+    //     fling them along with the rest of the cluster.
+    let bossLost = false;
     while (self.alive) {
+      if (stage.bossEntity === null) {
+        bossLost = true;
+        break;
+      }
       // Music-time duration gate — same shape as the other
       // controllers, so each loop iteration re-runs the full segment.
       if (startT !== null) {
@@ -717,8 +729,12 @@ function makeOrbitController(opts: {
       yield 1;
     }
 
-    for (const e of children) {
-      if (e.alive) e.die();
+    // Normal duration exit cleans up the orbiter children; the
+    // boss-lost path leaves them so the death sweep can fling them.
+    if (!bossLost) {
+      for (const e of children) {
+        if (e.alive) e.die();
+      }
     }
     self.die();
   }
@@ -1101,7 +1117,7 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
     lines: [
-      { speaker: 'right', text: 'Why are not at your desk?' },
+      { speaker: 'right', text: 'Why are you not at your desk?' },
       { speaker: 'left', text: "It's 11 PM. I just want to go home." },
       { speaker: 'right', text: "No, today you don't." },
       { speaker: 'right', text: 'The requests are piling up. You need get back to work.' },
@@ -1135,13 +1151,21 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
   yield* theBossPhase2Script(self);
 }
 
+// How long each phase-entry bubble stays up (frames @ 60fps). 90 = 1.5 s.
+// The second bubble's `yield 90` is the wait *before* it appears so
+// the first line has time to read; we let the second one fall off
+// naturally as the patterns ramp up.
+const PHASE_ENTRY_BUBBLE_FRAMES = 90;
+
 function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
   // For practice entries jumping straight to phase 2: claim the boss
   // slot + flip damage on. In the live chain phase 1 already did this;
   // claimBoss + becomeHittable are both idempotent.
   claimBoss(self);
   becomeHittable(self);
-  self.say('We are not done.', 90);
+  self.say('How are talking to your BOSS?!', PHASE_ENTRY_BUBBLE_FRAMES);
+  yield PHASE_ENTRY_BUBBLE_FRAMES;
+  self.say('I will SHRINK the whole DEPARTMENT!', PHASE_ENTRY_BUBBLE_FRAMES);
 
   yield* race(
     runBeatmap(self, phase2Spec),
@@ -1156,7 +1180,9 @@ function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> 
 function* theBossPhase3Script(self: Entity): Generator<ScriptYield, void, void> {
   claimBoss(self);
   becomeHittable(self);
-  self.say('Final notice.', 90);
+  self.say('No EEXCUSES!', PHASE_ENTRY_BUBBLE_FRAMES);
+  yield PHASE_ENTRY_BUBBLE_FRAMES;
+  self.say('Your work worth NOTHING!', PHASE_ENTRY_BUBBLE_FRAMES);
 
   // Lethal phase — no time cap; race the patterns against entity
   // death (PhasedBossKind.takeDamage routes the killing blow through
@@ -1201,11 +1227,22 @@ function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void>
   const stage = self.stage;
   const player = stage.player;
 
-  // Snapshot every live enemy bullet currently on the field.
+  // Snapshot every live projectile currently on the field. The boss's
+  // bullets are a mix of EntityKind variants (`redDroplet`,
+  // `redDiamondMd`, `redCross`, `emailBordered`, etc.) — using
+  // `EnemyBulletEntityKind` as the filter only catches the basic
+  // round `bullet` and misses everything else, so we partition by
+  // "lives in damages.player AND isn't HP-bearing AND has no
+  // defaultScript". That keeps the boss (HP) and side-door
+  // assistants (have a defaultScript) out of the cluster while
+  // pulling in every projectile + orbiter + explosion tile.
   const bullets: Entity[] = [];
   for (const child of stage.damages.player.getChildren()) {
     const e = child as Entity;
-    if (e.alive && e.kind instanceof EnemyBulletEntityKind) bullets.push(e);
+    if (!e.alive) continue;
+    if (e.kind instanceof HPEntityKind) continue;
+    if (e.kind.defaultScript !== undefined) continue;
+    bullets.push(e);
   }
   if (bullets.length === 0) return;
 
@@ -1261,9 +1298,30 @@ function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void>
   player.popInvincible();
 }
 
+// Music phase-out window, in ms, kicked off the moment the boss takes
+// the lethal hit (= the death script starts). User-spec: "phase out
+// the track 0.2 s after boss defeat" — the metal loop ramps to zero
+// over 200 ms so the dialog/shudder beat plays out under silence.
+const BOSS_DEATH_MUSIC_FADE_MS = 200;
+
 function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
   self.body.enable = false;
+
+  // Phase out the metal track immediately so the death sequence
+  // (dialog → shudder → bullet sweep → die) plays out under silence.
+  // Fired off the audio context's clock — runs in parallel with the
+  // dialog freeze, no `yield` needed.
+  fadeOutMusic(BOSS_DEATH_MUSIC_FADE_MS);
+
+  // Signal any live orbit controllers to bail out (and leave their
+  // orbiter children alive for the upcoming bullet sweep). claimBoss's
+  // `onDeath` would clear this later from `self.die()`, but the
+  // controllers need the signal NOW — they re-position orbiters every
+  // physics frame, and once the dialog dismisses and physics resumes
+  // their `setPosition`/`body.reset` calls would overwrite the
+  // sweep's velocity changes.
+  self.stage.bossEntity = null;
 
   const ch = self.stage.player.character;
   yield self.dialogue({
