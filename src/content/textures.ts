@@ -319,6 +319,27 @@ const QUESTION_H = 10;
 const QUESTION_BORDERED_W = QUESTION_W + 2;
 const QUESTION_BORDERED_H = QUESTION_H + 2;
 
+// Bordered round-bullet palette — 11 variants, generated at boot.
+// Used by the Friday-party wave so each underling fires a visually
+// distinct bullet (10 underlings) and the t=3 s hex-grid barrage
+// reads as its own colour group (red).
+//
+// Each tile is `(BULLET_RADIUS * 2 + 2)` × same — a 1 px frame in
+// `border` colour around a filled circle of `fill` colour. The 11th
+// entry is the red one used by the hex wave.
+export const BORDERED_BULLET_PALETTE: readonly { key: string; border: string; fill: string }[] = [
+  { key: 'borderedBulletRed', border: '#ff5e62', fill: '#ffd0d2' },
+  { key: 'borderedBulletBlue', border: '#5e9eff', fill: '#d0e0ff' },
+  { key: 'borderedBulletGreen', border: '#5eff8a', fill: '#d0ffe0' },
+  { key: 'borderedBulletYellow', border: '#ffd35e', fill: '#fff0d0' },
+  { key: 'borderedBulletPurple', border: '#b75eff', fill: '#e8d0ff' },
+  { key: 'borderedBulletMagenta', border: '#ff5eb7', fill: '#ffd0ea' },
+  { key: 'borderedBulletCyan', border: '#5ef0ff', fill: '#d0f5ff' },
+  { key: 'borderedBulletOrange', border: '#ff8a5e', fill: '#ffe0d0' },
+  { key: 'borderedBulletLime', border: '#c7ff5e', fill: '#f0ffd0' },
+  { key: 'borderedBulletTeal', border: '#5effc7', fill: '#d0fff0' },
+];
+
 export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image('reportBullet', reportBulletUrl);
   scene.load.image('missedCall', missedCallUrl);
@@ -383,6 +404,35 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateBulletTexture(scene);
   generateMultDropTexture(scene);
   generateKeyboardButtonTextures(scene);
+  generateBorderedBulletPalette(scene);
+}
+
+// 1 px frame around a `BULLET_RADIUS`-radius filled circle. Frame
+// colour + fill colour come from the palette table so each Friday-
+// party underling gets a uniquely-tinted bullet. Tile is
+// `(BULLET_RADIUS * 2 + 2)` × same; the circle is drawn inset by 1 px
+// to leave the border ring untouched.
+export function generateBorderedBulletPalette(scene: Phaser.Scene): void {
+  const r = BULLET_RADIUS;
+  const inner = r * 2;
+  const w = inner + 2;
+  const g = scene.add.graphics();
+  for (const entry of BORDERED_BULLET_PALETTE) {
+    g.clear();
+    // Border ring: four 1 px strips around the bbox, leaves the
+    // interior transparent so the fill below sees a clean centre.
+    g.fillStyle(Number.parseInt(entry.border.slice(1), 16), 1);
+    g.fillRect(0, 0, w, 1);
+    g.fillRect(0, w - 1, w, 1);
+    g.fillRect(0, 1, 1, inner);
+    g.fillRect(w - 1, 1, 1, inner);
+    // Fill: solid circle inset by 1 px so the border ring stays
+    // visible on every side.
+    g.fillStyle(Number.parseInt(entry.fill.slice(1), 16), 1);
+    g.fillCircle(r + 1, r + 1, r);
+    g.generateTexture(entry.key, w, w);
+  }
+  g.destroy();
 }
 
 // Bordered email bullet — draws a 1 px #ff5e62 frame around the 14×10

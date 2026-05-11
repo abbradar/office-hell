@@ -4,6 +4,7 @@ import { EnemyBulletEntityKind, EntityKind, type EntityTier } from '../script/ty
 import {
   BLUE_EXPLOSION_KEY,
   BLUE_LONGER_DROPLET_KEY,
+  BORDERED_BULLET_PALETTE,
   EMAIL_BORDERED_KEY,
   GREED_DIAMOND_XS_KEY,
   LAVA_DROPLET_HARD_KEY,
@@ -176,6 +177,30 @@ export const questionBordered = new EntityKind({
   damageClass: ['player'],
   damagedByClass: [],
 });
+
+// Bordered round-bullet palette — 10 colour-distinct variants (the
+// textures themselves are generated at boot, see
+// `generateBorderedBulletPalette` in content/textures.ts). Used by
+// the Friday-party wave so each underling fires a unique-looking
+// bullet; the first entry (`borderedBulletRed`) doubles as the t=3 s
+// hex-grid barrage round.
+//
+// Hitbox = BULLET_RADIUS so the border pixels are visual padding
+// only — collision matches the player's expectation that the filled
+// circle is the hit-able core.
+export const borderedBullets = BORDERED_BULLET_PALETTE.map(
+  (entry) =>
+    new EntityKind({
+      sprite: entry.key,
+      hitboxRadius: BULLET_RADIUS,
+      damageClass: ['player'],
+      damagedByClass: [],
+    }),
+);
+// Convenience for callers that want "the red one" by name rather
+// than by index — the t=3 s hex-grid barrage in fridayParty.ts uses
+// this.
+export const redBorderedBullet = borderedBullets[0] as EntityKind;
 
 // Hard-edged droplet pair — 13×8 directional sprites, source art
 // drawn pointing right at rotation 0. `rotateToVelocity: true` aims

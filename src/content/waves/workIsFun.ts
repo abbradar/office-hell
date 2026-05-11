@@ -82,11 +82,28 @@ const SHOUT_GAP_MAX = 220;
 // approximately horizontal.
 const ENTRY_DOOR_Y = ORBIT_ENTRY_Y;
 
+// Wave time-budget knobs. The wave is timed for ~10s total. After the
+// spawn fan-in (5 × SPAWN_GAP = 190f ≈ 3.17s), the body holds the orbit
+// for FIGHT_HOLD_FRAMES, then flips the shared retreat flag so every
+// coworker breaks out of its orbit and drifts left through the entry
+// door. EXIT_SPEED is sized so a coworker stuck on the orbit's far side
+// (x ≈ 310) still clears the cull margin (x = -96) inside the trailing
+// budget — 406 px / 500 px·s ≈ 0.81s.
+const EXIT_SPEED = 500;
+const FIGHT_HOLD_FRAMES = 350;
+
+// Mutable carrier the wave body flips when the budget is up. Each
+// coworker script closes over the same instance and polls it at the top
+// of its per-frame orbit loop, so the retreat snap is 1-frame
+// granular. One object per wave invocation (created in workIsFunWave) so
+// re-entry from the practice menu always starts with `retreat: false`.
+type RetreatFlag = { retreat: boolean };
+
 function randInRange(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-function makeCoworkerScript(orbiterIndex: number): EntityScript {
+function makeCoworkerScript(orbiterIndex: number, flag: RetreatFlag): EntityScript {
   return function* (self: Entity) {
     // Walk to the shared orbit entry. spawnY (set by the caller) is the
     // door y, which is close to but not exactly ORBIT_ENTRY_Y after the
@@ -104,7 +121,7 @@ function makeCoworkerScript(orbiterIndex: number): EntityScript {
     // Stagger the first shout per orbiter so the squad's catchphrases
     // ripple rather than all firing on the same frame.
     let shoutCounter = orbiterIndex * 40 + Math.floor(Math.random() * SHOUT_GAP_MIN);
-    while (true) {
+    while (!flag.retreat) {
       phase += phasePerFrame;
       const tx = ORBIT_CENTER_X + Math.cos(phase) * ORBIT_RADIUS;
       const ty = ORBIT_CENTER_Y + Math.sin(phase) * ORBIT_RADIUS;
@@ -126,6 +143,12 @@ function makeCoworkerScript(orbiterIndex: number): EntityScript {
 
       yield 1;
     }
+    // Break for the door they came in through. The orbit-tracking
+    // setVelocity in the loop above ran every frame; once we drop out,
+    // this single setVelocity sticks and the entity drifts left until
+    // the cull margin reaps it. waitEnemiesClear in suspendRunning
+    // absorbs the trailing drift.
+    self.setVelocity(-EXIT_SPEED, 0);
   };
 }
 
@@ -145,14 +168,22 @@ export function* workIsFunWave(self: Entity): Generator<ScriptYield, void, void>
   // happened to be closest at spawn time, splitting the entry line
   // across two panels.
   yield* alignDoor(self, ENTRY_DOOR_Y);
+  // Fresh per-wave flag so each invocation (live chain or practice menu)
+  // starts with the orbit running.
+  const flag: RetreatFlag = { retreat: false };
   yield* suspendRunning(self, function* () {
     const spawnY = doorY(self, ENTRY_DOOR_Y);
     for (let i = 0; i < COWORKER_COUNT; i++) {
       self.spawn(workIsFunCoworker, sideSpawnX(-1), spawnY, 0, 0, {
-        script: makeCoworkerScript(i),
+        script: makeCoworkerScript(i, flag),
         sprite: nextOrdinaryCoworkerSprite(self.stage),
       });
       if (i < COWORKER_COUNT - 1) yield SPAWN_GAP;
     }
+    // Hold the orbit, then signal retreat. With spawn span 190f and
+    // exit slack ~50f at EXIT_SPEED=500, the wave clears inside ~10s
+    // total: 190f spawn + 350f hold + ~50f drift = ~590f.
+    yield FIGHT_HOLD_FRAMES;
+    flag.retreat = true;
   });
 }
