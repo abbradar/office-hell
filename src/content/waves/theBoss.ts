@@ -218,7 +218,8 @@ function makeFanSpiralController(durationS: number): EntityKind {
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= durationS) break;
       }
 
       ring(self, 5, blueLongerDroplet, 110, angle);
@@ -272,7 +273,8 @@ function* counterPetalScript(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= COUNTER_PETAL_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= COUNTER_PETAL_DURATION_S) break;
     }
 
     ring(self, 2, redDiamondMd, COUNTER_PETAL_SPEED1, angle1 - 0.08);
@@ -350,7 +352,8 @@ function* bossWalkSegment(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= BOSS_WALK_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= BOSS_WALK_DURATION_S) break;
     }
 
     // Reject-sample a target ≥ MIN_DIST from current position. After
@@ -447,7 +450,8 @@ function makeVertExplosionDirector(
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= durationS) break;
       }
 
       // Reject-sample an x that's at least MIN_SEPARATION_PX from
@@ -533,7 +537,8 @@ function* emailVolleySegment(self: Entity): Generator<ScriptYield, void, void> {
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= EMAIL_VOLLEY_DURATION_S) break;
     }
     aimed(self, EMAIL_VOLLEY_COUNT, emailBordered, EMAIL_VOLLEY_SPEED, EMAIL_VOLLEY_SPREAD_RAD);
     yield* waitSeconds(EMAIL_VOLLEY_INTERVAL_S);
@@ -582,7 +587,8 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
     while (self.alive) {
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= ARC_WAVE_DURATION_S) break;
+        if (m === null) break;
+        if (m.time - startT >= ARC_WAVE_DURATION_S) break;
       }
 
       // Lead arc — slower lava-droplet pair on the inner cone.
@@ -686,7 +692,8 @@ function makeOrbitController(opts: {
       // controllers, so each loop iteration re-runs the full segment.
       if (startT !== null) {
         const m = getMusicTime();
-        if (m !== null && m.time - startT >= opts.durationS) break;
+        if (m === null) break;
+        if (m.time - startT >= opts.durationS) break;
       }
 
       const c = centerOf();
@@ -843,7 +850,8 @@ function* topAssistantDirectorScript(self: Entity): Generator<ScriptYield, void,
   while (self.alive) {
     if (startT !== null) {
       const m = getMusicTime();
-      if (m !== null && m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
+      if (m === null) break;
+        if (m.time - startT >= TOP_ASSISTANT_DURATION_S) break;
     }
 
     // Pick a random visible door + a random wall side. Filter out
@@ -1288,6 +1296,22 @@ function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void>
   for (const t of trajectories) {
     if (t.entity.alive) t.entity.die();
   }
+
+  // Belt-and-braces purge: kill every active entity that isn't the
+  // player or the boss. The directors all bailed when the music
+  // stopped (see the `m === null` checks in each controller loop),
+  // but anything they had in flight at that moment — line-explosion
+  // runners mid-sweep, top-assistant entities mid-walk-back, etc. —
+  // is still happily ticking out its own timeline and would keep
+  // spawning fresh tiles / pose threats into the ending walk-home.
+  // One pass over `stage.active` after the visible flourish gives
+  // the scene a clean handoff.
+  for (const e of stage.active) {
+    if (e === self) continue;
+    if (e === player) continue;
+    if (e.alive) e.die();
+  }
+
   player.popInvincible();
 }
 
@@ -1295,7 +1319,7 @@ function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void>
 // the lethal hit (= the death script starts). User-spec: "phase out
 // the track 0.2 s after boss defeat" — the metal loop ramps to zero
 // over 200 ms so the dialog/shudder beat plays out under silence.
-const BOSS_DEATH_MUSIC_FADE_MS = 200;
+const BOSS_DEATH_MUSIC_FADE_MS = 500;
 
 function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
@@ -1320,7 +1344,10 @@ function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
-    lines: [{ speaker: 'right', text: 'TODO: final boss defeat line.' }],
+    lines: [
+      { speaker: 'right', text: 'I-I! Ne.. Breath!.' }, 
+      { speaker: 'right', text: 'Light... shrinking...' },
+    ],
   });
 
   yield* bossShudder(self);

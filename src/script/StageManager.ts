@@ -266,7 +266,7 @@ export class StageManager {
   // per-tick resolver retries until one appears or the timeout fires.
   private pendingDrops: { tier: EntityTier; framesLeft: number }[] = [];
 
-  private readonly active: Entity[] = [];
+  readonly active: Entity[] = [];
   // Two waiting queues, one per "clock":
   //
   //   physicsWaiting — drained one tick per Phaser WORLD_STEP. Auto-pauses
