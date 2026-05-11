@@ -1,16 +1,19 @@
 import type Phaser from 'phaser';
 import coachUrl from '../assets/characters/coach1.png';
+import blackFemale1Url from '../assets/characters/coworker_black_female1.png';
+import blackMale1Url from '../assets/characters/coworker_black_male1.png';
 import bossUrl from '../assets/characters/coworker_boss1.png';
-import checkEmailUrl from '../assets/characters/coworker_female_check_email1.png';
 import vacationItalyUrl from '../assets/characters/coworker_female_manager1.png';
 import geezerUrl from '../assets/characters/coworker_geezer1.png';
 import gymBroUrl from '../assets/characters/coworker_gym_bro1.png';
 import hrUrl from '../assets/characters/coworker_hr1.png';
 import janitorUrl from '../assets/characters/coworker_janitor1.png';
 import oversleptUrl from '../assets/characters/coworker_overslept1.png';
-import partyManagerUrl from '../assets/characters/coworker_party_manager1.png';
 import salesUrl from '../assets/characters/coworker_sales1.png';
 import sysopUrl from '../assets/characters/coworker_sysop1.png';
+import whiteFemale1Url from '../assets/characters/coworker_white_female1.png';
+import whiteMale1Url from '../assets/characters/coworker_white_male1.png';
+import fashionExpertUrl from '../assets/characters/fashion_expert1.png';
 import mcFemaleUrl from '../assets/characters/mc_female.png';
 import mcMaleUrl from '../assets/characters/mc_male.png';
 import vipUrl from '../assets/characters/vip1.png';
@@ -26,17 +29,26 @@ export const CHARACTER_SHEETS: Record<string, string> = {
   // Named coworkers and bosses.
   boss: bossUrl,
   coach1: coachUrl,
+  fashionExpert: fashionExpertUrl,
   janitor: janitorUrl,
-  checkEmail: checkEmailUrl,
   vacationItaly: vacationItalyUrl,
   geezer: geezerUrl,
   gymBro: gymBroUrl,
   hr: hrUrl,
   overslept: oversleptUrl,
-  partyManager: partyManagerUrl,
   sales: salesUrl,
   sysop: sysopUrl,
   vip: vipUrl,
+  // Ordinary coworkers — interchangeable body models used by the horde
+  // waves (interns, email-spammers, meeting interns). Picked at spawn
+  // time by `nextOrdinaryCoworkerSprite`. The party-manager wave reuses
+  // the white-male model directly so its formation reads as a corporate
+  // hive of identical bodies. Kept here at the bottom so a new ordinary
+  // model is one import + one entry away.
+  whiteFemale1: whiteFemale1Url,
+  whiteMale1: whiteMale1Url,
+  blackFemale1: blackFemale1Url,
+  blackMale1: blackMale1Url,
 };
 
 export function preloadCharacterSheets(scene: Phaser.Scene): void {

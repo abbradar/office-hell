@@ -149,8 +149,12 @@ export class Entity extends Phaser.Physics.Arcade.Sprite {
   // registered for their sprite key, so the existence probe bails them out.
   // Player overrides this to factor in whether enemies are on screen.
   updateAnim(): void {
-    const sheet = this.kind.sprite;
-    if (sheet === null) return;
+    if (this.kind.sprite === null) return;
+    // Use the live texture key, not the kind's sprite — spawn() honours
+    // `SpawnOpts.sprite` to swap in a per-spawn body model (ordinary
+    // coworker hordes), so the registered anims for that key are what
+    // we want to drive.
+    const sheet = this.texture.key;
     if (!this.scene.anims.exists(characterAnimKey(sheet, 'idle', 'down'))) return;
     // Anim freeze is driven by StageManager's physics PAUSE/RESUME hooks; bail
     // here so a switch to a new key (run↔idle) during pause doesn't `play()`

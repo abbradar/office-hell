@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import type { StageManager } from '../script/StageManager';
 
 export type CharacterDef = {
   id: string;
@@ -35,4 +36,23 @@ export const CHARACTER_REGISTRY_KEY = 'selectedCharacter';
 // Hides the unavoidable cast for registry.get's any-typed return in one place.
 export function getSelectedCharacter(scene: Phaser.Scene): CharacterDef | undefined {
   return scene.registry.get(CHARACTER_REGISTRY_KEY) as CharacterDef | undefined;
+}
+
+// Body-model pool for "ordinary" coworkers — the anonymous mooks that
+// fill horde waves (email interns, meeting interns, etc). All four share
+// the same 6×12 sheet layout and the same registered anim set, so a
+// spawn() with `sprite: nextOrdinaryCoworkerSprite(stage)` Just Works
+// regardless of which one is drawn. Keep this list aligned with the
+// matching entries in `CHARACTER_SHEETS`; adding a body model is one
+// asset import + one entry in each place.
+const ORDINARY_COWORKER_SPRITES = ['whiteFemale1', 'whiteMale1', 'blackFemale1', 'blackMale1'] as const;
+
+// Pick the next coworker body model for a horde spawn. Drives off the
+// manager's seeded RNG so the same playthrough always sees the same
+// sequence of bodies in the same slots — no run-to-run shimmer in
+// replays. Lives outside StageManager so the manager itself stays
+// content-agnostic.
+export function nextOrdinaryCoworkerSprite(stage: StageManager): string {
+  const i = Math.floor(stage.nextRandom() * ORDINARY_COWORKER_SPRITES.length);
+  return ORDINARY_COWORKER_SPRITES[i] as string;
 }

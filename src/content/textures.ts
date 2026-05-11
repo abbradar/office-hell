@@ -11,6 +11,7 @@ import emailBulletUrl from '../assets/bullets/email.png';
 import greedDiamondXsUrl from '../assets/bullets/greed_diamond_xs.png';
 import lavaDropletHardUrl from '../assets/bullets/lava_droplet_hard.png';
 import missedCallUrl from '../assets/bullets/missedCall.png';
+import necktieUrl from '../assets/bullets/necktie.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
 import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
@@ -284,6 +285,11 @@ export const GREED_DIAMOND_XS_KEY = 'greedDiamondXs';
 // kind aims each bullet along its travel vector.
 export const LAVA_DROPLET_HARD_KEY = 'lavaDropletHard';
 export const RED_DROPLET_HARD_KEY = 'redDropletHard';
+// Necktie — small red tie sprite drawn pointing downward. Used by the
+// fashion-expert wave's auto-aimed streams. No `rotateToVelocity` on the
+// kind: ties hang by gravity, so the always-down rotation reads correctly
+// regardless of which direction the bullet is travelling.
+export const NECKTIE_KEY = 'necktie';
 
 // Bordered variant of the 14×10 email bullet sprite — used by the final
 // boss's email volley as a visually distinct accent over the loose
@@ -324,6 +330,7 @@ export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image(GREED_DIAMOND_XS_KEY, greedDiamondXsUrl);
   scene.load.image(LAVA_DROPLET_HARD_KEY, lavaDropletHardUrl);
   scene.load.image(RED_DROPLET_HARD_KEY, redDropletHardUrl);
+  scene.load.image(NECKTIE_KEY, necktieUrl);
 }
 
 // Multiplier-drop pickup — 16×16 white square with a 1 px green border

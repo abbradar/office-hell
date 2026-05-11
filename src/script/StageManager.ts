@@ -7,7 +7,8 @@ import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
-import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick } from './score';
+import { MultDropKind } from './multDrop';
+import { ALIVE_TICK_FRAMES, GameScore, recordAliveTick } from './score';
 import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
 import { HPEntityKind } from './types';
 
@@ -117,6 +118,14 @@ type Wait = {
   script: SceneScript;
   scheduledGeneration: number;
 };
+
+// Hardcoded seed for the manager's mulberry32 PRNG. Picked once and
+// burned in so every playthrough sees the same draws — the practical
+// effect is that the same sprite shows up in the same horde slot every
+// run, which keeps replays visually stable. Any 32-bit value works;
+// chosen to be visually-distinct (not `0` / `1` / `0xDEADBEEF`) so a
+// `git blame` makes the source of the seed obvious.
+const STAGE_RNG_SEED = 0x4f48656c; // "OHel"
 
 // Multiplier-drop magnet tuning. The threshold is a fraction of GAME_H
 // — drops are vacuumed only while the player sits above
@@ -244,6 +253,14 @@ export class StageManager {
   // 60Hz simulation step; rolls over at ALIVE_TICK_FRAMES so the
   // 0.1s/+1×mult cadence is exact regardless of frame jitter.
   private aliveTickAccum = 0;
+  // Seeded RNG state for visual variety draws that should stay stable
+  // across replays — the ordinary-coworker sprite picker is the
+  // canonical user. A fresh manager (per scene transition) starts at
+  // STAGE_RNG_SEED so the same playthrough always produces the same
+  // sequence. Don't use this for gameplay-affecting randomness — it's
+  // a render-side dial. Mulberry32 internals: cheap 32-bit PRNG with
+  // decent uniformity for picking-from-a-small-list.
+  private rngState = STAGE_RNG_SEED;
   // Multiplier-drop scheduling queue. A wave's `scheduleMultDrop(tier)`
   // call lands here when no live enemy is available at call time; the
   // per-tick resolver retries until one appears or the timeout fires.
@@ -346,7 +363,12 @@ export class StageManager {
     // Fresh entity per spawn — no pooling. Phaser sprites need a texture
     // even when invisible, so sprite-less kinds (the inert stage
     // controller) get a dummy bullet texture and setVisible(false).
-    const e = new Entity(this.scene, x, y, kind.sprite ?? 'bullet');
+    // Honour the per-spawn `sprite` override only for kinds that actually
+    // carry a sheet: passing `sprite` to a sprite=null kind (inert / no
+    // character) would otherwise turn it visible mid-render — caller
+    // bug, not a knob we want to expose.
+    const spriteKey = kind.sprite === null ? 'bullet' : (opts.sprite ?? kind.sprite);
+    const e = new Entity(this.scene, x, y, spriteKey);
     e.stage = this;
     this.scene.add.existing(e);
     this.scene.physics.add.existing(e);
@@ -846,6 +868,21 @@ export class StageManager {
   // `scene.time.delayedCall` and aren't gated by either pause flag — so
   // the music + the wait both keep advancing through the freeze and
   // arrive at the seam together.
+  // Mulberry32 step — produces a uniform float in [0, 1). Use for
+  // visual-only choices that should stay stable across replays
+  // (`nextOrdinaryCoworkerSprite` is the only caller today). Not for
+  // gameplay randomness: the seed is hardcoded and the state is shared
+  // across all draws, so two callers will interfere with each other's
+  // sequences. If a second class of draw shows up, add a second
+  // stream — don't sample arbitrary visual choices off the same one.
+  nextRandom(): number {
+    this.rngState = (this.rngState + 0x6d2b79f5) | 0;
+    let t = this.rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
   freeze(): void {
     this.paused = true;
     this.scene.physics.pause();

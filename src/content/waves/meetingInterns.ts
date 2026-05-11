@@ -4,6 +4,7 @@ import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { EnemyBulletEntityKind, type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
+import { nextOrdinaryCoworkerSprite } from '../characters';
 import { bullet } from '../kinds';
 
 // Meeting-call intern — heartier than the opener intern. Drifts in,
@@ -137,8 +138,11 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
   };
 }
 
+// `sprite` is just the default if no spawn override is passed; the
+// wave below always passes `nextOrdinaryCoworkerSprite` so the four
+// interns are drawn from the seeded coworker pool.
 export const meetingIntern = new HPEntityKind({
-  sprite: 'checkEmail',
+  sprite: 'whiteFemale1',
   hitboxRadius: 16,
   hp: 30,
   damageClass: ['player'],
@@ -172,16 +176,20 @@ export function* meetingInternsWave(self: Entity): Generator<ScriptYield, void, 
     // readable. Skipped for now: balance / playtest implications.
     self.spawn(meetingIntern, GAME_W * 0.3, -30, 0, 0, {
       script: makeMeetingInternScript(GAME_W * 0.3, TOP_Y, 0, false),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     self.spawn(meetingIntern, GAME_W * 0.7, -30, 0, 0, {
       script: makeMeetingInternScript(GAME_W * 0.7, TOP_Y, 1, true),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     yield 30;
     self.spawn(meetingIntern, sideSpawnX(-1), sideY, 0, 0, {
       script: makeMeetingInternScript(SIDE_INSET, sideY, 2, false),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     self.spawn(meetingIntern, sideSpawnX(1), sideY, 0, 0, {
       script: makeMeetingInternScript(GAME_W - SIDE_INSET, sideY, 3, true),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
   });
 }

@@ -11,7 +11,7 @@
 // should touch those fields; reading the values directly is fine.
 
 import type { Entity } from '../entities/Entity';
-import { EntityKind, type EntityKindOpts, type EntityTier } from './types';
+import type { EntityTier } from './types';
 
 // Per-tier kill base. Multiplied by `mult` (and the point-blank bonus
 // if the killing hit lands within POINT_BLANK_RADIUS) before being
@@ -103,30 +103,10 @@ export function addMult(score: GameScore, delta: number): void {
   score.mult = Math.min(MAX_MULT, score.mult + delta);
 }
 
-// Multiplier-drop EntityKind. Carries the per-tier mult lift the drop
-// applies on collect. Lives here rather than in content/kinds.ts so
-// StageManager can `instanceof`-check it without a circular import
-// (StageManager already imports from this module for GameScore).
-//
-// Mult-lift per tier — collected drops bump `score.mult` by this
-// amount, keeping a chain growing past kill streaks:
-//   regular   → 0  (the drop is a no-op for mult — collection only)
-//   miniBoss  → +1
-//   boss      → +2
-// See src/docs/scoring-system.md → "Multiplier drops" for the design
-// rationale.
-export const MULT_LIFT_BY_TIER: Record<EntityTier, number> = {
-  regular: 0,
-  miniBoss: 1,
-  boss: 2,
-};
-
-export class MultDropKind extends EntityKind {
-  // Captured at construction from the kind's tier; collection reads it
-  // off the kind without needing a tier→delta lookup at runtime.
-  readonly multLift: number;
-  constructor(opts: EntityKindOpts) {
-    super(opts);
-    this.multLift = MULT_LIFT_BY_TIER[this.tier];
-  }
-}
+// MultDropKind + MULT_LIFT_BY_TIER moved to `./multDrop` to break the
+// score↔types cycle that was throwing TDZ ReferenceErrors in dev
+// (score.ts imported `EntityKind` for the `extends` clause but
+// types.ts imports `recordKill` from here, so when types.ts loaded
+// first, `EntityKind` was still uninitialised when this module's
+// `class MultDropKind extends EntityKind` ran). Importers should pull
+// `MultDropKind` from `./multDrop` directly.
