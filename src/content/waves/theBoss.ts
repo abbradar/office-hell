@@ -1131,7 +1131,7 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
       { speaker: 'right', text: "No, today you won't." },
       { speaker: 'right', text: "It's a pivotal moment in our company's history." },
       { speaker: 'left', text: "Isn't every our day the deadline-is-tomorrow day?" },
-      { speaker: 'right', text: 'You get back now!' },
+      { speaker: 'right', text: 'Too much talking, you get back now!' },
     ],
   });
 
