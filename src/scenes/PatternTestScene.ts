@@ -16,6 +16,7 @@
 // pressed contributes the source.
 
 import Phaser from 'phaser';
+import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W } from '../config';
 import { bullet } from '../content/kinds';
 import type { Entity } from '../entities/Entity';
@@ -99,6 +100,7 @@ const STATIC_HELPERS = {
   moveTo,
   walkOffScreen,
   bullet,
+  shoot,
   waitSeconds,
   waitAudioTimeAtLeast,
   waitEnemiesClear,
