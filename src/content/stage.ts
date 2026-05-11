@@ -317,11 +317,11 @@ function* fromWaterCooler(self: Entity): Generator<ScriptYield, void, void> {
 // === Stage 2 part 1 — kaedalus stage-2 intro (one-shot) → Mr. Hodges ===
 //
 // The intro track is the 1..70 bar chunks concatenated into a single
-// ~2:20 one-shot that plays through across the four evening-shift
-// waves (IT admin, all-doors spam, sales-and-client, janitors). When
-// it finishes, the field stays musically empty until the boss script
-// itself hard-cuts to the 71 dialog loop on entry. No fanfare — this
-// is a mid-game cut, not a section start.
+// ~2:20 one-shot that plays through across the evening-shift waves
+// (IT admin, all-doors spam, fashion expert, project-on-fire, sales-
+// and-client). When it finishes, the field stays musically empty
+// until the boss script itself hard-cuts to the 71 dialog loop on
+// entry. No fanfare — this is a mid-game cut, not a section start.
 function* fromItAdmin(self: Entity): Generator<ScriptYield, void, void> {
   markReached(self, 'r-it-admin');
   markWave(self, 'music: kaedalus stage 2 intro');
@@ -355,15 +355,6 @@ function* fromFashionExpert(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(fashionExpertWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* fromSalesClient(self);
-}
-
-function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
-  markReached(self, 'r-sales-client');
-  yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
-
-  yield* self.stage.separateWave(salesClientWave(self));
-  yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromProjectOnFire(self);
 }
 
@@ -373,14 +364,14 @@ function* fromProjectOnFire(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(projectOnFireWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
-  yield* fromJanitor(self);
+  yield* fromSalesClient(self);
 }
 
-function* fromJanitor(self: Entity): Generator<ScriptYield, void, void> {
-  markReached(self, 'r-janitor');
+function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
+  markReached(self, 'r-sales-client');
   yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
 
-  yield* self.stage.separateWave(janitorsWave(self));
+  yield* self.stage.separateWave(salesClientWave(self));
   // No seam wait here — the intro track is a one-shot built from bar
   // chunks, so it ends whenever it ends; Hodge's dialog music takes
   // over as soon as the boss script swaps it in.
@@ -396,21 +387,36 @@ function* fromShrunkOldMan(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(KAEDALUS_STAGE2_INTRO_KEY, { loop: false });
 
   yield* self.stage.separateWave(shrunkOldManWave(self));
-  yield* fromWorkIsFun(self);
+  yield* fromJanitor(self);
 }
 
 // === Stage 2 part 2 — kaedalus-short → retro-03 → The Boss ===
 //
-// Four remaining late-day waves (work-is-fun coworker rally, HR
-// trio, oversleeper, Friday-party) before the retro-03 cut and his
-// entrance. Untimed for now. In the live chain, kaedalus-short is
-// already running by the time we get here — Hodges's death script
-// switched it in mid-shudder (pauseMusicForDefeat in
-// shrunkOldMan.ts). The leading `startMusicLoop(kaedalus-short)` is
-// a no-op in that case; from a standalone practice entry it
-// switches in from menu music. The leading `waitSeconds` covers the
-// breath after Hodges (whose defeat sequence carries its own beat
-// but doesn't trail a gap into the next wave).
+// Five remaining late-day waves (janitors, work-is-fun coworker
+// rally, HR trio, oversleeper, Friday-party) before the retro-03
+// cut and his entrance. Untimed for now. In the live chain,
+// kaedalus-short is already running by the time we get here —
+// Hodges's death script switched it in mid-shudder
+// (pauseMusicForDefeat in shrunkOldMan.ts). The leading
+// `startMusicLoop(kaedalus-short)` is a no-op in that case; from a
+// standalone practice entry it switches in from menu music. The
+// leading `waitSeconds` covers the breath after Hodges (whose defeat
+// sequence carries its own beat but doesn't trail a gap into the
+// next wave).
+function* fromJanitor(self: Entity): Generator<ScriptYield, void, void> {
+  markReached(self, 'r-janitor');
+  yield* startMusicLoop(KAEDALUS_SHORT_KEY);
+  yield* waitSeconds(INTER_WAVE_GAP);
+
+  yield* self.stage.separateWave(janitorsWave(self));
+  yield* fromWorkIsFun(self);
+}
+
+// `fromWorkIsFun`'s leading `waitSeconds` is kept for standalone
+// practice entry (switching in from menu music with no preceding
+// wave to supply the breath). In the live chain it stacks with the
+// absence of a trailing gap on `fromJanitor` to give one
+// INTER_WAVE_GAP between them.
 function* fromWorkIsFun(self: Entity): Generator<ScriptYield, void, void> {
   markReached(self, 'r-work-is-fun');
   yield* startMusicLoop(KAEDALUS_SHORT_KEY);
@@ -563,10 +569,10 @@ export const WAVES: WaveDef[] = [
   { id: 'r-it-admin', name: 'IT Admin', script: fromItAdmin },
   { id: 'r-all-doors-spam', name: 'All-Doors Spam', script: fromAllDoorsSpam },
   { id: 'r-fashion-expert', name: 'Fashion Expert', script: fromFashionExpert },
-  { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-project-on-fire', name: 'Project On Fire', script: fromProjectOnFire },
-  { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
+  { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },
+  { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-work-is-fun', name: 'Work Is Fun', script: fromWorkIsFun },
   { id: 'r-hr-trio', name: 'HR Trio', script: fromHrTrio },
   { id: 'r-oversleeper', name: 'Oversleeper', script: fromOversleeper },
