@@ -3,13 +3,19 @@ import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
-import { addElevatorBackdrop, ELEVATOR_FRAME_CLOSED, ELEVATOR_OPEN_ANIM } from '../content/elevator';
+import {
+  addElevatorBackdrop,
+  ELEVATOR_BACKDROP_TINT,
+  ELEVATOR_FRAME_CLOSED,
+  ELEVATOR_MENU_VERTICAL_PAD,
+  ELEVATOR_OPEN_ANIM,
+} from '../content/elevator';
 import { MENU_LOGO_KEY } from '../content/textures';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { FONT_DIALOGUE_LG, FONT_MENU } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
-import { COLOR_ACCENT_GOLD_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
+import { COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -22,6 +28,13 @@ const RUMBLE_PIXELS = 4;
 const RUMBLE_MIN_MS = 4000;
 const RUMBLE_MAX_MS = 6000;
 const RUMBLE_DURATION_MS = 100;
+
+// Shift the elevator up so its top building-frame band is mostly cropped
+// off-screen. The source sprite has a thick frame piece at the top and no
+// equivalent at the bottom — left as-is the composition reads top-heavy.
+// Pairs with ELEVATOR_BACKDROP_OVERFLOW (in elevator.ts) which is bumped
+// to cover the freshly-exposed area at the bottom.
+const ELEVATOR_Y_OFFSET = -40;
 
 export class MenuScene extends Phaser.Scene {
   private starting = false;
@@ -43,21 +56,27 @@ export class MenuScene extends Phaser.Scene {
     addMuteButton(this);
     this.starting = false;
 
-    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED);
+    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED, ELEVATOR_MENU_VERTICAL_PAD);
+    elevator.y = GAME_H / 2 + ELEVATOR_Y_OFFSET;
+    elevator.setTint(ELEVATOR_BACKDROP_TINT);
     this.scheduleRumble(elevator);
 
-    // Hand-drawn gothic logo replaces the FONT_TITLE banner. 2× scale
-    // brings the 149×152 source up to ~298×304, filling the elevator
-    // backdrop's frame more dramatically; the anchor lifts to
-    // GAME_H × 0.22 so the bigger logo stays clear of the START prompt
-    // at GAME_H × 0.5.
+    // Logo + menu prompts sit in the lower two-thirds of the elevator door
+    // panel, lower than they used to. Designer pass concluded the previous
+    // layout (logo at 0.22, prompts starting at 0.5) felt top-loaded — this
+    // sinks the whole stack so the bottom margin reads as the composition's
+    // base rather than dead space.
     this.add
-      .image(GAME_W / 2, GAME_H * 0.22, MENU_LOGO_KEY)
+      .image(GAME_W / 2, GAME_H * 0.32, MENU_LOGO_KEY)
       .setOrigin(0.5)
       .setScale(2);
 
+    // Equal-spaced prompts: 0.11 × GAME_H between consecutive items.
+    // START uses FONT_MENU (slightly heavier) than PRACTICE/CREDITS, so
+    // equal Y stride is the simplest way to keep the column visually
+    // rhythmic without bespoke per-row padding.
     const startTemplate = isTouchDevice ? '▶ TAP TO START' : '▶ START  <confirm>';
-    const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.5, startTemplate, {
+    const startText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, startTemplate, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -80,15 +99,15 @@ export class MenuScene extends Phaser.Scene {
     let practiceText: Phaser.GameObjects.Container | null = null;
     if (DEVELOPER_MODE) {
       const practiceTemplate = isTouchDevice ? '▷ PRACTICE' : '▷ PRACTICE  <practice>';
-      practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.62, practiceTemplate, {
+      practiceText = makePrompt(this, GAME_W / 2, GAME_H * 0.73, practiceTemplate, {
         ...FONT_DIALOGUE_LG,
-        color: COLOR_ACCENT_GOLD_STR,
+        color: COLOR_TEXT_PRIMARY_STR,
       });
       setLargeHit(practiceText, GAME_W * 0.6, 80);
     }
 
     const creditsTemplate = isTouchDevice ? '▷ CREDITS' : '▷ CREDITS  <credits>';
-    const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.72, creditsTemplate, {
+    const creditsText = makePrompt(this, GAME_W / 2, GAME_H * 0.84, creditsTemplate, {
       ...FONT_DIALOGUE_LG,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -138,7 +157,7 @@ export class MenuScene extends Phaser.Scene {
       // The scene may have been torn down between scheduling and firing
       // (e.g. quick START press). Bail if we're no longer the active menu.
       if (!this.scene.isActive() || this.starting) return;
-      const baseY = GAME_H / 2;
+      const baseY = GAME_H / 2 + ELEVATOR_Y_OFFSET;
       this.tweens.add({
         targets: target,
         y: baseY - RUMBLE_PIXELS,

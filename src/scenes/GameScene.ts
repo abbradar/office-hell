@@ -649,7 +649,7 @@ export class GameScene extends Phaser.Scene {
     c.add(resume);
 
     const menuTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <bomb>  MENU';
-    const menu = makePrompt(this, GAME_W / 2, GAME_H * 0.62, menuTpl, {
+    const menu = makePrompt(this, GAME_W / 2, GAME_H * 0.6, menuTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -696,7 +696,7 @@ export class GameScene extends Phaser.Scene {
     c.add(continueBtn);
 
     const quitTpl = isTouchDevice ? '▷ TAP TO QUIT' : '▷ <back>  QUIT';
-    const quitBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.62, quitTpl, {
+    const quitBtn = makePrompt(this, GAME_W / 2, GAME_H * 0.6, quitTpl, {
       ...FONT_MENU,
       color: COLOR_TEXT_PRIMARY_STR,
     });
@@ -866,6 +866,7 @@ export class GameScene extends Phaser.Scene {
     // even while paused so the dialogue's first frame doesn't show a stale anim
     // from before the cutscene started.
     this.player.updateAnim();
+    this.player.updateHitbox();
 
     this.state.hudAccumMs += delta;
     if (this.state.hudAccumMs >= HUD_REFRESH_MS) {

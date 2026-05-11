@@ -49,27 +49,40 @@ const TRACK_TAIL_S = 69;
 const EXIT_SPEED = 100;
 const EXIT_Y = -50;
 
-// Where the section text appears on screen. Player is on the far left
-// during the roll, so place the credits centred horizontally — the
-// player and the text don't overlap.
-const SECTION_X = GAME_W / 2;
+// Where the section text appears on screen. Player rests on the far
+// left during the roll, so the panel is shifted right of the corridor
+// centre to sit in the space *next to* the player rather than on top
+// of them. Player visual right edge is at LEFT_REST_X + half-sprite =
+// ~84; panel left edge at SECTION_X - PANEL_MAX_W/2 = 90 leaves a
+// small but readable gap.
+const SECTION_X = 230;
 const SECTION_Y = GAME_H * 0.5;
 
 // Backdrop panel — semi-transparent dark card behind the text stack so
-// the credits read against the busy floor tiles. Sized to a fixed width
-// that fits inside the corridor; height is computed per section from
-// the laid-out content.
-const PANEL_W = 260;
+// the credits read against the busy floor tiles. Width is responsive
+// per section: it snaps to the widest child clamped between MIN
+// (visual cohesion across sections) and MAX (the slot beside the
+// player). Height is always computed from the laid-out content.
+const PANEL_MIN_W = 240;
+const PANEL_MAX_W = 280;
 const PANEL_PAD_X = 16;
 const PANEL_PAD_Y = 20;
 const PANEL_RADIUS = 8;
 const PANEL_FILL_ALPHA = 0.85;
 const PANEL_BORDER_ALPHA = 0.7;
 
-// Wrap widths derived from the panel's inner width so roles and the
-// body paragraph break to multiple lines instead of crowding edge-to-
-// edge or spilling outside the card.
-const TEXT_WRAP = PANEL_W - PANEL_PAD_X * 2;
+// Wrap width for text inside the panel. Names, roles, body paragraph
+// and URLs all wrap to this width; the responsive panel is clamped at
+// PANEL_MAX_W, so wrapping is what keeps long entries from
+// overflowing. URLs are pre-broken at a slash (see `breakLongUrl`)
+// because Phaser's word-wrap only breaks at whitespace, not slashes.
+const TEXT_WRAP = PANEL_MAX_W - PANEL_PAD_X * 2;
+
+// Approximate character width in monogram 16px. Used to decide when a
+// URL needs a manual slash-break before it's handed to Phaser's
+// word-wrap. Slightly conservative so the break happens before the
+// last-fitting slash, leaving safety margin.
+const URL_BREAK_CHARS = 36;
 
 // Vertical rhythm. All gaps are *additional* spacing between adjacent
 // elements — actual element heights are read from `text.height` at
@@ -203,8 +216,10 @@ function* showFinalScoreFade(self: Entity): Generator<ScriptYield, void, void> {
 
 // Render the three-line final-score card (Score / Mult / Final) into a
 // Container, then offset vertically so the rendered stack is centred
-// on (cx, cy). Mirrors the centring math in `renderSection`. Numbers
-// use `toLocaleString('en-US')` for a thousands separator.
+// on (cx, cy). Numbers use `toLocaleString('en-US')` for a thousands
+// separator. Frames the stack with the same backdrop panel as
+// `renderSection` so the score card reads as the first credits card
+// rather than a separate beat.
 function renderFinalScore(
   scene: Phaser.Scene,
   score: { score: number; mult: number },
@@ -213,12 +228,21 @@ function renderFinalScore(
 ): Phaser.GameObjects.Container {
   const container = scene.add.container(cx, 0).setDepth(50);
 
+  // Local spacing — the score card's vertical rhythm is independent of
+  // the credits sections. Heading sits a comfortable gap above the
+  // three numeric rows; rows are tightly grouped because they read as
+  // a single block.
+  const HEADING_GAP = 14;
+  const ROW_GAP = 8;
+
   let cursor = 0;
+  let maxChildW = 0;
   const heading = scene.add
     .text(0, cursor, 'FINAL SCORE', { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
     .setOrigin(0.5, 0);
   container.add(heading);
-  cursor += heading.height + HEADING_GAP_BELOW;
+  maxChildW = Math.max(maxChildW, heading.width);
+  cursor += heading.height + HEADING_GAP;
 
   const final = score.score * score.mult;
   const lines = [
@@ -232,10 +256,12 @@ function renderFinalScore(
       .text(0, cursor, text, { ...FONT_DIALOGUE_LG, color: COLOR_TEXT_PRIMARY_STR })
       .setOrigin(0.5, 0);
     container.add(line);
+    maxChildW = Math.max(maxChildW, line.width);
     cursor += line.height;
-    if (i < lines.length - 1) cursor += NAME_GAP_BELOW;
+    if (i < lines.length - 1) cursor += ROW_GAP;
   }
 
+  drawPanelBg(scene, container, maxChildW, cursor);
   container.y = cy - cursor / 2;
   return container;
 }
@@ -251,23 +277,39 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
   const container = scene.add.container(cx, 0).setDepth(50);
 
   let cursor = 0;
+  let maxChildW = 0;
   const heading = scene.add
     .text(0, cursor, section.heading, { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
     .setOrigin(0.5, 0);
   container.add(heading);
+  maxChildW = Math.max(maxChildW, heading.width);
   cursor += heading.height + HEADING_GAP_BELOW;
 
   const entries = section.entries ?? [];
   for (const [i, entry] of entries.entries()) {
     const isLast = i === entries.length - 1 && !section.body;
 
+    // Names wrap at the panel inner width so a long name like "CRACK
+    // THE UNDERGROUND BASE" breaks at a space instead of forcing the
+    // panel to grow past `PANEL_MAX_W`.
     const name = scene.add
-      .text(0, cursor, entry.name, { ...FONT_DIALOGUE_LG, color: COLOR_TEXT_PRIMARY_STR })
+      .text(0, cursor, entry.name, {
+        ...FONT_DIALOGUE_LG,
+        color: COLOR_TEXT_PRIMARY_STR,
+        align: 'center',
+        wordWrap: { width: TEXT_WRAP },
+      })
       .setOrigin(0.5, 0);
     container.add(name);
+    maxChildW = Math.max(maxChildW, name.width);
     cursor += name.height;
 
-    const subText = entry.url ?? entry.role;
+    // URLs have no internal whitespace and Phaser's word-wrap only
+    // breaks at spaces, so manually insert a newline at the last slash
+    // within the safe character budget before handing the text to the
+    // text style's wordWrap (which still clips any line longer than
+    // TEXT_WRAP on the rare case the broken line still overflows).
+    const subText = entry.url ? breakLongUrl(entry.url) : entry.role;
     if (subText) {
       cursor += NAME_GAP_BELOW;
       const sub = scene.add
@@ -279,6 +321,7 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
         })
         .setOrigin(0.5, 0);
       container.add(sub);
+      maxChildW = Math.max(maxChildW, sub.width);
       cursor += sub.height;
     }
     if (!isLast) cursor += subText ? SUB_GAP_BELOW : SOLO_ENTRY_GAP_BELOW;
@@ -295,24 +338,44 @@ function renderSection(scene: Phaser.Scene, section: Section, cx: number, cy: nu
       })
       .setOrigin(0.5, 0);
     container.add(body);
+    maxChildW = Math.max(maxChildW, body.width);
     cursor += body.height;
   }
 
-  // Backdrop. Drawn last (after we know the stack height) and inserted
-  // at index 0 so it renders behind the text. Origin of the stack is
-  // y=0 = top of heading; expand `PANEL_PAD_Y` above and below to frame
-  // the content with a comfortable margin.
-  const bg = scene.add.graphics();
-  bg.fillStyle(COLOR_PANEL, PANEL_FILL_ALPHA);
-  bg.fillRoundedRect(-PANEL_W / 2, -PANEL_PAD_Y, PANEL_W, cursor + PANEL_PAD_Y * 2, PANEL_RADIUS);
-  bg.lineStyle(1, COLOR_PANEL_BORDER, PANEL_BORDER_ALPHA);
-  bg.strokeRoundedRect(-PANEL_W / 2, -PANEL_PAD_Y, PANEL_W, cursor + PANEL_PAD_Y * 2, PANEL_RADIUS);
-  container.addAt(bg, 0);
-
-  // Centre the rendered stack (text + backdrop) vertically around
-  // (cx, cy). The backdrop spans [-PANEL_PAD_Y, cursor + PANEL_PAD_Y],
-  // so its midpoint is at cursor/2 — same as the text content's mid —
-  // and a single offset centres both.
+  drawPanelBg(scene, container, maxChildW, cursor);
   container.y = cy - cursor / 2;
   return container;
+}
+
+// Pre-break a URL at the last slash that fits within `URL_BREAK_CHARS`
+// so Phaser's whitespace-only word-wrap has somewhere to break it.
+// Short URLs pass through untouched.
+function breakLongUrl(url: string): string {
+  if (url.length <= URL_BREAK_CHARS) return url;
+  const head = url.slice(0, URL_BREAK_CHARS + 1);
+  const slashIdx = head.lastIndexOf('/');
+  if (slashIdx <= 0) return url;
+  return `${url.slice(0, slashIdx + 1)}\n${url.slice(slashIdx + 1)}`;
+}
+
+// Draws the semi-transparent rounded backdrop behind the laid-out text
+// stack of a section/score card. Width snaps to `maxChildW + padding`,
+// clamped between MIN/MAX so the panels read as a coherent set even
+// when individual sections have very different widest-line widths.
+// The graphics object is inserted at index 0 of the container so the
+// text renders on top.
+function drawPanelBg(
+  scene: Phaser.Scene,
+  container: Phaser.GameObjects.Container,
+  maxChildW: number,
+  contentH: number,
+): void {
+  const panelW = Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, maxChildW + PANEL_PAD_X * 2));
+  const panelH = contentH + PANEL_PAD_Y * 2;
+  const bg = scene.add.graphics();
+  bg.fillStyle(COLOR_PANEL, PANEL_FILL_ALPHA);
+  bg.fillRoundedRect(-panelW / 2, -PANEL_PAD_Y, panelW, panelH, PANEL_RADIUS);
+  bg.lineStyle(1, COLOR_PANEL_BORDER, PANEL_BORDER_ALPHA);
+  bg.strokeRoundedRect(-panelW / 2, -PANEL_PAD_Y, panelW, panelH, PANEL_RADIUS);
+  container.addAt(bg, 0);
 }

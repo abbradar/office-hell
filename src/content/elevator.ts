@@ -20,6 +20,18 @@ export const ELEVATOR_OPEN_MS = 500;
 // rumble (a few-pixel up/down jitter) doesn't expose the scene's clear
 // color at the edges.
 export const ELEVATOR_BACKDROP_OVERFLOW = 24;
+// Extra vertical overflow that MenuScene opts into: the menu shifts the
+// elevator upward to crop more of its top building-frame band; this
+// padding keeps the bottom from exposing the scene's clear color.
+// CharacterSelect doesn't shift, so it keeps the default overflow.
+export const ELEVATOR_MENU_VERTICAL_PAD = 120;
+// Shared tint applied to the elevator backdrop on both Menu and
+// CharacterSelect — knocks the source sprite's medium grey down to a
+// flat dark grey so the gothic logo (Menu) and the character cards
+// (CharacterSelect) read with enough contrast against it. Keeping the
+// value on both scenes also avoids a brightness pop when the doors
+// transition from MenuScene → CharacterSelect.
+export const ELEVATOR_BACKDROP_TINT = 0x707070;
 
 export function preloadElevator(scene: Phaser.Scene): void {
   scene.load.spritesheet(ELEVATOR_DOORS_KEY, elevatorUrl, {
@@ -48,10 +60,18 @@ export function registerElevatorAnims(scene: Phaser.Scene): void {
 }
 
 // Shared placement so the open doors carry over from MenuScene's open
-// animation to CharacterSelect without a visual jump.
-export function addElevatorBackdrop(scene: Phaser.Scene, frame: number): Phaser.GameObjects.Sprite {
+// animation to CharacterSelect without a visual jump. `extraVerticalPad`
+// is opt-in extra height for callers that shift the sprite vertically and
+// need to keep the bottom edge covered (MenuScene). The width overflow
+// stays bound to the default so we don't over-stretch the door panels'
+// aspect ratio.
+export function addElevatorBackdrop(
+  scene: Phaser.Scene,
+  frame: number,
+  extraVerticalPad = 0,
+): Phaser.GameObjects.Sprite {
   return scene.add
     .sprite(GAME_W / 2, GAME_H / 2, ELEVATOR_DOORS_KEY, frame)
-    .setDisplaySize(GAME_W + ELEVATOR_BACKDROP_OVERFLOW, GAME_H + ELEVATOR_BACKDROP_OVERFLOW)
+    .setDisplaySize(GAME_W + ELEVATOR_BACKDROP_OVERFLOW, GAME_H + ELEVATOR_BACKDROP_OVERFLOW + extraVerticalPad)
     .setDepth(-10);
 }

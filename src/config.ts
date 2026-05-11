@@ -19,6 +19,15 @@ export const PLAYER_SPEED = 280;
 export const PLAYER_HITBOX_RADIUS = 4;
 export const PLAYER_Y = GAME_H - 80;
 
+// Master switch for the Touhou-style hitbox dot. When on, the dot is
+// visible only during focus mode on desktop (where Shift opts the
+// player into precise dodging) and unconditionally on touch devices
+// (no Shift key, and the small dot is the only reliable way to read
+// the hurtbox under a finger). Always hidden while physics is paused
+// (dialogue / overlays) regardless of platform. Flip to false to kill
+// the marker entirely.
+export const SHOW_PLAYER_HITBOX: boolean = true;
+
 // Top-of-screen dead zone — entities with `y < DEADZONE_Y` are exempt from
 // damage collisions. Stops the player auto-firing through enemies that have
 // spawned at `y = -30` and are still drifting into the visible area, which

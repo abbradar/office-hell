@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { shoot } from '../audio/sfx/events';
-import { GAME_H, GAME_W, HEADER_H, PLAYER_SPEED, PLAYER_Y, WALL_W } from '../config';
+import { GAME_H, GAME_W, HEADER_H, PLAYER_SPEED, PLAYER_Y, SHOW_PLAYER_HITBOX, WALL_W } from '../config';
 import { type Action, characterAnimKey, type Direction } from '../content/animations';
 import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
+import { isTouchDevice } from '../input/device';
 import type { StageManager } from '../script/StageManager';
 import { onPlayerDeath } from '../script/score';
 import type { DamageClass, HPVars } from '../script/types';
@@ -93,13 +94,13 @@ export class Player extends Entity {
   declare kind: PlayerKind;
 
   private lastFireMs = 0;
-  // True while the player is moving via keyboard with Shift held — speed
-  // scales by FOCUS_SPEED_RATIO and updateAnim forces 'walk'. Set in
-  // controlUpdate (which runs before updateAnim each frame) and cleared
-  // when controls are locked or no horizontal key is active, so a held
-  // Shift outside of movement (or during a cutscene) doesn't pin the
-  // anim choice on stale state. Public so the intro's focus tutorial
-  // can poll it as the prompt's completion signal.
+  // True while Shift is held (and focus is unlocked) — scales movement
+  // speed by FOCUS_SPEED_RATIO when there's any direction input,
+  // forces the 'walk' anim during movement, and shows the hitbox dot.
+  // Set every frame in controlUpdate; cleared by lockControls so a
+  // cutscene doesn't leave it pinned on stale state. Public so the
+  // intro's focus tutorial can poll it as the prompt's completion
+  // signal.
   focused = false;
 
   // Touch-mode movement target, in logical (x, y). While a finger is
@@ -366,10 +367,25 @@ export class Player extends Entity {
     if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 
-  controlUpdate(input: PlayerControlInput): void {
+  // Reposition + retoggle the hitbox dot. Driven from GameScene every
+  // frame (even while paused) so a focus → dialogue transition hides
+  // the dot on the same tick the bubble appears, instead of leaving it
+  // lingering at the last unpaused position until input resumes.
+  // Physics-pause is the gate (not `stage.paused`) because intro
+  // tutorial prompts pause physics without flipping `stage.paused`,
+  // and we want the dot hidden during those too.
+  updateHitbox(): void {
+    if (!SHOW_PLAYER_HITBOX) {
+      this.hitboxGfx.setVisible(false);
+      return;
+    }
     this.hitboxGfx.setPosition(this.x, this.y);
-    this.hitboxGfx.setVisible(this.alive);
+    const paused = this.scene.physics.world.isPaused;
+    const visible = this.alive && !paused && (isTouchDevice || this.focused);
+    this.hitboxGfx.setVisible(visible);
+  }
 
+  controlUpdate(input: PlayerControlInput): void {
     if (!this.alive || !this.controlsEnabled) return;
 
     const half = this.width / 2;
@@ -386,7 +402,7 @@ export class Player extends Entity {
     const maxY = GAME_H - halfH;
 
     const kbActive = input.kbDirX !== 0 || input.kbDirY !== 0;
-    this.focused = kbActive && input.focusHeld && this.focusEnabled;
+    this.focused = input.focusHeld && this.focusEnabled;
 
     let newVx = 0;
     let newVy = 0;
@@ -505,9 +521,11 @@ export type PlayerControlInput = {
   // is pressed into a wall before normalising.
   kbDirX: number;
   kbDirY: number;
-  // Whether the focus modifier (Shift) is held. Only meaningful when at
-  // least one kbDir component is non-zero; Player gates focused-mode on
-  // both being true.
+  // Whether the focus modifier (Shift) is held. Player flips `focused`
+  // on as soon as this is true (gated on focusEnabled), so the hitbox
+  // dot appears the instant Shift goes down — the speed multiplier
+  // only kicks in if there's also a direction key, but the visual
+  // feedback isn't gated on movement.
   focusHeld: boolean;
   // Touch finger position in logical coords (smoothed by Player), or
   // null when no movement finger is held / the platform is desktop.
