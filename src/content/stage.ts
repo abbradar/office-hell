@@ -24,6 +24,7 @@ import {
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
+import { allDoorsSpamWave } from './waves/allDoorsSpam';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
 import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
@@ -293,13 +294,21 @@ function* fromItAdmin(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(itAdminsWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
+  yield* fromAllDoorsSpam(self);
+}
+
+function* fromAllDoorsSpam(self: Entity): Generator<ScriptYield, void, void> {
+  // Idempotent in the live chain (kaedalus-long already running from
+  // `fromItAdmin`); switches in from menu music when this is the
+  // practice entry point.
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
+
+  yield* self.stage.separateWave(allDoorsSpamWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromSalesClient(self);
 }
 
 function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
-  // Idempotent in the live chain (kaedalus-long already running from
-  // `fromItAdmin`); switches in from menu music when this is the
-  // practice entry point.
   yield* startMusicLoop(KAEDALUS_LONG_KEY);
 
   yield* self.stage.separateWave(salesClientWave(self));
@@ -451,6 +460,7 @@ export const WAVES: WaveDef[] = [
   },
   { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: fromWaterCooler },
   { id: 'r-it-admin', name: 'IT Admin', script: fromItAdmin },
+  { id: 'r-all-doors-spam', name: 'All-Doors Spam', script: fromAllDoorsSpam },
   { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },

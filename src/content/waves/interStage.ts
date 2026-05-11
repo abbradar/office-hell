@@ -2,8 +2,9 @@ import { GAME_H, PLAYER_Y } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { findClosestDoorLine, markWave, waitSeconds, walkThroughDoorLine } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { EntityKind, type HPVars, type ScriptYield } from '../../script/types';
 import { CHARACTERS } from '../characters';
+import { PLAYER_BOMBS } from '../player';
 import { PROP_WATER_DISPENSER_KEY } from '../textures';
 
 // Inter-stage breather: the player walks up to a water cooler at the
@@ -42,6 +43,11 @@ const WALK_SPEED = 80;
 // Beat between arriving at the cooler and the dialog opening — gives
 // both sprites a moment to settle into idle frames.
 const SETTLE_SECONDS = 0.4;
+// After the conversation ends and the other MC peels off, the player
+// pauses for this long before the "feeling a bit better now" line —
+// gives the other a few visible steps of exit before the dialog
+// freezes the world.
+const REFRESH_PAUSE_SECONDS = 0.6;
 // Where the cooler ends up sitting just above the player at PLAYER_Y.
 const COOLER_REST_Y = PLAYER_Y - 36;
 // Floor-scroll baseline (px/s). Mirrors GameScene.CORRIDOR_SCROLL_PX_PER_MS
@@ -197,16 +203,30 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
 
   // ─── Post-dialog: other exits, floor carries player+cooler down ────
   //
-  // Phase A — in parallel: the player sidesteps right of the cooler
-  // (so the cooler can tween down past her cleanly in Phase C
-  // instead of through her sprite), and the other MC walks out
-  // through the closest upper-left door. Floor still not moving.
+  // Phase A — in parallel: the other MC walks out through the closest
+  // upper-left door, while the player takes a beat by the cooler — a
+  // sip of water "refreshes" her (HP + bombs restored, with a relief
+  // line) — and then sidesteps right of the cooler so the cooler can
+  // tween down past her cleanly in Phase C instead of through her
+  // sprite. Floor still not moving. The refresh line opens a dialog,
+  // which pauses physics; the other freezes mid-step until the line
+  // dismisses, then continues to the door.
   yield {
     all: [
-      moveTo(player, PLAYER_SIDESTEP_X, player.y, WALK_SPEED),
       (function* (): Generator<ScriptYield, void, void> {
         const exitDoorY = findClosestDoorLine(other, other.y, 'upper') ?? other.y;
         yield* walkThroughDoorLine(other, exitDoorY, 'left', WALK_SPEED);
+      })(),
+      (function* (): Generator<ScriptYield, void, void> {
+        yield* waitSeconds(REFRESH_PAUSE_SECONDS);
+        (player.vars as HPVars).hp = player.kind.hp;
+        player.kind.bombs = PLAYER_BOMBS;
+        player.render();
+        yield self.dialogue({
+          left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
+          lines: [{ speaker: 'left', text: 'Phew, feeling a bit better now.' }],
+        });
+        yield* moveTo(player, PLAYER_SIDESTEP_X, player.y, WALK_SPEED);
       })(),
     ],
   };
