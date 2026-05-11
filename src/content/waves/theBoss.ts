@@ -1309,6 +1309,11 @@ function* bossBulletDeathSweep(self: Entity): Generator<ScriptYield, void, void>
   for (const e of stage.active) {
     if (e === self) continue;
     if (e === player) continue;
+    // The chain script lives on `stage.stageEntity` — killing it
+    // here would terminate the wave hand-off into endingScene and
+    // the game would just sit there with a frozen `wave: ending`
+    // label.
+    if (e === stage.stageEntity) continue;
     if (e.alive) e.die();
   }
 
