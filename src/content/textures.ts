@@ -210,6 +210,15 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
   g.fillStyle(COLOR_BULLET_ORANGE, 1);
   g.fillCircle(r, r, r);
   g.generateTexture('orangeBullet', d, d);
+  g.clear();
+  // Hodges Phase-D aimed-spread bullet — larger (r=6) and pink so the
+  // three-shot fan reads as a heavier punctuation against the orbiter
+  // spirals running in parallel. Sized independently of BULLET_RADIUS
+  // to break out of the standard pellet family.
+  const rPink = 6;
+  g.fillStyle(0xff1155, 1);
+  g.fillCircle(rPink, rPink, rPink);
+  g.generateTexture('pinkBullet', rPink * 2, rPink * 2);
   g.destroy();
 }
 
