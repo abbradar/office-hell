@@ -41,8 +41,8 @@ const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 // backing canvas and re-uploads it via gl.texImage2D. Doing that every
 // frame (because actualFps changes every frame) was capping us at ~57 fps
 // on top of the GPU pipeline, independent of bullet count. 1 Hz is plenty
-// for "hostile / fps / practice mode" — the only sub-second thing in the
-// line is the displayed FPS itself.
+// for "fps / practice mode" — the only sub-second thing in the line is
+// the displayed FPS itself.
 const HUD_REFRESH_MS = 1000;
 
 // Score / mult readout layout. Score is zero-padded to SCORE_WIDTH
@@ -215,8 +215,8 @@ class RunState {
   readonly doorSlots: Phaser.GameObjects.Image[] = [];
   // HUD text is a canvas-backed Phaser.Text — every changed string redraws
   // the canvas and re-uploads it via gl.texImage2D, which serialises the
-  // WebGL pipeline. The fps + hostile-count line was rebuilt every frame
-  // (actualFps changes constantly), so we throttle to 1 Hz here. Reset on
+  // WebGL pipeline. The fps line was rebuilt every frame (actualFps
+  // changes constantly), so we throttle to 1 Hz here. Reset on
   // every tick that exceeds the budget; HUD freeze during pause is fine
   // because pause itself is a longer-than-1 s state.
   hudAccumMs = HUD_REFRESH_MS;
@@ -876,9 +876,8 @@ export class GameScene extends Phaser.Scene {
     this.state.hudAccumMs += delta;
     if (this.state.hudAccumMs >= HUD_REFRESH_MS) {
       this.state.hudAccumMs = 0;
-      const hostile = this.stage.damages.player.countActive(true);
       const mode = this.state.practiceWave ? `   PRACTICE: ${this.state.practiceWave.name}` : '';
-      this.hud.setText(`hostile: ${hostile}   fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
+      this.hud.setText(`fps: ${Math.round(this.game.loop.actualFps)}${mode}`);
     }
 
     this.bossNameText.setText(this.stage.bossName ?? '');
