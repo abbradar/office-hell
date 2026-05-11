@@ -437,18 +437,21 @@ function* shrunkOldManScript(self: Entity) {
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'geezer', frame: 1, name: 'Mr. Hodges' },
     lines: [
-      { speaker: 'right', text: 'Excuse me… do you have a minute?' },
+      { speaker: 'right', text: `Excuse me, ${ch.name}… do you have a minute?` },
       { speaker: 'left', text: 'Who are you?' },
       {
         speaker: 'right',
-        text: "Hodges. Thirty-one years with the firm. They 'shrunk' my position this morning.",
+        text: "Mr. Hodges. I've been with the firm from the very beginning. Unfortunately they 'shrunk' my position… on account of my age.",
       },
       {
         speaker: 'right',
-        text: 'Security gave me ten minutes to clear my desk. There are still… a few things to hand over.',
+        text: 'Could I borrow a moment of your time? I have so much important information… and no one left to pass it on to.',
       },
-      { speaker: 'left', text: "I'm not staying late for someone else's backlog." },
-      { speaker: 'right', text: 'Please. I have nowhere else to leave them.' },
+      { speaker: 'left', text: 'Can you pass it on to someone else?' },
+      {
+        speaker: 'right',
+        text: `I really do like your energy, ${ch.name}. It won't take long, I promise…`,
+      },
     ],
   });
 
