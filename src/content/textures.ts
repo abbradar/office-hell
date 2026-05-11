@@ -297,6 +297,16 @@ const EMAIL_H = 10;
 const EMAIL_BORDERED_W = EMAIL_W + 2;
 const EMAIL_BORDERED_H = EMAIL_H + 2;
 
+// Bordered variant of the 8×10 question bullet sprite — used by the
+// final boss's phase-2/3 orbital arcs. Same construction as
+// `emailBordered`: 1 px red frame around the bbox, source image
+// overdrawn into the inner region.
+export const QUESTION_BORDERED_KEY = 'questionBordered';
+const QUESTION_W = 8;
+const QUESTION_H = 10;
+const QUESTION_BORDERED_W = QUESTION_W + 2;
+const QUESTION_BORDERED_H = QUESTION_H + 2;
+
 export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image('reportBullet', reportBulletUrl);
   scene.load.image('missedCall', missedCallUrl);
@@ -380,6 +390,24 @@ export function generateEmailBorderedTexture(scene: Phaser.Scene): void {
   ctx.fillRect(0, 1, 1, EMAIL_H);
   ctx.fillRect(EMAIL_BORDERED_W - 1, 1, 1, EMAIL_H);
   const src = scene.textures.get('emailBullet').getSourceImage();
+  ctx.drawImage(src as CanvasImageSource, 1, 1);
+  canvas.refresh();
+}
+
+// Bordered question bullet — same construction as the email variant
+// above, applied to the 8×10 `questionBullet` PNG. The 1 px frame uses
+// the same `#ff5e62` red so the final boss's phase-2/3 orbital arcs
+// read as a kin to the email volley's accent. Built post-load.
+export function generateQuestionBorderedTexture(scene: Phaser.Scene): void {
+  const canvas = scene.textures.createCanvas(QUESTION_BORDERED_KEY, QUESTION_BORDERED_W, QUESTION_BORDERED_H);
+  if (!canvas) return;
+  const ctx = canvas.getContext();
+  ctx.fillStyle = '#ff5e62';
+  ctx.fillRect(0, 0, QUESTION_BORDERED_W, 1);
+  ctx.fillRect(0, QUESTION_BORDERED_H - 1, QUESTION_BORDERED_W, 1);
+  ctx.fillRect(0, 1, 1, QUESTION_H);
+  ctx.fillRect(QUESTION_BORDERED_W - 1, 1, 1, QUESTION_H);
+  const src = scene.textures.get('questionBullet').getSourceImage();
   ctx.drawImage(src as CanvasImageSource, 1, 1);
   canvas.refresh();
 }

@@ -184,6 +184,12 @@ export class StageManager {
   // the boss's own script — the manager/HUD don't infer it from entity
   // state.
   bossName: string | null = null;
+  // Live boss entity reference. Set alongside `bossName` and cleared on
+  // boss death. Used by patterns that need to orbit / track the boss's
+  // current position from a spawned controller entity (e.g. the
+  // final-boss orbital arcs in content/waves/theBoss.ts). Null when no
+  // boss is on the field.
+  bossEntity: Entity | null = null;
   // Stage-script scratchpad backing `checkStageOnce` / `checkStageCount`.
   // Lives for the manager's lifetime; switching scenes drops this manager
   // and the next GameScene constructs a fresh one with empty globals.

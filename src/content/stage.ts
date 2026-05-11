@@ -41,7 +41,7 @@ import { moreChartsWave } from './waves/moreCharts';
 import { oversleeperWave } from './waves/oversleeper';
 import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
-import { theBossWave } from './waves/theBoss';
+import { theBossPhase2Wave, theBossPhase3Wave, theBossWave } from './waves/theBoss';
 import { vacationPhotosWave } from './waves/vacationPhotos';
 import {
   COACH_NAME,
@@ -431,6 +431,23 @@ function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
   yield* endingScene(self);
 }
 
+// Practice-only continuations: spawn the final boss already at phase
+// 2 or phase 3 and run the rest of the fight from there. No live
+// caller chains through these — the menu picks them directly.
+// `endingScene` follows the wave so the practice run plays the full
+// post-boss roll-out.
+function* fromTheBossPhase2(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'final boss p2');
+  yield* self.stage.separateWave(theBossPhase2Wave(self));
+  yield* endingScene(self);
+}
+
+function* fromTheBossPhase3(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'final boss p3');
+  yield* self.stage.separateWave(theBossPhase3Wave(self));
+  yield* endingScene(self);
+}
+
 // === Intro / outro bookends ===
 //
 // fromIntro is the live chain head; stageBody just calls it and then
@@ -514,6 +531,8 @@ export const WAVES: WaveDef[] = [
   { id: 'r-oversleeper', name: 'Oversleeper', script: fromOversleeper },
   { id: 'r-friday-party', name: 'Friday Party', script: fromFridayParty },
   { id: 'boss', name: 'Final Boss — The Boss', script: fromTheBoss },
+  { id: 'boss-p2', name: 'Final Boss — The Boss (P2)', script: fromTheBossPhase2 },
+  { id: 'boss-p3', name: 'Final Boss — The Boss (P3)', script: fromTheBossPhase3 },
   { id: 'outro', name: 'Outro — Player exit', script: fromOutro },
   { id: 'i-ending', name: 'Ending — Walk Home', script: endingScene },
 ];
