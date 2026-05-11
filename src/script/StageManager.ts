@@ -7,7 +7,7 @@ import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { MULT_DROP_BY_TIER } from '../content/kinds';
-import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick, tickChain } from './score';
+import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick } from './score';
 import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
 import { HPEntityKind } from './types';
 
@@ -206,10 +206,17 @@ export class StageManager {
   // Score accrual gate. Flipped false at the start of the intro tutorial
   // and back on once the tutorial completes — so kill bonuses, the
   // alive-tick, and wave-end multiplier drops only start counting when
-  // the player has real agency over the game. Practice / test / music
-  // modes never run the intro, so this stays at its default `true` for
-  // them. See src/docs/scoring-system.md.
+  // the player has real agency over the game. Also flipped off after
+  // the final-boss defeat so the outro / ending scene runs with scoring
+  // frozen. Practice / test / music modes never run the intro, so this
+  // stays at its default `true` for them. See src/docs/scoring-system.md.
   scoringActive = true;
+  // Separate gate for the alive-tick alone. Lets inter-stage breathers
+  // (e.g. the water-cooler wave) pause survival score accrual without
+  // also gating kills / drops, which keep counting under `scoringActive`
+  // alone. Default `true`; waves that want to pause survival flip it
+  // false under a try/finally so a script cancel restores it.
+  survivalActive = true;
   // Multiplier on the corridor floor scroll speed (relative to the
   // baseline rate in GameScene). Default 1 = full speed when running;
   // 0.5 = the ending's slow-walk-home roll. Read by GameScene's update
@@ -911,21 +918,20 @@ export class StageManager {
       this.tickElapsed -= StageManager.TICK_MS;
       this.tickQueue(this.scriptWaiting);
       // Score side-effects piggyback on the same 60Hz tick so they stay
-      // locked to simulation time, not wall-clock. Chain decay drops
-      // mult back to multFloor after CHAIN_DECAY_FRAMES of no kills;
-      // alive-tick adds 1 × mult every ALIVE_TICK_FRAMES while the run
-      // is unpaused. Both are gated by the `paused` early-return above.
-      // Score side-effects are gated on the post-tutorial flag — nothing
-      // accrues while the intro is teaching the player to dodge / bomb /
-      // fire. `tickChain` is idempotent at mult=1 (no chain to break),
-      // so leaving it out of the gate would be harmless; included for
-      // symmetry with the alive-tick + pending-drops resolver.
+      // locked to simulation time, not wall-clock. The alive-tick adds
+      // 1 × mult every ALIVE_TICK_FRAMES while the run is unpaused.
+      // Score side-effects are gated on the post-tutorial flag —
+      // nothing accrues while the intro is teaching the player to
+      // dodge / bomb / fire. The alive-tick has an extra gate on
+      // `survivalActive` so inter-stage breathers can pause survival
+      // accrual without freezing kills / drops.
       if (this.scoringActive) {
-        tickChain(this.score);
-        this.aliveTickAccum += 1;
-        if (this.aliveTickAccum >= ALIVE_TICK_FRAMES) {
-          this.aliveTickAccum = 0;
-          recordAliveTick(this.score);
+        if (this.survivalActive) {
+          this.aliveTickAccum += 1;
+          if (this.aliveTickAccum >= ALIVE_TICK_FRAMES) {
+            this.aliveTickAccum = 0;
+            recordAliveTick(this.score);
+          }
         }
         // Retry-sample the wave-end multiplier drops queued by
         // scheduleMultDrop. Gated by the same paused early-return so a

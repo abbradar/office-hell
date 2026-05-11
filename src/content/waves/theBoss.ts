@@ -1,4 +1,4 @@
-import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY } from '../../audio/keys';
+import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIALOG_KEY } from '../../audio/keys';
 import { getMusicTime } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
@@ -21,14 +21,15 @@ import {
   race,
   runBeatmap,
   sideSpawnX,
+  startMusicLoop,
   startMusicWithIntro,
   suspendRunning,
   visibleDoorCenters,
   waitAudioTimeAtLeast,
   waitEntityDead,
   waitSeconds,
-  startMusicLoop,
 } from '../../script/stage';
+import { stopMusicLoop } from '../../audio/music/loop';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import {
   blueLongerDroplet,
@@ -792,8 +793,11 @@ export const phase1Spec: BeatmapSpec = buildPhase1Spec();
 // --- Boss script ---
 
 function* theBossScript(self: Entity) {
-  yield* startMusicLoop();
-  // Entry — boss flies down from above to his fight position.
+  // Entry — boss flies down from above to his fight position. The wave
+  // already cut the kaedalus-short loop and queued the nene battle-9
+  // loop (with a 1 s silence beat) before spawning the boss, so the
+  // boss walks in under the looping layer1_1 track without any extra
+  // music wrangling in here.
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
 
@@ -815,9 +819,14 @@ function* theBossScript(self: Entity) {
   });
   becomeHittable(self);
 
-  // Hard-cut to the metal track. `t0 = 0` is the first sample of
-  // the intro; the beatmap timestamps are anchored to it.
-  yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
+  // Hard-cut to the metal track right when the dialog dismisses. `t0 = 0`
+  // is the first sample of the intro; the beatmap timestamps are anchored
+  // to it. Gated on the kaedalus chain so monsterRpgStage's reuse keeps
+  // its own music context.
+  const inKaedalusChain = getMusicTime()?.key === NENE_BOSS_DIALOG_KEY;
+  if (inKaedalusChain) {
+    yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
+  }
 
   self.say('Performance review.', 90);
 
@@ -900,8 +909,26 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
   self.stage.scheduleMultDrop('boss');
   yield* prepareForBoss(self);
+
+  // Pre-entry beat: cut whatever's playing (crack_short in the live
+  // chain, menu loop or stage-2 intro in a practice run), hold 1 s of
+  // silence as the boss starts walking, then bring the nene battle-9
+  // layer1 loop up under the entry + dialog. No gate — `theBossWave`
+  // is only called from `fromTheBoss` in the main chain; the
+  // monsterRpgStage reuse spawns `theBoss` directly and skips the wave
+  // entirely, so its monster_final_boss loop isn't touched here.
+  stopMusicLoop();
+  yield* waitSeconds(1);
+  yield* startMusicLoop(NENE_BOSS_DIALOG_KEY);
+
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(theBoss, GAME_W / 2, -60, 0, 0);
     yield { until: boss };
   });
+
+  // Final boss is down — freeze the scoreboard for everything that
+  // follows (outro, endingScene). The score the player banked through
+  // the fight is the final number; idle alive-ticks and stray drops
+  // during the slow-walk-home ending shouldn't bump it any further.
+  self.stage.scoringActive = false;
 }

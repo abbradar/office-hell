@@ -78,6 +78,14 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   const otherCh = playerCh.id === 'female' ? CHARACTERS[1] : CHARACTERS[0];
   if (!otherCh) throw new Error('character roster has fewer than 2 entries');
 
+  // Inter-stage breather: pause survival score accrual for the whole
+  // wave so a slow conversation beat doesn't pad the score. Kills /
+  // drops still count (none happen here, but conceptually unrelated).
+  // try/finally restores the flag if the script is cancelled mid-flight
+  // (e.g. scene transition).
+  stage.survivalActive = false;
+  try {
+
   // ─── Cooler approach: floor scrolls forward, cooler drifts down ────
   //
   // The player keeps walking forward (walkInPlace + walkAnim) at
@@ -280,4 +288,7 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   player.updateAnim();
   // separateWave's finally resets controls / firing / collide-bounds.
   // Scroll multiplier stays at 1 for the next wave.
+  } finally {
+    stage.survivalActive = true;
+  }
 }

@@ -17,7 +17,7 @@ export const SECTIONS: Section[] = [
       { name: 'abbradar', role: 'code, stage design, pattern design' },
       { name: 'vuvko', role: 'code, sound design, stage design, pattern design' },
       { name: 'const', role: 'code, pattern design' },
-      { name: 'nclbrt', role: 'art design, character design, concept design' },
+      { name: 'nclbrt', role: 'art direction, character design, concept design' },
     ],
   },
   {

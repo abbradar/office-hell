@@ -113,6 +113,9 @@ export function* endingScene(self: Entity): Generator<ScriptYield, void, void> {
   // Phase 7 — credits roll. One section at a time, fade in / hold /
   // fade out. The whole roll fits inside the music intro + first loop
   // iteration with comfortable read time on each card.
+  // The FINAL SCORE card is shown first, ahead of the TEAM section, so
+  // the run's tally is the player's first read after they settle in.
+  yield* showFinalScoreFade(self);
   for (const section of SECTIONS) {
     yield* showSectionFade(self, section);
   }
@@ -163,6 +166,59 @@ function* showSectionFade(self: Entity, section: Section): Generator<ScriptYield
   scene.tweens.add({ targets: container, alpha: 0, duration: FADE_OUT_S * 1000 });
   yield* waitSeconds(FADE_OUT_S);
   container.destroy();
+}
+
+// Final-score card. Renders ahead of the SECTIONS roll, same fade-in /
+// hold / fade-out cadence as `showSectionFade` so the run's tally
+// reads as the first credits card rather than a separate beat.
+function* showFinalScoreFade(self: Entity): Generator<ScriptYield, void, void> {
+  const scene = self.scene;
+  const container = renderFinalScore(scene, self.stage.score, SECTION_X, SECTION_Y);
+  container.setAlpha(0);
+  scene.tweens.add({ targets: container, alpha: 1, duration: FADE_IN_S * 1000 });
+  yield* waitSeconds(FADE_IN_S + HOLD_S);
+  scene.tweens.add({ targets: container, alpha: 0, duration: FADE_OUT_S * 1000 });
+  yield* waitSeconds(FADE_OUT_S);
+  container.destroy();
+}
+
+// Render the three-line final-score card (Score / Mult / Final) into a
+// Container, then offset vertically so the rendered stack is centred
+// on (cx, cy). Mirrors the centring math in `renderSection`. Numbers
+// use `toLocaleString('en-US')` for a thousands separator.
+function renderFinalScore(
+  scene: Phaser.Scene,
+  score: { score: number; mult: number },
+  cx: number,
+  cy: number,
+): Phaser.GameObjects.Container {
+  const container = scene.add.container(cx, 0).setDepth(50);
+
+  let cursor = 0;
+  const heading = scene.add
+    .text(0, cursor, 'FINAL SCORE', { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
+    .setOrigin(0.5, 0);
+  container.add(heading);
+  cursor += HEADING_TO_FIRST_ENTRY;
+
+  const final = score.score * score.mult;
+  const lines = [
+    `Score: ${score.score.toLocaleString('en-US')}`,
+    `Mult: ×${score.mult.toLocaleString('en-US')}`,
+    `Final: ${final.toLocaleString('en-US')}`,
+  ];
+
+  for (const [i, text] of lines.entries()) {
+    const line = scene.add
+      .text(0, cursor, text, { ...FONT_DIALOGUE_LG, color: COLOR_TEXT_PRIMARY_STR })
+      .setOrigin(0.5, 0);
+    container.add(line);
+    cursor += line.height;
+    if (i < lines.length - 1) cursor += ENTRY_TO_SUB;
+  }
+
+  container.y = cy - cursor / 2;
+  return container;
 }
 
 // Render a credits section into a Container, then offset the container

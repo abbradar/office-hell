@@ -6,6 +6,7 @@ import { activateBomb } from '../content/bomb';
 import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
+import { onPlayerDeath } from '../script/score';
 import type { StageManager } from '../script/StageManager';
 import type { DamageClass, HPVars } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
@@ -236,6 +237,10 @@ export class Player extends Entity {
 
   override die(): void {
     super.die();
+    // Death collapses the live chain back to 1 — the scoreboard total
+    // survives, but any climb the player had banked is gone for the
+    // next continue. See src/docs/scoring-system.md.
+    onPlayerDeath(this.stage.score);
     // Freeze the sprite mid-frame and hide the hitbox dot. controlUpdate is
     // what normally drives the dot's visibility, but the death sequence
     // pauses the stage so controlUpdate never runs again — without this the

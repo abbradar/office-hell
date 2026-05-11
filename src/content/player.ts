@@ -26,7 +26,7 @@ export class PlayerKind extends HPEntityKind {
   readonly character: CharacterDef;
   private hpText: Phaser.GameObjects.Text;
   private bombsText: Phaser.GameObjects.Text;
-  private practice: boolean;
+  readonly practice: boolean;
   hits = 0;
   bombs: number;
 
@@ -71,9 +71,10 @@ export class PlayerKind extends HPEntityKind {
     super.takeDamage(self, amount);
     const after = vars.hp;
     self.stage.score.hpLost += Math.max(0, before - after);
-    // Any HP loss resets the chain — the chain is a no-hit streak.
-    // Score and multFloor survive; the live mult collapses to 1 and the
-    // next kill has to restart the climb. See src/docs/scoring-system.md.
+    // Notify the scoring system of the hit. Currently a no-op for the
+    // multiplier — the chain only collapses on actual death (handled
+    // in Player.die via onPlayerDeath), not on non-killing hits. Kept
+    // callable for future stats. See src/docs/scoring-system.md.
     if (before > after) onPlayerHit(self.stage.score);
     // Non-killing hit safety net: still alive after damage → fire a
     // free death-bomb (clears bullets in a tight radius around the

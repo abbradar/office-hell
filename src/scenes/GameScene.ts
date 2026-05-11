@@ -16,7 +16,7 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { liftMultFloor, MultDropKind, onContinue, refreshChainTimer } from '../script/score';
+import { addMult, MultDropKind, onContinue } from '../script/score';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -123,6 +123,36 @@ function pointerLogicalY(y: number): number {
 }
 
 export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
+// Per-wave unlock marker. Set to `true` when the player has reached
+// that wave in a real-stage run (see `markReached` in content/stage.ts).
+// Production builds use this to gate which entries appear in the
+// TestMenu practice list — only sections the player has actually
+// played through are surfaced as replay options. Mirrored to
+// `localStorage` so unlocks persist across reloads (Phaser's registry
+// is in-memory only).
+export const PRACTICE_UNLOCK_KEY_PREFIX = 'unlock:';
+
+// Hydrate registry-backed unlock flags from `localStorage` so per-wave
+// unlocks survive page reloads. Phaser's registry doesn't persist; we
+// mirror writes (see `markReached`) to `localStorage` and pull them
+// back into the registry on entry. Called from both GameScene and
+// TestMenuScene — either consumer reaching the registry first will
+// populate it for the rest of the session. Cheap and idempotent
+// (a few dozen keys total).
+export function hydrateUnlocksFromStorage(scene: Phaser.Scene): void {
+  try {
+    const reg = scene.game.registry;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === null) continue;
+      if (!key.startsWith(PRACTICE_UNLOCK_KEY_PREFIX)) continue;
+      reg.set(key, true);
+    }
+  } catch {
+    // localStorage may be unavailable (private mode, SSR). Unlock flow
+    // degrades to in-memory only — still works for the current session.
+  }
+}
 
 export type GameSceneData = {
   practice?: WaveDef;
@@ -253,6 +283,11 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.state = new RunState(data);
+    // Pull persisted per-wave unlock flags into the registry so the
+    // TestMenu can read them via `registry.get(PRACTICE_UNLOCK_KEY_PREFIX + id)`.
+    // No-op after the first scene entry (registry already populated),
+    // but cheap enough to run every time.
+    hydrateUnlocksFromStorage(this);
     // pauseGame() sets `scene.time.paused = true` to freeze realSeconds
     // waits during the ESC pause overlay. Phaser's Clock.shutdown() does
     // NOT reset `paused`, and the same Clock instance is reused across
@@ -428,17 +463,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Multiplier-drop pickup: one-way overlap with the player. Reading
-    // `floorLift` off MultDropKind lifts the per-stage floor (boss
-    // drops bump it most), refreshes the chain timer (so quiet beats
-    // between waves don't break the chain), and kills the drop. See
-    // src/docs/scoring-system.md.
+    // `multLift` off MultDropKind bumps the live mult (boss drops bump
+    // it most) and kills the drop. See src/docs/scoring-system.md.
     this.physics.add.overlap(this.player, this.stage.drops, (_p, d) => {
       const drop = d as Entity;
       if (!drop.alive) return;
       const kind = drop.kind;
       if (!(kind instanceof MultDropKind)) return;
-      if (kind.floorLift > 0) liftMultFloor(this.stage.score, kind.floorLift);
-      refreshChainTimer(this.stage.score);
+      if (kind.multLift > 0) addMult(this.stage.score, kind.multLift);
       drop.die();
     });
 
