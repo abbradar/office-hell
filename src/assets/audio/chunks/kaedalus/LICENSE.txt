@@ -1,0 +1,50 @@
+Office Hell — src/assets/audio/chunks/kaedalus/
+================================================
+
+The audio files in this directory (*.ogg) are derivative works
+("Adaptations" in the language of the license below) of a single
+musical track by Kaedalus.
+
+Original work
+-------------
+  Title:    "Crack the Underground Base" (also known as
+            "Crack the Underground Base — Action / Chipmusic / Rock")
+  Author:   Kaedalus (kaedalus.com)
+  Source:   https://opengameart.org/content/crack-the-underground-base-action-chipmusicrock
+  License:  Creative Commons Attribution-ShareAlike 3.0 Unported
+            (CC BY-SA 3.0)
+
+Adaptation
+----------
+The files in this directory are excerpts ("chunks") cut from the
+original track, re-encoded as Ogg Vorbis, and renamed by numeric
+chunk index. No new musical material has been added. The chunks are
+played back in sequence by the game's stage script to keep encounter
+beats aligned with the music.
+
+License of this adaptation
+--------------------------
+This directory and its contents are distributed under the same
+license as the original:
+
+  Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)
+
+Canonical license text:
+  https://creativecommons.org/licenses/by-sa/3.0/legalcode
+
+Human-readable summary (not a substitute for the legal text):
+  https://creativecommons.org/licenses/by-sa/3.0/
+
+The license requires that:
+  - You credit "Kaedalus (kaedalus.com)" as the original author when
+    you redistribute these files or any further adaptation.
+  - You link to the license (the canonical URL above is sufficient).
+  - You indicate that changes were made (these files are an
+    adaptation, not the original).
+  - Any work that incorporates or further adapts these files must
+    itself be distributed under CC BY-SA 3.0 (the "ShareAlike"
+    clause).
+
+The rest of Office Hell is not affected by this license. Only the
+files in this directory are governed by it. See the project's main
+README and src/content/credits.ts for the full attribution roll.

@@ -1,0 +1,39 @@
+MIT License
+
+Copyright (c) 2026 Office Hell contributors
+  abbradar, vuvko, const, nclbrt
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+----------------------------------------------------------------------
+
+NOTICE — third-party assets
+
+The MIT license above covers the Office Hell source code only. The
+project ships third-party assets (audio, fonts, sprites, icons) under
+their own licenses; see the Credits section of README.md for the per-
+asset attribution and license list.
+
+Of particular note:
+
+  src/assets/audio/chunks/kaedalus/
+    Contains audio adapted from "Crack the Underground Base" by
+    Kaedalus, licensed CC BY-SA 3.0. See LICENSE.txt in that
+    directory. The share-alike clause applies to those files only —
+    not to the rest of this repository.
