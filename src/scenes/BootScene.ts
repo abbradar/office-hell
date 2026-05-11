@@ -10,6 +10,7 @@ import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/ch
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import {
   generateEmailBorderedTexture,
+  generateQuestionBorderedTexture,
   generateTextures,
   preloadBackgrounds,
   preloadBlueExplosion,
@@ -240,10 +241,11 @@ export class BootScene extends Phaser.Scene {
           registerElevatorAnims(this);
           registerBombAnims(this);
           registerBlueExplosionAnim(this);
-          // Derived textures that need a source image (the email PNG)
-          // must run post-load, not in the synchronous generateTextures
-          // microtask above.
+          // Derived textures that need a source image (the email +
+          // question PNGs) must run post-load, not in the synchronous
+          // generateTextures microtask above.
           generateEmailBorderedTexture(this);
+          generateQuestionBorderedTexture(this);
           resolve();
         } catch (err) {
           reject(err);

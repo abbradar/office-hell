@@ -2,7 +2,7 @@ import { FINAL_BOSS_METAL_LOOP_KEY, FINAL_BOSS_METAL_OPENING_KEY, NENE_BOSS_DIAL
 import { getMusicTime, stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
+import { becomeHittable, bossShudder, nextBossPhase, PhasedBossKind, waitPhaseDown } from '../../script/boss';
 import { aimed, arc, cameraPunch, lineExplosion, lineStrokeTelegraph, moveTo, ring } from '../../script/patterns';
 import {
   type BeatmapBeat,
@@ -20,29 +20,54 @@ import {
   waitAudioTimeAtLeast,
   waitEntityDead,
   waitSeconds,
+  waitTrackEnded,
 } from '../../script/stage';
 import { EntityKind, type ScriptYield } from '../../script/types';
 import {
+  blueExplosion,
   blueLongerDroplet,
+  bullet,
   emailBordered,
   greedDiamondXs,
   lavaDropletHard,
+  questionBordered,
   redCross,
   redDiamondMd,
   redDroplet,
   redDropletHard,
+  redExplosion,
   yellowDiamondSm,
 } from '../kinds';
+import { RED_EXPLOSION_FRAMES } from '../textures';
 
-// --- Final boss: phase 1 prototype ---
+// --- Final boss: three-phase encounter ---
 //
-// Single-phase encounter for now — beatmap is the events sketched
-// in conversation. More phases get added as we iterate.
+// Phase 1 (650 → 250 hp). Standard layer set, blue vertical-explosion
+//                         rain, no arc-wave / no orbital arcs. Force-
+//                         advances to phase 2 if the metal track
+//                         reaches 35 s without the player breaking the
+//                         HP gate.
+// Phase 2 (250 → 100 hp). Same layers, red vertical-explosion rain
+//                         instead of blue, two new orbital arcs:
+//                         48 questions @ 25.487 → 48.850 s (visual
+//                         ring) and 64 questions @ 48.850 → 57.345 s
+//                         that fire one bullet outward per orbiter
+//                         per bar. Force-advances to phase 3 at the
+//                         first loop wrap (59.469 s).
+// Phase 3 (100 → 0 hp).   Phase-2 layers + arc-wave back in + ring
+//                         volley swaps to `blueLongerDroplet`.
+//                         Lethal phase — race against entity death.
 
 const BOSS_ENTRY_SPEED = 110;
 const BOSS_ENTRY_Y = 87;
 const BOSS_HOLD_BEFORE_TALK = 20;
-const BOSS_HP = 2000;
+// Total boss HP across all three phases: 650 = 400 (phase 1, until
+// 250 hp remaining) + 150 (phase 2, until 100 hp remaining) + 100
+// (phase 3, lethal). PhasedBossKind decrements per-phase, so the
+// debug HUD's bossHp readout shows the current phase pool draining.
+const PHASE1_HP = 400;
+const PHASE2_HP = 150;
+const PHASE3_HP = 100;
 
 // Beat math — 113 BPM, beat = 0.531 s, bar = 2.124 s. Intro is
 // exactly 32 beats / 8 bars; loop body is 80 beats / 20 bars. See
@@ -381,27 +406,39 @@ const VERT_EXPLOSION_MIN_SEPARATION_PX = 60;
 const VERT_EXPLOSION_X_INSET_PX = 20;
 const VERT_EXPLOSION_SAMPLE_RETRIES = 20;
 
-function* vertExplosionRunnerScript(self: Entity): Generator<ScriptYield, void, void> {
-  // Line goes straight down from this entity's spawn position to
-  // the bottom of the playfield. `lineExplosion` runs at default
-  // parameters (blue, 22 px tile spacing, 30-fps anim).
-  yield* lineExplosion(self, self.x, 0, self.x, GAME_H, {
-    stepPx: 20,
-    stepFrames: 10,
-    framesPerSpawn: 5,
+// Blue / red runner variants — same vertical line-explosion body
+// shape, different sprite kind. Phase 1 uses the blue variant; phases
+// 2-3 swap to red. `frameCount` matches the kind's spritesheet (blue
+// = 7 frames, red = 8 per RED_EXPLOSION_FRAMES) so the per-tile
+// `setFrame` loop in `lineExplosion` doesn't run off the end.
+function makeVertExplosionRunner(kind: EntityKind, frameCount: number): EntityKind {
+  function* script(self: Entity): Generator<ScriptYield, void, void> {
+    yield* lineExplosion(self, self.x, 0, self.x, GAME_H, {
+      stepPx: 20,
+      stepFrames: 10,
+      framesPerSpawn: 5,
+      kind,
+      frameCount,
+    });
+    self.die();
+  }
+  return new EntityKind({
+    sprite: null,
+    hitboxRadius: 0,
+    damageClass: [],
+    damagedByClass: [],
+    defaultScript: script,
   });
-  self.die();
 }
 
-const vertExplosionRunner = new EntityKind({
-  sprite: null,
-  hitboxRadius: 0,
-  damageClass: [],
-  damagedByClass: [],
-  defaultScript: vertExplosionRunnerScript,
-});
+const vertExplosionRunnerBlue = makeVertExplosionRunner(blueExplosion, 7);
+const vertExplosionRunnerRed = makeVertExplosionRunner(redExplosion, RED_EXPLOSION_FRAMES);
 
-function makeVertExplosionDirector(durationS: number, intervalS: number = VERT_EXPLOSION_INTERVAL_S): EntityKind {
+function makeVertExplosionDirector(
+  runner: EntityKind,
+  durationS: number,
+  intervalS: number = VERT_EXPLOSION_INTERVAL_S,
+): EntityKind {
   function* script(self: Entity): Generator<ScriptYield, void, void> {
     // Spawn-anchored — see `makeFanSpiralController` rationale.
     const startT = getMusicTime()?.time ?? null;
@@ -425,7 +462,7 @@ function makeVertExplosionDirector(durationS: number, intervalS: number = VERT_E
       }
       prevX = x;
 
-      self.spawn(vertExplosionRunner, x, 0, 0, 0);
+      self.spawn(runner, x, 0, 0, 0);
 
       yield* waitSeconds(intervalS);
     }
@@ -440,12 +477,25 @@ function makeVertExplosionDirector(durationS: number, intervalS: number = VERT_E
   });
 }
 
-// Durations: 16.991 − 4.248 = 12.743 s (first pass, music 4.248 →
-// 16.991); 40.354 − 31.858 = 8.496 s (second pass, music 31.858 →
-// 40.354); 48.85 − 40.354 = 8.496 s (third pass, sparser cadence).
-const vertExplosionDirector = makeVertExplosionDirector(12.743);
-const vertExplosionDirector2 = makeVertExplosionDirector(8.496);
-const vertExplosionDirector3 = makeVertExplosionDirector(8.496, VERT_EXPLOSION_INTERVAL_S * 2);
+// Per-segment durations, identical to phase 1's prototype values:
+// 12.743 s (first pass, music 4.248 → 16.991); 8.496 s (second pass,
+// music 31.858 → 40.354); 8.496 s (third pass, sparser cadence).
+// Each phase gets its own director triplet because the runner kind
+// differs — phase 1 blue, phases 2-3 red.
+const vertExplosionDirectorBlue = makeVertExplosionDirector(vertExplosionRunnerBlue, 12.743);
+const vertExplosionDirectorBlue2 = makeVertExplosionDirector(vertExplosionRunnerBlue, 8.496);
+const vertExplosionDirectorBlue3 = makeVertExplosionDirector(
+  vertExplosionRunnerBlue,
+  8.496,
+  VERT_EXPLOSION_INTERVAL_S * 2,
+);
+const vertExplosionDirectorRed = makeVertExplosionDirector(vertExplosionRunnerRed, 12.743);
+const vertExplosionDirectorRed2 = makeVertExplosionDirector(vertExplosionRunnerRed, 8.496);
+const vertExplosionDirectorRed3 = makeVertExplosionDirector(
+  vertExplosionRunnerRed,
+  8.496,
+  VERT_EXPLOSION_INTERVAL_S * 2,
+);
 
 // --- Email volley ---
 //
@@ -562,6 +612,143 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
 const arcWaveLeftController = makeArcWaveController(1, 0);
 const arcWaveRightController = makeArcWaveController(-1, ARC_WAVE_RIGHT_DELAY_S);
 
+// --- Orbital arcs (phase 2-3) ---
+//
+// A controller spawns N `questionBordered` entities arranged evenly
+// around a circle centred on the live boss. Each tick the controller
+// rewrites every child's position to keep them on the orbit; rotation
+// is `ORBIT_ANGULAR_VELOCITY` rad/s applied to the base angle. The
+// controller dies after `durationS` of music time and takes the
+// children with it.
+//
+// Two flavours:
+//   - 48-question / no firing  → music 25.487 → 48.850 s (23.363 s)
+//   - 64-question / one bullet outward per orbiter every 2.124 s
+//     → music 48.850 → 57.345 s (8.495 s)
+// Times above are absolute (intro + loop); loop-relative offsets are
+// the same minus INTRO_DUR_S (16.991 s).
+const ORBIT_RADIUS = 60;
+// Full revolution per 8 s — slow enough to read as "rotating wall of
+// questions" rather than a blur, fast enough to force the player to
+// keep moving instead of camping a gap.
+const ORBIT_ANGULAR_VELOCITY = Math.PI / 4;
+// Outward bullet speed for the firing-orbit variant. Same magnitude as
+// the boss's ring volleys so the spawned bullets cross the player's
+// dodge lane on the same beat grid.
+const ORBIT_FIRE_SPEED = 130;
+
+function makeOrbitController(opts: {
+  count: number;
+  radius: number;
+  durationS: number;
+  angularVelocity: number;
+  // Null = no outward fire (visual ring only). Number = seconds
+  // between outward bullet volleys (one bullet per orbiter per fire).
+  fireIntervalS: number | null;
+}): EntityKind {
+  function* script(self: Entity): Generator<ScriptYield, void, void> {
+    const stage = self.stage;
+    // Orbital centre — tracks the live boss so the ring follows when
+    // the boss walks. Falls back to the controller's own position if
+    // no boss is registered (e.g. a standalone reuser).
+    const centerOf = (): Entity => stage.bossEntity ?? self;
+
+    const children: Entity[] = [];
+    const baseAngles: number[] = [];
+    const c0 = centerOf();
+    for (let i = 0; i < opts.count; i++) {
+      const angle = (Math.PI * 2 * i) / opts.count;
+      const x = c0.x + Math.cos(angle) * opts.radius;
+      const y = c0.y + Math.sin(angle) * opts.radius;
+      const e = self.spawn(questionBordered, x, y, 0, 0);
+      children.push(e);
+      baseAngles.push(angle);
+    }
+
+    const segmentStartMs = self.scene.time.now;
+    const startT = getMusicTime()?.time ?? null;
+    let nextFireMs = opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
+
+    while (self.alive) {
+      // Music-time duration gate — same shape as the other
+      // controllers, so each loop iteration re-runs the full segment.
+      if (startT !== null) {
+        const m = getMusicTime();
+        if (m !== null && m.time - startT >= opts.durationS) break;
+      }
+
+      const c = centerOf();
+      const elapsedS = (self.scene.time.now - segmentStartMs) / 1000;
+      const angleOffset = elapsedS * opts.angularVelocity;
+
+      // Re-position every alive orbiter. Disabled bodies + manual
+      // setPosition would skip collision; the body.reset() call moves
+      // the arcade body to match so contact with the player still
+      // registers.
+      for (let i = 0; i < children.length; i++) {
+        const e = children[i];
+        if (!e || !e.alive) continue;
+        const base = baseAngles[i] ?? 0;
+        const a = base + angleOffset;
+        const x = c.x + Math.cos(a) * opts.radius;
+        const y = c.y + Math.sin(a) * opts.radius;
+        e.setPosition(x, y);
+        e.body.reset(x, y);
+      }
+
+      // Outward firing — only if fireIntervalS is set. Fires
+      // `count` bullets per beat, one per orbiter, radially outward
+      // from the orbit centre.
+      while (self.scene.time.now >= nextFireMs) {
+        const fireElapsedS = (nextFireMs - segmentStartMs) / 1000;
+        const fireAngleOffset = fireElapsedS * opts.angularVelocity;
+        for (let i = 0; i < children.length; i++) {
+          const e = children[i];
+          if (!e || !e.alive) continue;
+          const base = baseAngles[i] ?? 0;
+          const a = base + fireAngleOffset;
+          const vx = Math.cos(a) * ORBIT_FIRE_SPEED;
+          const vy = Math.sin(a) * ORBIT_FIRE_SPEED;
+          self.spawn(bullet, e.x, e.y, vx, vy);
+        }
+        if (opts.fireIntervalS === null) break;
+        nextFireMs += opts.fireIntervalS * 1000;
+      }
+
+      yield 1;
+    }
+
+    for (const e of children) {
+      if (e.alive) e.die();
+    }
+    self.die();
+  }
+
+  return new EntityKind({
+    sprite: null,
+    hitboxRadius: 0,
+    damageClass: [],
+    damagedByClass: [],
+    defaultScript: script,
+  });
+}
+
+const orbitArc1Controller = makeOrbitController({
+  count: 48,
+  radius: ORBIT_RADIUS,
+  durationS: 23.363,
+  angularVelocity: ORBIT_ANGULAR_VELOCITY,
+  fireIntervalS: null,
+});
+
+const orbitArc2Controller = makeOrbitController({
+  count: 64,
+  radius: ORBIT_RADIUS,
+  durationS: 8.495,
+  angularVelocity: ORBIT_ANGULAR_VELOCITY,
+  fireIntervalS: BAR_S,
+});
+
 // --- Side-door assistant interlopers (music time 15.9 s → 25.487 s) ---
 //
 // Every 1.062 s a coworker enters through a random side-wall door
@@ -675,7 +862,25 @@ const topAssistantDirector = new EntityKind({
 const INTRO_DUR_S = INTRO_BEATS * BEAT_S;
 const LOOP_DUR_S = LOOP_BEATS * BEAT_S;
 
-function buildPhase1Spec(): BeatmapSpec {
+// Per-phase deltas to the shared boss beatmap. Phase 1 uses blue
+// explosions, red-droplet rings, and no arc-wave / no orbital arcs.
+// Phase 2 swaps in red explosions and inserts the two orbital arcs.
+// Phase 3 keeps phase-2's red explosions + orbitals, adds the
+// arc-wave back, and swaps the ring bullet to `blueLongerDroplet`.
+type BossSpecOpts = {
+  // Sprite for the per-bar 48-bullet ring volley.
+  ringKind: EntityKind;
+  // Vertical-explosion directors for the three rain segments.
+  vert1: EntityKind;
+  vert2: EntityKind;
+  vert3: EntityKind;
+  // Re-add the lower-corner arc-wave at loop t = 33.982 (phase 3 only).
+  includeArcWave: boolean;
+  // Spawn the two orbital arcs at loop t = 8.496 / 31.859 (phase 2+).
+  includeOrbitArcs: boolean;
+};
+
+function buildBossSpec(opts: BossSpecOpts): BeatmapSpec {
   const intro: BeatmapBeat[] = [];
   const loop: BeatmapBeat[] = [];
 
@@ -688,14 +893,14 @@ function buildPhase1Spec(): BeatmapSpec {
   for (let i = 0; i < INTRO_RINGS; i++) {
     intro.push({
       t: i * BAR_S,
-      fire: (self) => ring(self, RING_COUNT, redDroplet, RING_SPEED, i * 0.13),
+      fire: (self) => ring(self, RING_COUNT, opts.ringKind, RING_SPEED, i * 0.13),
     });
   }
   const LOOP_RINGS = Math.floor(LOOP_DUR_S / BAR_S);
   for (let i = 0; i < LOOP_RINGS; i++) {
     loop.push({
       t: i * BAR_S,
-      fire: (self) => ring(self, RING_COUNT, redDroplet, RING_SPEED, i * 0.13),
+      fire: (self) => ring(self, RING_COUNT, opts.ringKind, RING_SPEED, i * 0.13),
     });
   }
 
@@ -712,15 +917,15 @@ function buildPhase1Spec(): BeatmapSpec {
       fire: (self) => lineStrokeTelegraph(self, 0, 300, 400, 300, LINE_TELEGRAPH_MS, LINE_STROKE_OPTS),
     },
 
-    // Vertical-explosion rain — was music 4.248 → 16.991 s (12.743 s).
+    // Vertical-explosion rain — music 4.248 → 16.991 s (12.743 s).
     {
       t: 4.248,
       fire: (self) => {
-        self.spawn(vertExplosionDirector, self.x, self.y, 0, 0);
+        self.spawn(opts.vert1, self.x, self.y, 0, 0);
       },
     },
 
-    // Fan-spiral — was music 8.496 → 14.867 s (6.371 s).
+    // Fan-spiral — music 8.496 → 14.867 s (6.371 s).
     {
       t: 8.496,
       fire: (self) => {
@@ -728,9 +933,9 @@ function buildPhase1Spec(): BeatmapSpec {
       },
     },
 
-    // Top-assistant — was music 15.9 → 25.487 s (9.587 s). The
-    // segment straddles the intro→loop seam, but the director is
-    // spawn-anchored so its duration carries cleanly past the seam.
+    // Top-assistant — music 15.9 → 25.487 s (9.587 s). The segment
+    // straddles the intro→loop seam, but the director is spawn-
+    // anchored so its duration carries cleanly past the seam.
     {
       t: 15.9,
       fire: (self) => {
@@ -741,38 +946,37 @@ function buildPhase1Spec(): BeatmapSpec {
 
   // --- loop section (t relative to loop start = music INTRO_DUR_S) ---
   //
-  // Original absolute → loop-relative shift: subtract INTRO_DUR_S.
-  //   25.487 → 8.496   (counter-petal)
+  // Absolute → loop-relative shift: subtract INTRO_DUR_S (16.991 s).
+  //   25.487 → 8.496   (counter-petal + orbitArc1 start)
   //   31.858 → 14.867  (vert pass 2 + boss-walk segment start)
   //   33.982 → 16.991  (email volley start)
   //   40.354 → 23.363  (vert pass 3)
   //   42.478 → 25.487  (fan-spiral encore)
-  //   50.973 → 33.982  (arc-wave)
+  //   48.850 → 31.859  (orbitArc2 start, orbitArc1 end)
+  //   50.973 → 33.982  (arc-wave; phase 3 only)
+  //   57.345 → 40.354  (orbitArc2 end)
   loop.push(
-    // Counter-rotating petals — duration 8.495 s, spawn-anchored.
+    // Counter-rotating petals — duration 8.495 s.
     {
       t: 8.496,
       fire: (self) => {
         self.spawn(counterPetalController, self.x, self.y, 0, 0);
       },
     },
-
     // Vertical-explosion rain pass 2 — duration 8.496 s.
     {
       t: 14.867,
       fire: (self) => {
-        self.spawn(vertExplosionDirector2, self.x, self.y, 0, 0);
+        self.spawn(opts.vert2, self.x, self.y, 0, 0);
       },
     },
-
     // Vertical-explosion rain pass 3 — sparser cadence, duration 8.496 s.
     {
       t: 23.363,
       fire: (self) => {
-        self.spawn(vertExplosionDirector3, self.x, self.y, 0, 0);
+        self.spawn(opts.vert3, self.x, self.y, 0, 0);
       },
     },
-
     // Fan-spiral encore — duration 12.743 s.
     {
       t: 25.487,
@@ -780,16 +984,37 @@ function buildPhase1Spec(): BeatmapSpec {
         self.spawn(fanSpiralController2, self.x, self.y, 0, 0);
       },
     },
+  );
 
-    // Arc-wave from the bottom corners — duration 6.372 s.
-    {
+  if (opts.includeOrbitArcs) {
+    loop.push(
+      // 48-question orbital — 25.487 → 48.850 s (23.363 s).
+      {
+        t: 8.496,
+        fire: (self) => {
+          self.spawn(orbitArc1Controller, self.x, self.y, 0, 0);
+        },
+      },
+      // 64-question orbital with outward bullet fire every bar
+      // (2.124 s) — 48.850 → 57.345 s (8.495 s).
+      {
+        t: 31.859,
+        fire: (self) => {
+          self.spawn(orbitArc2Controller, self.x, self.y, 0, 0);
+        },
+      },
+    );
+  }
+
+  if (opts.includeArcWave) {
+    loop.push({
       t: 33.982,
       fire: (self) => {
         self.spawn(arcWaveLeftController, ARC_WAVE_LEFT_X, ARC_WAVE_Y, 0, 0);
         self.spawn(arcWaveRightController, ARC_WAVE_RIGHT_X, ARC_WAVE_Y, 0, 0);
       },
-    },
-  );
+    });
+  }
 
   // runBeatmap walks each section in order — sort by t.
   intro.sort((a, b) => a.t - b.t);
@@ -797,16 +1022,77 @@ function buildPhase1Spec(): BeatmapSpec {
   return { intro, loop, loopDur: LOOP_DUR_S };
 }
 
-export const phase1Spec: BeatmapSpec = buildPhase1Spec();
+export const phase1Spec: BeatmapSpec = buildBossSpec({
+  ringKind: redDroplet,
+  vert1: vertExplosionDirectorBlue,
+  vert2: vertExplosionDirectorBlue2,
+  vert3: vertExplosionDirectorBlue3,
+  includeArcWave: false,
+  includeOrbitArcs: false,
+});
+
+export const phase2Spec: BeatmapSpec = buildBossSpec({
+  ringKind: redDroplet,
+  vert1: vertExplosionDirectorRed,
+  vert2: vertExplosionDirectorRed2,
+  vert3: vertExplosionDirectorRed3,
+  includeArcWave: false,
+  includeOrbitArcs: true,
+});
+
+export const phase3Spec: BeatmapSpec = buildBossSpec({
+  ringKind: blueLongerDroplet,
+  vert1: vertExplosionDirectorRed,
+  vert2: vertExplosionDirectorRed2,
+  vert3: vertExplosionDirectorRed3,
+  includeArcWave: true,
+  includeOrbitArcs: true,
+});
 
 // --- Boss script ---
 
-function* theBossScript(self: Entity) {
-  // Entry — boss flies down from above to his fight position. The wave
-  // already cut the kaedalus-short loop and queued the nene battle-9
-  // loop (with a 1 s silence beat) before spawning the boss, so the
-  // boss walks in under the looping layer1_1 track without any extra
-  // music wrangling in here.
+// Force-advance time caps. Phase 1 force-advances to phase 2 if the
+// metal track reaches 35 s and the player hasn't broken the HP gate
+// yet; phase 2 force-advances to phase 3 at the first loop wrap
+// (INTRO_DUR_S + LOOP_DUR_S = 59.469 s, "the track starts looping").
+// Caps are only honoured while the metal loop is the live track so
+// practice runs that spawn a later phase directly without starting
+// the metal music fall through to HP-only termination.
+const PHASE1_TIME_CAP_S = 35;
+const PHASE2_TIME_CAP_S = INTRO_DUR_S + LOOP_DUR_S;
+
+// Race the phase's HP gate (PhasedBossKind raises `phaseDown` when
+// the per-phase pool empties) against a music-time cap.
+function* untilPhaseEndOrTime(self: Entity, audioTimeS: number): Generator<ScriptYield, void, void> {
+  const onMetal = getMusicTime()?.key === FINAL_BOSS_METAL_LOOP_KEY;
+  if (onMetal) {
+    yield* race(waitPhaseDown(self), waitAudioTimeAtLeast(audioTimeS));
+  } else {
+    yield* waitPhaseDown(self);
+  }
+}
+
+// Idempotent boss-claim helper. The first phase that runs claims the
+// HUD header + bossEntity reference; subsequent phases (transition
+// or practice entry on a later phase) see the slot already taken and
+// no-op. The onDeath cleanup runs once because we only register it
+// the first time around.
+function claimBoss(self: Entity): void {
+  if (self.stage.bossEntity === self) return;
+  self.stage.bossName = 'The Boss';
+  self.stage.bossEntity = self;
+  self.onDeath(() => {
+    self.stage.bossName = null;
+    self.stage.bossEntity = null;
+  });
+}
+
+function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> {
+  // Entry — boss flies down from above to his fight position. The
+  // wave already cut the kaedalus-short loop and queued the nene
+  // battle-9 loop (with a 1 s silence beat) before spawning the
+  // boss, so the boss walks in under the looping layer1_1 track
+  // without any extra music wrangling in here.
   yield* moveTo(self, GAME_W / 2, BOSS_ENTRY_Y, BOSS_ENTRY_SPEED);
   yield BOSS_HOLD_BEFORE_TALK;
 
@@ -816,42 +1102,67 @@ function* theBossScript(self: Entity) {
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: 'boss', frame: 1, name: 'The Boss' },
     lines: [
-      { speaker: 'right', text: 'Working hard, I see. Or hardly working?' },
+      { speaker: 'right', text: 'Why are not at your desk?' },
       { speaker: 'left', text: "It's 11 PM. I just want to go home." },
-      { speaker: 'right', text: "Let's circle back on that — after your performance review." },
+      { speaker: 'right', text: "No, today you don't." },
+      { speaker: 'right', text: 'The requests are piling up. You need get back to work.' },
     ],
   });
 
-  self.stage.bossName = 'The Boss';
-  self.onDeath(() => {
-    self.stage.bossName = null;
-  });
+  claimBoss(self);
   becomeHittable(self);
 
-  // Hard-cut to the metal track right when the dialog dismisses. `t0 = 0`
-  // is the first sample of the intro; the beatmap timestamps are anchored
-  // to it. Gated on the nene loop being live (set up by the wave) so a
-  // future reuser spawning the boss with different music isn't trampled.
+  // Wait for the nene battle-9 loop's next seam, then hard-cut to the
+  // metal intro. `t0 = 0` is the first sample of the intro; the
+  // beatmap timestamps are anchored to it, so we don't want the swap
+  // to land mid-phrase of the nene loop. Gated on the nene loop being
+  // live (set up by the wave) so a future reuser spawning the boss
+  // with different music isn't trampled.
   const inKaedalusChain = getMusicTime()?.key === NENE_BOSS_DIALOG_KEY;
   if (inKaedalusChain) {
+    yield* waitTrackEnded();
     yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
   }
 
   self.say('Performance review.', 90);
 
-  // Phase 1: intro fires once, then the loop section iterates against
-  // the song's loop until the boss dies. `runBeatmap(spec)` handles
-  // the iteration math internally — every iteration's beats shift by
-  // `loopStartT + iter * loopDur` so spawning beats hit the correct
-  // music timestamps even across many loops.
-  //
-  // The walk + email racers also need to re-fire each loop iteration.
-  // Since `runBeatmap` is a single generator that runs forever, we
-  // race it against an outer iteration loop that re-spawns the
-  // segment racers as each one's `waitEntityDead` pad finishes —
-  // simplest: race the beatmap against a self-restarting segment
-  // pair via `race(...).then(loop)`. Implemented inline below.
-  yield* race(runBeatmap(self, phase1Spec), phase1LoopRacers(self), waitEntityDead(self));
+  yield* race(
+    runBeatmap(self, phase1Spec),
+    bossLoopRacers(self),
+    untilPhaseEndOrTime(self, PHASE1_TIME_CAP_S),
+  );
+  if (!self.alive) return;
+  yield* nextBossPhase(self);
+  yield* theBossPhase2Script(self);
+}
+
+function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
+  // For practice entries jumping straight to phase 2: claim the boss
+  // slot + flip damage on. In the live chain phase 1 already did this;
+  // claimBoss + becomeHittable are both idempotent.
+  claimBoss(self);
+  becomeHittable(self);
+  self.say('We are not done.', 90);
+
+  yield* race(
+    runBeatmap(self, phase2Spec),
+    bossLoopRacers(self),
+    untilPhaseEndOrTime(self, PHASE2_TIME_CAP_S),
+  );
+  if (!self.alive) return;
+  yield* nextBossPhase(self);
+  yield* theBossPhase3Script(self);
+}
+
+function* theBossPhase3Script(self: Entity): Generator<ScriptYield, void, void> {
+  claimBoss(self);
+  becomeHittable(self);
+  self.say('Final notice.', 90);
+
+  // Lethal phase — no time cap; race the patterns against entity
+  // death (PhasedBossKind.takeDamage routes the killing blow through
+  // the deathScript on the last phase).
+  yield* race(runBeatmap(self, phase3Spec), bossLoopRacers(self), waitEntityDead(self));
   yield* waitEntityDead(self);
 }
 
@@ -860,7 +1171,7 @@ function* theBossScript(self: Entity) {
 // so the pair always completes in exactly one loop cycle; the next
 // iteration starts at the next loop-section boundary in lockstep
 // with `runBeatmap`'s own iteration counter.
-function* phase1LoopRacers(self: Entity): Generator<ScriptYield, void, void> {
+function* bossLoopRacers(self: Entity): Generator<ScriptYield, void, void> {
   // Wait the intro out so the racers' iter-anchored offsets land at
   // the same loop boundary `runBeatmap` does. `loopStartT` reads the
   // track's intro duration from the music engine; fallback 0 when
@@ -890,21 +1201,31 @@ function* theBossDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.die();
 }
 
-// --- BossKind + wave entry ---
+// --- PhasedBossKind variants + wave entries ---
 
-export const theBoss = new BossKind({
-  sprite: 'boss',
-  // Wider hitbox than non-boss enemies so the player's two side
-  // bullets actually land — see firing-math discussion: side
-  // bullets fan ±36 px by the time they reach the boss row, so
-  // radius < ~36 means only the centre barrel hits.
-  hitboxRadius: 36,
-  hp: BOSS_HP,
-  damageClass: ['player'],
-  damagedByClass: ['enemy'],
-  defaultScript: theBossScript,
-  deathScript: theBossDeath,
-});
+function makeTheBoss(startPhaseIdx = 0): PhasedBossKind {
+  return new PhasedBossKind({
+    sprite: 'boss',
+    // Wider hitbox than non-boss enemies so the player's two side
+    // bullets actually land — see firing-math discussion: side
+    // bullets fan ±36 px by the time they reach the boss row, so
+    // radius < ~36 means only the centre barrel hits.
+    hitboxRadius: 36,
+    phases: [
+      { hp: PHASE1_HP, script: theBossPhase1Script },
+      { hp: PHASE2_HP, script: theBossPhase2Script },
+      { hp: PHASE3_HP, script: theBossPhase3Script },
+    ],
+    startPhaseIdx,
+    damageClass: ['player'],
+    damagedByClass: ['enemy'],
+    deathScript: theBossDeath,
+  });
+}
+
+export const theBoss = makeTheBoss();
+export const theBossFromPhase2 = makeTheBoss(1);
+export const theBossFromPhase3 = makeTheBoss(2);
 
 export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'final boss');
@@ -929,4 +1250,31 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   // the fight is the final number; idle alive-ticks and stray drops
   // during the slow-walk-home ending shouldn't bump it any further.
   self.stage.scoringActive = false;
+}
+
+// Practice-only entries — spawn the boss directly at the fight anchor
+// at the requested start phase, no entry walk / dialog / silence beat
+// / music swap. The phase script claims the boss slot + enables damage
+// and the patterns run against whatever (or no) music is currently
+// playing. Mirrors `wellnessCoach`'s practice variant pattern.
+function* theBossWaveFromPhase(
+  self: Entity,
+  kind: PhasedBossKind,
+  label: string,
+): Generator<ScriptYield, void, void> {
+  markWave(self, label);
+  self.stage.scheduleMultDrop('boss');
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(kind, GAME_W / 2, BOSS_ENTRY_Y, 0, 0);
+    yield { until: boss };
+  });
+  self.stage.scoringActive = false;
+}
+
+export function* theBossPhase2Wave(self: Entity): Generator<ScriptYield, void, void> {
+  yield* theBossWaveFromPhase(self, theBossFromPhase2, 'final boss p2');
+}
+
+export function* theBossPhase3Wave(self: Entity): Generator<ScriptYield, void, void> {
+  yield* theBossWaveFromPhase(self, theBossFromPhase3, 'final boss p3');
 }

@@ -8,6 +8,7 @@ import {
   GREED_DIAMOND_XS_KEY,
   LAVA_DROPLET_HARD_KEY,
   MULT_DROP_KEY,
+  QUESTION_BORDERED_KEY,
   RED_CROSS_KEY,
   RED_DIAMOND_MD_KEY,
   RED_DROPLET_HARD_KEY,
@@ -158,6 +159,19 @@ export const greedDiamondXs = new EntityKind({
 export const emailBordered = new EntityKind({
   sprite: EMAIL_BORDERED_KEY,
   hitboxRadius: 5,
+  hitboxShape: 'square',
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Bordered question — 8×10 source sprite framed by a 1 px #ff5e62
+// border into a 10×12 texture (generated at boot, see
+// `generateQuestionBorderedTexture` in content/textures.ts). Used by
+// the final boss's phase-2/3 orbital arcs. Square hitbox of half-side 4
+// covers the visible glyph without claiming the border pixels.
+export const questionBordered = new EntityKind({
+  sprite: QUESTION_BORDERED_KEY,
+  hitboxRadius: 4,
   hitboxShape: 'square',
   damageClass: ['player'],
   damagedByClass: [],

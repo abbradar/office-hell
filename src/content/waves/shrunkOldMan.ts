@@ -196,10 +196,13 @@ function* shrunkOldManScript(self: Entity) {
 
   // Claim the HUD header now that the fight is actually starting; release it
   // on death (covers both natural defeat and forced cleanup via release(),
-  // which calls die() too).
+  // which calls die() too). Also stash the boss entity reference so the
+  // debug HUD's bossHp readout can read off it without scanning groups.
   self.stage.bossName = 'Mr. Hodges';
+  self.stage.bossEntity = self;
   self.onDeath(() => {
     self.stage.bossName = null;
+    self.stage.bossEntity = null;
   });
 
   // Switch from the 71 dialog loop to the 75-f one-shot fight track.

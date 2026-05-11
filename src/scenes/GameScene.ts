@@ -977,20 +977,14 @@ export class GameScene extends Phaser.Scene {
     return secondLineParts.length > 0 ? `${trackPart}\n${secondLineParts.join('  ')}` : trackPart;
   }
 
-  // Walk `damages.player` for a live tier-boss entity and return its HP.
-  // Null when no boss is on the field — keeps the debug line clean
-  // between fights. O(n) over the group but only called once per frame
-  // and only in DEVELOPER_MODE (formatDebugLine is gated upstream by the
-  // debugHud existence check).
+  // Live boss HP for the debug line. Reads `stage.bossEntity` (set by
+  // the boss script on entry, cleared on death) so we don't scan the
+  // physics group every frame. Returns null when no boss is up.
   private findBossHp(): number | null {
-    for (const child of this.stage.damages.player.getChildren()) {
-      const e = child as Entity;
-      if (!e.alive) continue;
-      if (e.kind.tier !== 'boss') continue;
-      if (!(e.kind instanceof HPEntityKind)) continue;
-      return (e.vars as HPVars).hp;
-    }
-    return null;
+    const e = this.stage.bossEntity;
+    if (!e || !e.alive) return null;
+    if (!(e.kind instanceof HPEntityKind)) return null;
+    return (e.vars as HPVars).hp;
   }
 }
 
