@@ -4,14 +4,9 @@ import neneBossDialogUrl from '../assets/audio/dialogues/nene/battle_9_opening.o
 import menuLoopUrl from '../assets/audio/loops/checking_manifest.ogg';
 import endingLoopUrl from '../assets/audio/loops/ending/unchained_destiny_loop.ogg';
 import endingOpeningUrl from '../assets/audio/loops/ending/unchained_destiny_opening.ogg';
-import kaedalusLongUrl from '../assets/audio/loops/kaedalus/crack_long.ogg';
 import kaedalusShortUrl from '../assets/audio/loops/kaedalus/crack_short.ogg';
 import kaedalusHodgeFightUrl from '../assets/audio/loops/kaedalus/hodge_fight.ogg';
 import kaedalusStage2IntroUrl from '../assets/audio/loops/kaedalus/stage2_intro.ogg';
-import monsterIntroUrl from '../assets/audio/loops/monster_rpg/12okt.ogg';
-import monsterBattleUrl from '../assets/audio/loops/monster_rpg/battle.ogg';
-import monsterChaseUrl from '../assets/audio/loops/monster_rpg/chase.ogg';
-import monsterFinalBossUrl from '../assets/audio/loops/monster_rpg/final_boss.ogg';
 import stage1Retro01LoopUrl from '../assets/audio/loops/stage1/retro_01_loop.ogg';
 import stage1RetroOpeningUrl from '../assets/audio/loops/stage1/retro_01_opening.ogg';
 import stage1Retro02LoopUrl from '../assets/audio/loops/stage1/retro_02_loop.ogg';
@@ -31,14 +26,9 @@ import {
   HURT_SFX_KEY,
   KAEDALUS_HODGE_DIALOG_KEY,
   KAEDALUS_HODGE_FIGHT_KEY,
-  KAEDALUS_LONG_KEY,
   KAEDALUS_SHORT_KEY,
   KAEDALUS_STAGE2_INTRO_KEY,
   MENU_LOOP_KEY,
-  MONSTER_BATTLE_KEY,
-  MONSTER_CHASE_KEY,
-  MONSTER_FINAL_BOSS_KEY,
-  MONSTER_INTRO_KEY,
   NENE_BOSS_DIALOG_KEY,
   SHOOT_SFX_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
@@ -63,16 +53,11 @@ const AUDIO_ASSETS: Record<string, string> = {
   [FINAL_BOSS_METAL_LOOP_KEY]: finalBossMetalLoopUrl,
   [ENDING_OPENING_KEY]: endingOpeningUrl,
   [ENDING_LOOP_KEY]: endingLoopUrl,
-  [KAEDALUS_LONG_KEY]: kaedalusLongUrl,
   [KAEDALUS_STAGE2_INTRO_KEY]: kaedalusStage2IntroUrl,
   [KAEDALUS_SHORT_KEY]: kaedalusShortUrl,
   [KAEDALUS_HODGE_DIALOG_KEY]: kaedalusHodgeDialogUrl,
   [KAEDALUS_HODGE_FIGHT_KEY]: kaedalusHodgeFightUrl,
   [NENE_BOSS_DIALOG_KEY]: neneBossDialogUrl,
-  [MONSTER_INTRO_KEY]: monsterIntroUrl,
-  [MONSTER_BATTLE_KEY]: monsterBattleUrl,
-  [MONSTER_CHASE_KEY]: monsterChaseUrl,
-  [MONSTER_FINAL_BOSS_KEY]: monsterFinalBossUrl,
 };
 
 export function preloadAudio(scene: Phaser.Scene): void {

@@ -218,7 +218,7 @@ function renderFinalScore(
     .text(0, cursor, 'FINAL SCORE', { ...FONT_MENU, color: COLOR_ACCENT_GOLD_STR })
     .setOrigin(0.5, 0);
   container.add(heading);
-  cursor += HEADING_TO_FIRST_ENTRY;
+  cursor += heading.height + HEADING_GAP_BELOW;
 
   const final = score.score * score.mult;
   const lines = [
@@ -233,7 +233,7 @@ function renderFinalScore(
       .setOrigin(0.5, 0);
     container.add(line);
     cursor += line.height;
-    if (i < lines.length - 1) cursor += ENTRY_TO_SUB;
+    if (i < lines.length - 1) cursor += NAME_GAP_BELOW;
   }
 
   container.y = cy - cursor / 2;

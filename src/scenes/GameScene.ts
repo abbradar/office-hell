@@ -5,8 +5,6 @@ import { DEADZONE_Y, DEVELOPER_MODE, GAME_H, GAME_W, HEADER_H, WALL_W } from '..
 import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
 import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
-import { stageKaedalus } from '../content/kaedalusStage';
-import { stageMonsterRpg } from '../content/monsterRpgStage';
 import { PlayerKind } from '../content/player';
 import { makeWaveStage, stage, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
@@ -160,10 +158,6 @@ export type GameSceneData = {
   // of the normal stage. Surfaces an extra debug HUD line built from the
   // music clock + stage queue introspection.
   test?: boolean;
-  // Music-test stages — same debug HUD treatment as `test`, different
-  // stage definition. Mutually exclusive; if more than one is set, the
-  // first one in `chooseStageKind` wins.
-  music?: 'kaedalus' | 'monster-rpg';
 };
 
 // Per-run state container. Phaser reuses the same Scene instance across
@@ -183,7 +177,6 @@ class RunState {
   // From init data — set once at scene entry.
   readonly practiceWave: WaveDef | null;
   readonly testMode: boolean;
-  readonly musicMode: 'kaedalus' | 'monster-rpg' | null;
   // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
   // we share the same physics/script freeze (set stage.paused + physics.pause)
   // but track this flag so X can route to "exit to menu" only while the
@@ -230,7 +223,6 @@ class RunState {
   constructor(data: GameSceneData | undefined) {
     this.practiceWave = data?.practice ?? null;
     this.testMode = data?.test ?? false;
-    this.musicMode = data?.music ?? null;
   }
 }
 
@@ -418,9 +410,9 @@ export class GameScene extends Phaser.Scene {
       throw new Error('GameScene started without a selected character — go through CharacterSelect first');
 
     // Real stage: bombs start at 0; the intro's wellness-coach drop-in
-    // unlocks them. Practice / test / music modes get the full pile so
-    // they're usable straight from the menu.
-    const isRealStage = !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
+    // unlocks them. Practice / test modes get the full pile so they're
+    // usable straight from the menu.
+    const isRealStage = !this.state.practiceWave && !this.state.testMode;
     this.playerKind = new PlayerKind({
       hpText: this.hpText,
       bombsText: this.bombsText,
@@ -431,21 +423,16 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, this.stage, this.playerKind);
     this.stage.player = this.player;
 
-    // Music + sync test stages: pin player invincible for the whole run so
-    // dying doesn't interrupt the timing checks. Pushed once with no pop —
+    // Sync test stage: pin player invincible for the whole run so dying
+    // doesn't interrupt the timing checks. Pushed once with no pop —
     // bombs still push/pop on top, but the base depth stays at 1.
-    if (this.state.testMode || this.state.musicMode !== null) this.player.pushInvincible();
+    if (this.state.testMode) this.player.pushInvincible();
 
-    const stageKind =
-      this.state.musicMode === 'kaedalus'
-        ? stageKaedalus
-        : this.state.musicMode === 'monster-rpg'
-          ? stageMonsterRpg
-          : this.state.testMode
-            ? stageTest
-            : this.state.practiceWave
-              ? makeWaveStage(this.state.practiceWave)
-              : stage;
+    const stageKind = this.state.testMode
+      ? stageTest
+      : this.state.practiceWave
+        ? makeWaveStage(this.state.practiceWave)
+        : stage;
     this.stage.spawn(stageKind, 0, 0, 0, 0, { debugYieldReasons: DEVELOPER_MODE });
 
     for (const c of DAMAGE_CLASSES) {
@@ -530,8 +517,8 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
 
     // Debug HUD (track / t / next / blocked) shown for the real stage and
-    // every test/music stage. Test/music modes get the green tint as a
-    // "you're in test mode" cue; real-stage version is greyer so it recedes.
+    // every test stage. Test mode gets the green tint as a "you're in
+    // test mode" cue; real-stage version is greyer so it recedes.
     // x is nudged past the wall column so it sits inside the playfield
     // rather than getting clipped by the side wall. Depth sits below every
     // dialogue-ish overlay (bubbles=50, scroll indicator=95, tutorial=150,
@@ -541,7 +528,7 @@ export class GameScene extends Phaser.Scene {
     // entirely; the null check in update()'s setText call handles the
     // missing widget without a separate branch.
     if (DEVELOPER_MODE) {
-      const debugTinted = this.state.testMode || this.state.musicMode !== null;
+      const debugTinted = this.state.testMode;
       this.debugHud = this.add
         .text(WALL_W + 8, HEADER_H + 20, '', {
           ...FONT_DEBUG,
@@ -685,7 +672,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private allowsContinue(): boolean {
-    return !this.state.practiceWave && !this.state.testMode && this.state.musicMode === null;
+    return !this.state.practiceWave && !this.state.testMode;
   }
 
   private showContinueOverlay(): void {

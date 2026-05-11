@@ -26,10 +26,7 @@ export const ENDING_LOOP_KEY = 'endingLoop';
 
 // Kaedalus stage. The pre-Hodge intro is a one-shot built from the 1..70
 // bar chunks, played through once over the four pre-boss waves. The short
-// version loops under the post-Hodge waves before the boss enters. The
-// long version is retained for the standalone music-test stage
-// (kaedalusStage.ts) which exercises the gapless-loop behaviour.
-export const KAEDALUS_LONG_KEY = 'kaedalusLong';
+// version loops under the post-Hodge waves before the boss enters.
 export const KAEDALUS_STAGE2_INTRO_KEY = 'kaedalusStage2Intro';
 export const KAEDALUS_SHORT_KEY = 'kaedalusShort';
 
@@ -49,11 +46,3 @@ export const KAEDALUS_FIGHT_BAR_S = 3;
 // the boss-track intro hands off at the loop's next seam after the
 // dialog is dismissed.
 export const NENE_BOSS_DIALOG_KEY = 'neneBossDialog';
-
-// Monster RPG 2 test stage — four tracks driving a four-phase progression.
-// 12okt + battle play once (no native loop seam, so we treat them as
-// one-shots); chase + final_boss loop under the two boss fights.
-export const MONSTER_INTRO_KEY = 'monsterIntro';
-export const MONSTER_BATTLE_KEY = 'monsterBattle';
-export const MONSTER_CHASE_KEY = 'monsterChase';
-export const MONSTER_FINAL_BOSS_KEY = 'monsterFinalBoss';

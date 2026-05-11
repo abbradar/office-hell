@@ -52,8 +52,6 @@ type HeaderButton = {
 const HEADERS: HeaderButton[] = [
   { label: 'FULL STAGE (real)' },
   { label: 'STAGE TEST (sync)', data: { test: true } },
-  { label: 'KAEDALUS (music test)', data: { music: 'kaedalus' } },
-  { label: 'MONSTER RPG (music test)', data: { music: 'monster-rpg' } },
   { label: 'PATTERN SANDBOX', scene: 'PatternTest' },
 ];
 

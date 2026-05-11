@@ -158,8 +158,7 @@ function* shrunkOldManPatterns(self: Entity): Generator<ScriptYield, void, void>
 }
 
 function* shrunkOldManScript(self: Entity) {
-  // Initialise the timeout latch on every spawn. Reusers (monsterRpgStage)
-  // route through here too, so seed it unconditionally.
+  // Initialise the timeout latch on every spawn.
   (self.vars as HodgeVars).timedOut = false;
 
   // Slow shuffle to anchor. BossKind makes him unhittable on spawn so
@@ -168,10 +167,10 @@ function* shrunkOldManScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
   yield 30;
 
-  // Music-key probe: gate the kaedalus-specific music swaps to runs that
-  // actually entered through the stage-2 chain. monsterRpgStage runs its
-  // own music context and would have its chase loop blown away by an
-  // unconditional swap.
+  // Music-key probe: gate the kaedalus-specific music swaps to runs
+  // that actually entered through the stage-2 chain. Defensive guard —
+  // a future reuser that spawns Hodge under different music keeps its
+  // own context instead of having it overwritten.
   const kaedalusChain = inKaedalusChain();
   if (kaedalusChain) yield* startMusicLoop(KAEDALUS_HODGE_DIALOG_KEY);
 

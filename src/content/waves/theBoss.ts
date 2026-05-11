@@ -830,8 +830,8 @@ function* theBossScript(self: Entity) {
 
   // Hard-cut to the metal track right when the dialog dismisses. `t0 = 0`
   // is the first sample of the intro; the beatmap timestamps are anchored
-  // to it. Gated on the kaedalus chain so monsterRpgStage's reuse keeps
-  // its own music context.
+  // to it. Gated on the nene loop being live (set up by the wave) so a
+  // future reuser spawning the boss with different music isn't trampled.
   const inKaedalusChain = getMusicTime()?.key === NENE_BOSS_DIALOG_KEY;
   if (inKaedalusChain) {
     yield* startMusicWithIntro(FINAL_BOSS_METAL_OPENING_KEY, FINAL_BOSS_METAL_LOOP_KEY);
@@ -912,12 +912,9 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* prepareForBoss(self);
 
   // Pre-entry beat: cut whatever's playing (crack_short in the live
-  // chain, menu loop or stage-2 intro in a practice run), hold 1 s of
-  // silence as the boss starts walking, then bring the nene battle-9
-  // layer1 loop up under the entry + dialog. No gate — `theBossWave`
-  // is only called from `fromTheBoss` in the main chain; the
-  // monsterRpgStage reuse spawns `theBoss` directly and skips the wave
-  // entirely, so its monster_final_boss loop isn't touched here.
+  // chain, menu loop in a practice run), hold 1 s of silence as the
+  // boss starts walking, then bring the nene battle-9 layer1 loop up
+  // under the entry + dialog.
   stopMusicLoop();
   yield* waitSeconds(1);
   yield* startMusicLoop(NENE_BOSS_DIALOG_KEY);
