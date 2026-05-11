@@ -64,31 +64,40 @@ const RING_COUNT = 8;
 const RING_SPEED = 110;
 const RING_GAP = 130;
 
-// Red-bordered hex-grid barrage at t = 3 s. Bullets fall straight
-// down at HEX_WAVE_SPEED in a `HEX_ROWS × HEX_COLS` packing with
-// alternate rows offset by half a stride for the hexagonal look.
-// Stride = bullet-diameter + a little padding so neighbours don't
-// quite touch but the grid still reads as one wall.
-const HEX_WAVE_DELAY_S = 3;
-const HEX_WAVE_ROWS = 4;
-const HEX_WAVE_COLS = 7;
-const HEX_WAVE_STRIDE_X = 36;
-const HEX_WAVE_STRIDE_Y = Math.round((HEX_WAVE_STRIDE_X * Math.sqrt(3)) / 2);
+// Red-bordered hex-row barrage. Three single-row drops fall in from
+// above the playfield at random X positions, 6 s apart, starting at
+// t = 3 s. Each row is `HEX_WAVE_COLS` bullets at `HEX_WAVE_STRIDE_X`
+// stride — the row spans `HEX_WAVE_WIDTH_PX` between the first and
+// last bullet centres (user spec: 48 px). Bullets fall straight down
+// at HEX_WAVE_SPEED. The cross-barrage half-stride offset that the
+// user's sketch alternates beat-to-beat is dropped here because the
+// per-barrage X is already random — there's no tessellation to
+// preserve.
+const HEX_WAVE_FIRST_DELAY_S = 3;
+const HEX_WAVE_INTERVAL_S = 6;
+const HEX_WAVE_REPEATS = 3;
+const HEX_WAVE_WIDTH_PX = 48;
+const HEX_WAVE_COLS = 3;
+const HEX_WAVE_STRIDE_X = HEX_WAVE_WIDTH_PX / (HEX_WAVE_COLS - 1);
 const HEX_WAVE_SPEED = 90;
-const HEX_WAVE_TOP_Y = -40;
+const HEX_WAVE_TOP_Y = -8;
+// Margin between the row's bounding box and the playfield edges, so a
+// random x0 keeps the whole barrage inside the corridor instead of
+// clipping a bullet into / behind a wall.
+const HEX_WAVE_EDGE_MARGIN = 16;
 
 function spawnRedHexWave(self: Entity): void {
   shoot();
-  // Centre the grid horizontally so it spans the playfield evenly.
-  const fullW = (HEX_WAVE_COLS - 1) * HEX_WAVE_STRIDE_X + HEX_WAVE_STRIDE_X / 2;
-  const startX = (GAME_W - fullW) / 2;
-  for (let row = 0; row < HEX_WAVE_ROWS; row++) {
-    const rowOffset = row % 2 === 0 ? 0 : HEX_WAVE_STRIDE_X / 2;
-    const y = HEX_WAVE_TOP_Y - row * HEX_WAVE_STRIDE_Y;
-    for (let col = 0; col < HEX_WAVE_COLS; col++) {
-      const x = startX + rowOffset + col * HEX_WAVE_STRIDE_X;
-      self.spawn(redBorderedBullet, x, y, 0, HEX_WAVE_SPEED);
-    }
+  const stage = self.stage;
+  // x0 = leftmost bullet centre. Sample uniformly inside the band
+  // that keeps the rightmost centre (x0 + HEX_WAVE_WIDTH_PX) inside
+  // the corridor.
+  const xMin = HEX_WAVE_EDGE_MARGIN;
+  const xMax = GAME_W - HEX_WAVE_WIDTH_PX - HEX_WAVE_EDGE_MARGIN;
+  const x0 = xMin + stage.nextRandom() * (xMax - xMin);
+  for (let col = 0; col < HEX_WAVE_COLS; col++) {
+    const x = x0 + col * HEX_WAVE_STRIDE_X;
+    self.spawn(redBorderedBullet, x, HEX_WAVE_TOP_Y, 0, HEX_WAVE_SPEED);
   }
 }
 
@@ -199,10 +208,15 @@ export function* fridayPartyWave(self: Entity): Generator<ScriptYield, void, voi
       });
     }
     // The squad scripts run autonomously after spawn — we just need
-    // to park the wave body long enough for the t = 3 s hex barrage
-    // to fire, then return to let `suspendRunning`'s trailing
-    // `waitEnemiesClear` drive the rest of the encounter.
-    yield* waitSeconds(HEX_WAVE_DELAY_S);
-    spawnRedHexWave(self);
+    // to park the wave body long enough to drop the three random-X
+    // hex rows on the music-free 6 s cadence (first at t = 3 s, then
+    // 9 s, then 15 s). After the last drop we return; the parent
+    // `suspendRunning`'s trailing `waitEnemiesClear` drives the rest
+    // of the encounter.
+    yield* waitSeconds(HEX_WAVE_FIRST_DELAY_S);
+    for (let i = 0; i < HEX_WAVE_REPEATS; i++) {
+      spawnRedHexWave(self);
+      if (i < HEX_WAVE_REPEATS - 1) yield* waitSeconds(HEX_WAVE_INTERVAL_S);
+    }
   });
 }
