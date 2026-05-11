@@ -2,7 +2,7 @@ import { GAME_W } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import type { StageManager } from '../script/StageManager';
-import { EnemyBulletEntityKind } from '../script/types';
+import { EnemyBulletEntityKind, EntityKind } from '../script/types';
 import { COLOR_BOMB_CORE, COLOR_BOMB_GLOW } from '../ui/palette';
 import { BOMB_EXPAND_ANIM, BOMB_EXPLOSION_KEY, BOMB_FADE_ANIM } from './textures';
 
@@ -26,6 +26,26 @@ export const BOMB_DURATION_MS = BOMB_FREEZE_MS + BOMB_EXPLODE_MS + BOMB_LINGER_M
 // centre line. The intro tutorial relies on this: the email approaches
 // centred while the player has dodged to a side.
 const BOMB_RADIUS = GAME_W / 2;
+
+// Continuous bomb collider. Lives in `damagedBy.player` so any enemy bullet
+// that overlaps its hitbox runs the standard bullet → target collision
+// path: the bullet's `EntityKind.targetCollision` calls our `takeDamage`
+// (a no-op) and then `self.die()`s the bullet. Hitbox is full-size from
+// the moment of activation, so a bullet that enters the radius at any
+// point during the bomb window gets eaten before it can reach the
+// (invincible-anyway) player.
+class BombFieldKind extends EntityKind {
+  override takeDamage(_self: Entity, _amount: number): void {
+    // No-op. The bullet kills itself in EntityKind.targetCollision; the
+    // field just needs to absorb the damage call without throwing.
+  }
+}
+
+const bombField = new BombFieldKind({
+  sprite: null,
+  hitboxRadius: BOMB_RADIUS,
+  damagedByClass: ['player'],
+});
 
 // Death-bomb (continue rescue): tighter radius — only what was about to
 // kill the player should clear, not the whole field — paired with a much
@@ -62,10 +82,10 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
 
   stage.score.bombs++;
 
-  // Make the player untouchable for the duration: a stray bullet that
-  // spawned mid-bomb (or one whose freeze we missed by a frame) would
-  // otherwise sail straight into them. Push/pop pairs so back-to-back
-  // bombs extend the window rather than ending it early.
+  // Make the player untouchable for the duration. The field collider
+  // catches anything that wanders into the radius later, but the player
+  // is invincible regardless as a belt-and-braces guard. Push/pop pairs
+  // so back-to-back bombs extend the window rather than ending it early.
   player.pushInvincible();
   scene.time.delayedCall(BOMB_DURATION_MS, () => player.popInvincible());
 
@@ -76,13 +96,20 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const bark = BOMB_BARKS[idx]!;
   player.say(bark, BARK_FRAMES);
 
-  const bullets = findBulletsInRadius(stage, cx, cy, BOMB_RADIUS);
-  // freezeBullet removes entries from damages.player; we already snapshotted
-  // inside findBulletsInRadius so the iteration here is safe.
-  for (const { e } of bullets) freezeBullet(stage, e);
-
   // Punch the camera so the freeze feels like an impact, not a stutter.
   scene.cameras.main.shake(BOMB_FREEZE_MS + 250, 0.005);
+
+  // Spawn the bomb field — a sprite-less entity in damagedBy.player at
+  // full BOMB_RADIUS from this frame on, so a fast bullet near the edge
+  // can't slip past before the collider grows to meet it.
+  const field = stage.spawn(bombField, cx, cy, 0, 0, { script: null });
+
+  // Clear every bullet currently inside the radius up front. The collider
+  // would catch them on the next physics step anyway, but the snapshot
+  // kill happens before any further integration — bullets at point-blank
+  // don't get a frame to drift onto the player before invincibility
+  // kicks in for the wider engine pipeline.
+  for (const { e } of findBulletsInRadius(stage, cx, cy, BOMB_RADIUS)) e.die();
 
   // Render the explosion BELOW the player sprite (depth 0) and the
   // red-dot hitbox indicator (depth 1) so the player can still track
@@ -94,7 +121,6 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   const windup = scene.add.graphics().setDepth(BOMB_DEPTH);
 
   const freezeFrac = BOMB_FREEZE_MS / BOMB_DURATION_MS;
-  const explodeEndFrac = (BOMB_FREEZE_MS + BOMB_EXPLODE_MS) / BOMB_DURATION_MS;
 
   const state = { t: 0 };
   scene.tweens.add({
@@ -102,13 +128,10 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
     t: 1,
     duration: BOMB_DURATION_MS,
     ease: 'Linear',
-    onUpdate: () => updateBomb(windup, cx, cy, state.t, bullets, freezeFrac, explodeEndFrac),
+    onUpdate: () => updateBomb(windup, state.t, freezeFrac, cx, cy),
     onComplete: () => {
       windup.destroy();
-      // Failsafe: any bullet that the wave's discrete sampling skipped
-      // (e.g. one parked just past the final sampled radius) still gets
-      // cleared so the screen ends in the same state regardless.
-      for (const { e } of bullets) if (e.alive) e.die();
+      if (field.alive) field.die();
     },
   });
 
@@ -116,7 +139,7 @@ export function activateBomb(player: Player, stage: StageManager, opts?: { barkI
   // a beat alone before the fireball blooms. expand → fade chain matches
   // BOMB_EXPLODE_MS / BOMB_LINGER_MS exactly (durations declared in
   // textures.ts → registerBombAnims), so the sprite always finishes on
-  // the same beat the wave-kill loop does.
+  // the same beat the field tween disposes the collider.
   scene.time.delayedCall(BOMB_FREEZE_MS, () => {
     const sprite = scene.add.sprite(cx, cy, BOMB_EXPLOSION_KEY).setDepth(BOMB_DEPTH).setScale(BOMB_SPRITE_SCALE);
     sprite.play(BOMB_EXPAND_ANIM);
@@ -189,52 +212,15 @@ export function findBulletsInRadius(
   return bullets;
 }
 
-function freezeBullet(stage: StageManager, bullet: Entity): void {
-  // Replace the bullet's script so any in-flight homing pattern can't
-  // override the velocity we set; pull it out of damages.player so a
-  // frozen sprite parked on the player doesn't tick damage during the
-  // bomb (player is invincible for the window, but the cleaner partition
-  // keeps the bomb robust to shorter invincibility tweaks later).
-  bullet.body.setVelocity(0, 0);
-  stage.damages.player.remove(bullet);
-  stage.runScript(bullet, function* (self) {
-    while (true) {
-      self.body.setVelocity(0, 0);
-      yield 1;
-    }
-  });
-}
-
-function updateBomb(
-  g: Phaser.GameObjects.Graphics,
-  cx: number,
-  cy: number,
-  t: number,
-  bullets: { e: Entity; d: number }[],
-  freezeFrac: number,
-  explodeEndFrac: number,
-): void {
+function updateBomb(g: Phaser.GameObjects.Graphics, t: number, freezeFrac: number, cx: number, cy: number): void {
   g.clear();
-
-  if (t <= freezeFrac) {
-    // Wind-up: a small red core swells at the player's position. Sells
-    // the freeze as deliberate ("she's about to *snap*") rather than a
-    // physics hiccup. The fireball sprite takes over once freeze ends.
-    const f = t / freezeFrac;
-    g.fillStyle(COLOR_BOMB_CORE, 0.25 + 0.55 * f);
-    g.fillCircle(cx, cy, 10 + 28 * f);
-    g.fillStyle(COLOR_BOMB_GLOW, 0.7 * f);
-    g.fillCircle(cx, cy, 6 + 14 * f);
-    return;
-  }
-
-  // Explode phase: the sprite handles the visual; we just keep the
-  // wave-kill geometry in step. waveT ramps 0→1 over BOMB_EXPLODE_MS so
-  // bullets die as the leading edge reaches them — same timing as the
-  // sprite's expand animation.
-  const waveT = Math.min(1, (t - freezeFrac) / (explodeEndFrac - freezeFrac));
-  const r = waveT * BOMB_RADIUS;
-  for (const item of bullets) {
-    if (item.e.alive && r >= item.d) item.e.die();
-  }
+  if (t > freezeFrac) return;
+  // Wind-up: a small red core swells at the player's position. Sells
+  // the freeze as deliberate ("she's about to *snap*") rather than a
+  // physics hiccup. The fireball sprite takes over once freeze ends.
+  const f = t / freezeFrac;
+  g.fillStyle(COLOR_BOMB_CORE, 0.25 + 0.55 * f);
+  g.fillCircle(cx, cy, 10 + 28 * f);
+  g.fillStyle(COLOR_BOMB_GLOW, 0.7 * f);
+  g.fillCircle(cx, cy, 6 + 14 * f);
 }
