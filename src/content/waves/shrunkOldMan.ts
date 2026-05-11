@@ -319,11 +319,11 @@ function* shrunkOldManPatterns(self: Entity): Generator<ScriptYield, void, void>
     self.say('And these go in the filing cabinet…', 110);
     for (let rep = 0; rep < PHASE_B_CYCLES; rep++) {
       for (let t = 0; t < PHASE_B_CYCLE_F; t++) {
-        // Wall fill: vertical-up bullet from a random x on the bottom edge,
+        // Wall fill: vertical-down bullet from a random x on the top edge,
         // plus a pair of side-cross bullets from random y on each inner wall.
         // White `bullet` to contrast with the red/blue paper rings.
         if (t % PHASE_B_WALL_VERT_CADENCE === 0) {
-          self.spawn(bullet, WALL_W + Math.random() * (GAME_W - 2 * WALL_W), GAME_H, 0, -PHASE_B_WALL_SPEED);
+          self.spawn(bullet, WALL_W + Math.random() * (GAME_W - 2 * WALL_W), 0, 0, PHASE_B_WALL_SPEED);
         }
         if (t % PHASE_B_WALL_SIDE_CADENCE === 0) {
           self.spawn(bullet, WALL_W, Math.random() * GAME_H, PHASE_B_WALL_SPEED, 0);
