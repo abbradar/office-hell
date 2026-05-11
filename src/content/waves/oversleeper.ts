@@ -2,7 +2,7 @@ import { shoot } from '../../audio/sfx/events';
 import { BULLET_RADIUS, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
+import { checkStageOnce, clearBullets, markWave, suspendRunning } from '../../script/stage';
 import { EnemyBulletEntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -85,6 +85,9 @@ function* oversleeperScript(self: Entity) {
   yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
 
   if (checkStageOnce(self, 'oversleeper:introShown')) {
+    // Sweep leftover bullets from the preceding HR-trio wave so the dialog
+    // reads cleanly without in-flight crumbs grazing the player.
+    clearBullets(self);
     const ch = self.stage.player.character;
     yield self.dialogue({
       left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
@@ -110,7 +113,7 @@ function* oversleeperScript(self: Entity) {
 export const oversleeper = new HPEntityKind({
   sprite: 'overslept',
   hitboxRadius: 16,
-  hp: 22,
+  hp: 44,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
   defaultScript: oversleeperScript,
