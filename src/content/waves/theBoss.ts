@@ -666,7 +666,8 @@ function makeOrbitController(opts: {
 
     const segmentStartMs = self.scene.time.now;
     const startT = getMusicTime()?.time ?? null;
-    let nextFireMs = opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
+    let nextFireMs =
+      opts.fireIntervalS === null ? Number.POSITIVE_INFINITY : segmentStartMs + opts.fireIntervalS * 1000;
 
     // Two exit paths:
     //   - duration cap reached → kill the orbiter children as part of
@@ -698,7 +699,7 @@ function makeOrbitController(opts: {
       // registers.
       for (let i = 0; i < children.length; i++) {
         const e = children[i];
-        if (!e || !e.alive) continue;
+        if (!e?.alive) continue;
         const base = baseAngles[i] ?? 0;
         const a = base + angleOffset;
         const x = c.x + Math.cos(a) * opts.radius;
@@ -715,7 +716,7 @@ function makeOrbitController(opts: {
         const fireAngleOffset = fireElapsedS * opts.angularVelocity;
         for (let i = 0; i < children.length; i++) {
           const e = children[i];
-          if (!e || !e.alive) continue;
+          if (!e?.alive) continue;
           const base = baseAngles[i] ?? 0;
           const a = base + fireAngleOffset;
           const vx = Math.cos(a) * ORBIT_FIRE_SPEED;
@@ -1141,11 +1142,7 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
 
   self.say('Performance review.', 90);
 
-  yield* race(
-    runBeatmap(self, phase1Spec),
-    bossLoopRacers(self),
-    untilPhaseEndOrTime(self, PHASE1_TIME_CAP_S),
-  );
+  yield* race(runBeatmap(self, phase1Spec), bossLoopRacers(self), untilPhaseEndOrTime(self, PHASE1_TIME_CAP_S));
   if (!self.alive) return;
   yield* nextBossPhase(self);
   yield* theBossPhase2Script(self);
@@ -1167,11 +1164,7 @@ function* theBossPhase2Script(self: Entity): Generator<ScriptYield, void, void> 
   yield PHASE_ENTRY_BUBBLE_FRAMES;
   self.say('I will SHRINK the whole DEPARTMENT!', PHASE_ENTRY_BUBBLE_FRAMES);
 
-  yield* race(
-    runBeatmap(self, phase2Spec),
-    bossLoopRacers(self),
-    untilPhaseEndOrTime(self, PHASE2_TIME_CAP_S),
-  );
+  yield* race(runBeatmap(self, phase2Spec), bossLoopRacers(self), untilPhaseEndOrTime(self, PHASE2_TIME_CAP_S));
   if (!self.alive) return;
   yield* nextBossPhase(self);
   yield* theBossPhase3Script(self);
@@ -1396,11 +1389,7 @@ export function* theBossWave(self: Entity): Generator<ScriptYield, void, void> {
 // / music swap. The phase script claims the boss slot + enables damage
 // and the patterns run against whatever (or no) music is currently
 // playing. Mirrors `wellnessCoach`'s practice variant pattern.
-function* theBossWaveFromPhase(
-  self: Entity,
-  kind: PhasedBossKind,
-  label: string,
-): Generator<ScriptYield, void, void> {
+function* theBossWaveFromPhase(self: Entity, kind: PhasedBossKind, label: string): Generator<ScriptYield, void, void> {
   markWave(self, label);
   self.stage.scheduleMultDrop('boss');
   // Start the metal track before spawning so the phase script's
