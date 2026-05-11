@@ -1,6 +1,20 @@
 import { BULLET_RADIUS } from '../config';
-import { EntityKind } from '../script/types';
-import { BLUE_EXPLOSION_KEY, RED_EXPLOSION_KEY } from './textures';
+import { MultDropKind } from '../script/score';
+import { EntityKind, type EntityTier } from '../script/types';
+import {
+  BLUE_EXPLOSION_KEY,
+  BLUE_LONGER_DROPLET_KEY,
+  EMAIL_BORDERED_KEY,
+  GREED_DIAMOND_XS_KEY,
+  LAVA_DROPLET_HARD_KEY,
+  MULT_DROP_KEY,
+  RED_CROSS_KEY,
+  RED_DIAMOND_MD_KEY,
+  RED_DROPLET_HARD_KEY,
+  RED_EXPLOSION_KEY,
+  SMALL_RED_DROPLET_KEY,
+  YELLOW_DIAMOND_SM_KEY,
+} from './textures';
 
 export const bullet = new EntityKind({
   sprite: 'bullet',
@@ -73,3 +87,146 @@ export const redExplosion = new EntityKind({
   damageClass: ['player'],
   damagedByClass: [],
 });
+
+// Small red droplet — 11×8 directional bullet. Sprite art is drawn
+// pointing right at rotation 0; `rotateToVelocity: true` makes the
+// spawner aim it along its travel vector so a ring of droplets fans
+// outward with each droplet "leading" in its direction of motion.
+// Hitbox is a circle of radius 3 — the droplet's body sits centered
+// in the sprite bounds, so a slightly smaller-than-bbox circle
+// matches the visible blob without clipping the tail.
+export const redDroplet = new EntityKind({
+  sprite: SMALL_RED_DROPLET_KEY,
+  hitboxRadius: 3,
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+  rotateToVelocity: true,
+});
+
+// Red cross — 13×13 square sprite used as the line-stroke bullet on
+// the boss. Square hitbox of half-side 5 covers the cross arms
+// without overclaiming the (transparent) corners of the bounding
+// box. Non-directional, so no `rotateToVelocity`.
+export const redCross = new EntityKind({
+  sprite: RED_CROSS_KEY,
+  hitboxRadius: 5,
+  hitboxShape: 'square',
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Blue longer droplet — 15×9 directional bullet, same contract as
+// `redDroplet` (sprite drawn pointing right at rotation 0). Used
+// as the foreground / lead voice on the boss's fan-spiral pattern.
+export const blueLongerDroplet = new EntityKind({
+  sprite: BLUE_LONGER_DROPLET_KEY,
+  hitboxRadius: 3,
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+  rotateToVelocity: true,
+});
+
+// Red diamond (medium) — 15×15 square sprite. Square hitbox of
+// half-side 5 fits inside the diamond's visible outline (the
+// transparent corners of the bbox don't kill).
+export const redDiamondMd = new EntityKind({
+  sprite: RED_DIAMOND_MD_KEY,
+  hitboxRadius: 5,
+  hitboxShape: 'square',
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Yellow diamond (small) — 13×13 square sprite. Slightly smaller
+// hitbox than `redDiamondMd` to match its smaller visible blob.
+export const yellowDiamondSm = new EntityKind({
+  sprite: YELLOW_DIAMOND_SM_KEY,
+  hitboxRadius: 4,
+  hitboxShape: 'square',
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Green diamond (extra small) — 7×7 square sprite. Used by the
+// top-assistant aimed shots: small, fast-readable bullets that fan
+// out in a tight 25° cone. (Filename `greed_diamond_xs` preserved
+// as-is to match the source asset.)
+export const greedDiamondXs = new EntityKind({
+  sprite: GREED_DIAMOND_XS_KEY,
+  hitboxRadius: 3,
+  hitboxShape: 'square',
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Bordered email envelope — 14×10 source sprite framed by a 1 px
+// #ff5e62 border into a 16×12 texture (generated at boot, see
+// `generateEmailBorderedTexture` in content/textures.ts). Used by the
+// final boss's email volley as a readable accent over the loose
+// `emailBullet` sprite. Square hitbox of half-side 5 covers the
+// envelope body without claiming the border pixels.
+export const emailBordered = new EntityKind({
+  sprite: EMAIL_BORDERED_KEY,
+  hitboxRadius: 5,
+  hitboxShape: 'square',
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+});
+
+// Hard-edged droplet pair — 13×8 directional sprites, source art
+// drawn pointing right at rotation 0. `rotateToVelocity: true` aims
+// each bullet along its travel vector so an arc fan reads as
+// "droplets leading in their direction of motion". Hitbox is a
+// circle of radius 3 to match the visible blob without clipping the
+// tail.
+export const lavaDropletHard = new EntityKind({
+  sprite: LAVA_DROPLET_HARD_KEY,
+  hitboxRadius: 3,
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+  rotateToVelocity: true,
+});
+
+export const redDropletHard = new EntityKind({
+  sprite: RED_DROPLET_HARD_KEY,
+  hitboxRadius: 3,
+  hp: null,
+  damageClass: ['player'],
+  damagedByClass: [],
+  rotateToVelocity: true,
+});
+
+// Multiplier-drop pickup, three flavours keyed by the tier of the wave
+// that emitted them. Visually identical (8×8 green square; replace
+// with tier-distinguished art when the wider pass arrives); the
+// per-tier difference is the `floorLift` MultDropKind reads off
+// `tier`. Damage classes are empty so these route into the dedicated
+// `stage.drops` group at spawn, not the damages/damagedBy graph — see
+// StageManager.spawn and src/docs/scoring-system.md.
+const multDropOpts = {
+  sprite: MULT_DROP_KEY,
+  hitboxRadius: 4,
+  hitboxShape: 'square' as const,
+  hp: null,
+  damageClass: [] as never[],
+  damagedByClass: [] as never[],
+};
+export const multDropRegular = new MultDropKind({ ...multDropOpts, tier: 'regular' });
+export const multDropMiniBoss = new MultDropKind({ ...multDropOpts, tier: 'miniBoss' });
+export const multDropBoss = new MultDropKind({ ...multDropOpts, tier: 'boss' });
+
+// Tier → drop kind lookup, used by StageManager.scheduleMultDrop to
+// pick the right floor-lift on a wave-end drop.
+export const MULT_DROP_BY_TIER: Record<EntityTier, MultDropKind> = {
+  regular: multDropRegular,
+  miniBoss: multDropMiniBoss,
+  boss: multDropBoss,
+};

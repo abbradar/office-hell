@@ -122,6 +122,7 @@ function* internSidesLine(self: Entity, y: number): Generator<ScriptYield, void,
 const INTERN_SIDES_TARGET_Y = 90;
 export function* internsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'interns');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     yield* internLine(self, GAME_W * 0.25, 1);
     yield 60;

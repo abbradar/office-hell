@@ -3,6 +3,7 @@ import { hit } from '../audio/sfx/events';
 import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
+import { onPlayerHit } from '../script/score';
 import { EntityKind } from '../script/types';
 import { activateDeathBomb } from './bomb';
 import type { CharacterDef } from './characters';
@@ -68,6 +69,10 @@ export class PlayerKind extends EntityKind {
     super.takeDamage(self, amount);
     const after = self.hp ?? 0;
     self.stage.score.hpLost += Math.max(0, before - after);
+    // Any HP loss resets the chain — the chain is a no-hit streak.
+    // Score and multFloor survive; the live mult collapses to 1 and the
+    // next kill has to restart the climb. See src/docs/scoring-system.md.
+    if (before > after) onPlayerHit(self.stage.score);
     // Non-killing hit safety net: still alive after damage → fire a
     // free death-bomb (clears bullets in a tight radius around the
     // player + DEATH_BOMB_INVINCIBLE_MS of invincibility + sprite

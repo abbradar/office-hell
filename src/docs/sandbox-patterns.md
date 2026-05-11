@@ -544,6 +544,111 @@ The pattern is a generator — `yield*` it. To overlap multiple lines,
 wrap them in `{ all: [...] }` (join, see §11) or `{ race: [...] }`
 (cancel losers).
 
+## 15. Cluster shot (aimed pack with jittered spawn)
+
+`cluster` fires N bullets all aimed at the player on the same heading,
+but each spawns from a random offset inside a small disk around the
+firing entity. Reads as one heavy volley to dodge rather than a fan
+to thread — useful as a punctuation hit between two slower patterns.
+
+```js
+const red = bulletStyle({ color: 0xff5577, radius: 3 });
+
+while (true) {
+  // 10 bullets, ~14 px jitter around (self.x, self.y).
+  cluster(self, 10, red, 220);
+  yield* waitSeconds(0.9);
+}
+```
+
+The 5th arg is the jitter radius (default 14 px). Pass a larger
+value for a looser "cone of fire" feel, smaller for a tight slug.
+
+## 16. Orbiting arc (held + spinning)
+
+`orbitArc` parks N bullets on a circular arc around an entity and
+optionally rotates them. Bullets are body-driven (not velocity-
+driven), so they hold their orbit exactly. Damage classes stay
+normal — touch the bullets and the player dies.
+
+```js
+const cyan = bulletStyle({ color: 0x66ffe0, radius: 3 });
+
+// Hovering half-ring above the boss, rotating CW at 1 rad/s.
+yield* orbitArc(self, {
+  count: 12,
+  kind: cyan,
+  radius: 60,
+  fromRad: 0,
+  toRad: Math.PI,         // 180°: top semicircle
+  rotateSpeed: 1,         // rad/s; 0 = static; negative = CCW
+  durationFrames: 300,    // ~5 s, then all 12 die
+});
+```
+
+Knobs: `fromRad`/`toRad` shape the arc (full circle = `0, 2*Math.PI*(count-1)/count`).
+`rotateSpeed` controls the spin direction and rate. `durationFrames`
+caps the lifetime; omit for "runs until cancelled by an outer race".
+`centerEntity` lets the arc track a different entity than `self` —
+useful when running the pattern from a controller while orbiting the
+boss.
+
+## 17. Telegraphed line stroke (warn → detonate)
+
+`lineStrokeTelegraph` is the one-call version of the §13 pattern:
+draws a non-damaging warning line immediately, then schedules a
+damaging stroke at the same coordinates `offsetMs` milliseconds
+later. Multiple calls layer cleanly because the lethal-phase
+detonation is scheduled via `scene.time` rather than awaited
+inline — useful for boss patterns that fire several telegraphs at
+once and let them all detonate together.
+
+```js
+const red = bulletStyle({ color: 0xff5577, radius: 2, shape: 'square' });
+
+while (true) {
+  // Three crossing telegraphs all warning for 800 ms, then all
+  // detonating in lockstep.
+  lineStrokeTelegraph(self, 0, 0, 400, 660, 800, { kind: red });
+  lineStrokeTelegraph(self, 400, 0, 0, 660, 800, { kind: red });
+  lineStrokeTelegraph(self, 0, 330, 400, 330, 800, { kind: red });
+  yield* waitSeconds(2.0);
+}
+```
+
+`offsetMs` is the warning duration in milliseconds; `lethalFrames`
+(default 30 ≈ 0.5 s) is how long the damaging stroke stays on the
+field after the telegraph ends.
+
+**Pause caveat.** The lethal phase is scheduled via `scene.time`,
+which doesn't pause when physics does — a dialog freeze inside the
+telegraph window will still let the detonation fire. Fine for boss
+patterns where dialogs sit between attacks; reach for the manual
+§13 split when you need a pause-safe telegraph.
+
+## 18. Camera punch (directional screen shake)
+
+`cameraPunch` nudges the main camera's scroll by `dx`/`dy` and yoyos
+back — a sub-second VFX accent for impact moments. Positive `dx`
+punches the world left (camera looks right), reading as "screen
+shake right".
+
+```js
+// Pair a punch with the same beat as the bullet volley.
+while (true) {
+  cluster(self, 8, redBig, 200);
+  cameraPunch(self, 5);            // shake right, 120ms default
+  yield* waitSeconds(0.4);
+  cluster(self, 8, redBig, 200);
+  cameraPunch(self, -5);           // shake left
+  yield* waitSeconds(0.4);
+}
+```
+
+`durationMs` (default 120 ms) controls how long the round-trip takes.
+Stacks via Phaser's tween system, so back-to-back punches don't
+fight each other.
+
 ---
 
 ## Helper reference (cheat sheet)
@@ -553,15 +658,23 @@ ring(self, count, kind, speed, baseAngleRad?)
 aimed(self, count, kind, speed, spreadRad?)
 spread(self, count, kind, speed, baseAngleRad, spreadRad)
 arc(self, count, kind, speed, fromRad, toRad)
+cluster(self, count, kind, speed, spreadPx?)         // aimed pack, jittered spawn offsets
+orbitArc(self, { count, kind, radius, fromRad,        // generator — yield* it
+                  toRad, rotateSpeed?,                 // body-driven orbit; rotate or hold
+                  durationFrames?, centerEntity? })
 lineStroke(self, x1, y1, x2, y2, kind, lifeFrames,
            { damaging?, spacing?, color?, width? })   // damaging: true → lethal bullets;
                                                      // damaging: false → animated warning
+lineStrokeTelegraph(self, x1, y1, x2, y2, offsetMs,   // warn for offsetMs, then detonate
+                    { kind?, lethalFrames?,           // sync; multiple calls layer cleanly
+                      spacing?, color?, width? })
 lineExplosion(self, x1, y1, x2, y2,                  // generator — yield* it
               { stepPx?, speedPxPerSec?, stepFrames?,  // shockwave of animated tiles
                 framesPerSpawn?, frameCount?, kind? }) // marching forward; each tile lethal
 lineRedExplosion(self, x1, y1, x2, y2, opts?)        // red sprite, slow-march defaults
                                                      // (stepPx 60, stepFrames 9,
                                                      // framesPerSpawn 5; same opts as above)
+cameraPunch(self, dx, dy?, durationMs?)              // directional screen shake; yoyos back
 
 // Compositional grid → mover → wave:
 squareGrid({ cols, rows, x0, y0, dx, dy })           → Point[]

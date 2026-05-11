@@ -6,8 +6,9 @@ import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
-import { GameScore } from './score';
-import type { DamageClass, EntityKind, EntityScript, ScriptYield, SpawnOpts } from './types';
+import { MULT_DROP_BY_TIER } from '../content/kinds';
+import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick, tickChain } from './score';
+import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
 import { INERT_KIND } from './types';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
@@ -110,6 +111,33 @@ type Wait = {
   scheduledGeneration: number;
 };
 
+// Multiplier-drop magnet tuning. The threshold is a fraction of GAME_H
+// — drops are vacuumed only while the player sits above
+// `GAME_H * MAGNET_THRESHOLD_FRAC` (inverted Touhou POC pattern). 0.4
+// = top 40% of the field, where the bullets cluster — risk for reward.
+// See src/docs/scoring-system.md → "Magnet zone".
+const MAGNET_THRESHOLD_FRAC = 0.4;
+// px/s the magnet pull retargets a drop's velocity to. Tuned to feel
+// snappy without snapping — the overlap handler in GameScene catches
+// the collect on first contact, so 400 reaches the player within ~1s
+// from anywhere on screen.
+const MAGNET_SPEED = 400;
+// Initial downward drift for a freshly spawned drop. Slow enough to
+// give the player time to come up and claim it; fast enough that an
+// uncollected drop exits via the bottom cull margin in a few seconds.
+const MULT_DROP_DRIFT_VY = 40;
+// Fallback spawn y when scheduleMultDrop can't find a live carrier
+// (every enemy in the wave is already dead by the time the wave script
+// got around to scheduling). Top of the playfield, just below the
+// HUD band — drops in from where wave enemies would have come.
+const MULT_DROP_FALLBACK_Y = 40;
+// How many script ticks the deferred sampler keeps retrying before
+// giving up and spawning the drop at the top-center fallback. 300 =
+// 5s @ 60fps — comfortable for a wave that takes a few seconds to
+// produce its first live enemy, but bounded so a wave that never
+// spawns one (a misconfiguration) doesn't leak the pending entry.
+const PENDING_DROP_TIMEOUT_FRAMES = 300;
+
 // The runtime that runs a stage: owns the entity pool, the script
 // scheduler (wait queue, races, drops), the dialogue + bubble managers,
 // the pause flag, and the stage scratchpad (`globals` + `beat`).
@@ -121,6 +149,10 @@ export class StageManager {
   readonly scene: Phaser.Scene;
   readonly damages: ClassGroups;
   readonly damagedBy: ClassGroups;
+  // Pickup group for multiplier drops. Lives outside damages/damagedBy
+  // so its overlap with the player is a one-way "collect on touch"
+  // rather than a damage exchange. See src/docs/scoring-system.md.
+  readonly drops: Phaser.Physics.Arcade.Group;
   readonly bubbles: BubbleManager;
   readonly dialogue: DialogueManager;
   // Live reference to the controllable player entity. Assigned by GameScene
@@ -163,6 +195,13 @@ export class StageManager {
   // this around every wave (false at start, true after the field is
   // clear); the player anim + bg scroll read it directly.
   running = true;
+  // Score accrual gate. Flipped false at the start of the intro tutorial
+  // and back on once the tutorial completes — so kill bonuses, the
+  // alive-tick, and wave-end multiplier drops only start counting when
+  // the player has real agency over the game. Practice / test / music
+  // modes never run the intro, so this stays at its default `true` for
+  // them. See src/docs/scoring-system.md.
+  scoringActive = true;
   // Multiplier on the corridor floor scroll speed (relative to the
   // baseline rate in GameScene). Default 1 = full speed when running;
   // 0.5 = the ending's slow-walk-home roll. Read by GameScene's update
@@ -180,6 +219,14 @@ export class StageManager {
   // end-of-fight quips; survives the manager's lifetime, resets when
   // GameScene constructs a fresh manager on scene transition.
   readonly score = new GameScore();
+  // Frames accumulated since the last alive-tick fired. Bumped each
+  // 60Hz simulation step; rolls over at ALIVE_TICK_FRAMES so the
+  // 0.1s/+1×mult cadence is exact regardless of frame jitter.
+  private aliveTickAccum = 0;
+  // Multiplier-drop scheduling queue. A wave's `scheduleMultDrop(tier)`
+  // call lands here when no live enemy is available at call time; the
+  // per-tick resolver retries until one appears or the timeout fires.
+  private pendingDrops: { tier: EntityTier; framesLeft: number }[] = [];
 
   private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
@@ -227,6 +274,7 @@ export class StageManager {
     });
     this.damages = makeGroups();
     this.damagedBy = makeGroups();
+    this.drops = scene.physics.add.group(groupConfig);
     this.bubbles = new BubbleManager(scene);
     this.dialogue = new DialogueManager(scene);
 
@@ -328,11 +376,19 @@ export class StageManager {
 
     // Group.add() runs a createCallback that overwrites body properties
     // (velocity, drag, gravity, etc.) with the group's defaults, so we
-    // must add to groups BEFORE configuring the body.
-    for (const c of kind.damageClass) this.damages[c].add(e);
-    const damagedBy = opts.damagedByClass ?? kind.damagedByClass;
-    e.activeDamagedBy = damagedBy;
-    for (const c of damagedBy) this.damagedBy[c].add(e);
+    // must add to groups BEFORE configuring the body. Multiplier drops
+    // bypass damages/damagedBy entirely — they live in their own
+    // `drops` group so the player's overlap handler is one-way collect,
+    // not damage exchange.
+    if (kind instanceof MultDropKind) {
+      this.drops.add(e);
+      e.activeDamagedBy = [];
+    } else {
+      for (const c of kind.damageClass) this.damages[c].add(e);
+      const damagedBy = opts.damagedByClass ?? kind.damagedByClass;
+      e.activeDamagedBy = damagedBy;
+      for (const c of damagedBy) this.damagedBy[c].add(e);
+    }
 
     const body = e.body;
     if (kind.hitboxRadius > 0) {
@@ -358,6 +414,17 @@ export class StageManager {
     // character sheet (bullets, etc.).
     e.facing = directionFromVelocity(vx, vy);
     e.updateAnim();
+    // Directional sprite (droplet, dagger, etc.) — point the sprite
+    // at its travel direction. Set once at spawn; bullets that change
+    // velocity later won't re-rotate. Sprite art is assumed pointed
+    // right at rotation 0 (kind.rotateToVelocity contract); fall back
+    // to rotation 0 for stationary spawns so a pool-recycled bullet
+    // doesn't keep the previous slot's rotation.
+    if (kind.rotateToVelocity) {
+      e.setRotation(vx === 0 && vy === 0 ? 0 : Math.atan2(vy, vx));
+    } else {
+      e.setRotation(0);
+    }
     // If we spawned during a physics-pause window (script-frame yields keep
     // running through a `physics.pause()`-only freeze, so a script can spawn
     // here), the PAUSE event has already fired and won't re-fire — pause the
@@ -436,6 +503,69 @@ export class StageManager {
     if (e.script !== null) this.drop(e.script);
     e.script = this.makeScript(script(e), e);
     this.callIter(e.script);
+  }
+
+  // Tag a random currently-live enemy from `damages.player` (entities
+  // with hp, not bullets) so its eventual death spawns a multiplier
+  // drop. Safe to call at any point during the wave — including
+  // before the wave has spawned its first enemy. The sampler retries
+  // each tick until a tier-eligible enemy is alive; after
+  // PENDING_DROP_TIMEOUT_FRAMES with no candidate, the drop falls
+  // back to a top-center spawn so a misplaced call still pays out.
+  // See src/docs/scoring-system.md → "Multiplier drops".
+  scheduleMultDrop(tier: EntityTier): void {
+    // Scoring gate covers drops too — wave scripts in the tutorial
+    // section call this unconditionally, so the gate is enforced here
+    // rather than at every call site.
+    if (!this.scoringActive) return;
+    if (this.tryAssignDrop(tier)) return;
+    this.pendingDrops.push({ tier, framesLeft: PENDING_DROP_TIMEOUT_FRAMES });
+  }
+
+  // Sample a live enemy and attach an onDeath callback that spawns
+  // the tiered drop at the kill point. Returns false when no
+  // candidate exists; the caller (`scheduleMultDrop` or the per-tick
+  // resolver) decides whether to retry or fall back.
+  private tryAssignDrop(tier: EntityTier): boolean {
+    const candidates: Entity[] = [];
+    for (const c of this.damages.player.getChildren()) {
+      const e = c as Entity;
+      // Live enemies only — `hp !== null` partitions enemies (which
+      // carry HP) from bullets (which don't). `alive` guards entities
+      // mid-death-script.
+      if (e.alive && e.hp !== null) candidates.push(e);
+    }
+    if (candidates.length === 0) return false;
+    const kind = MULT_DROP_BY_TIER[tier];
+    const carrier = candidates[Math.floor(Math.random() * candidates.length)] as Entity;
+    carrier.onDeath(() => {
+      // onDeath fires inside `die()` AFTER alive=false; the entity's
+      // position is still valid (Phaser keeps x/y until the next pool
+      // reuse), so spawning at (carrier.x, carrier.y) lands at the
+      // visual kill point.
+      this.spawn(kind, carrier.x, carrier.y, 0, MULT_DROP_DRIFT_VY);
+    });
+    return true;
+  }
+
+  // Per-tick resolver for pending drops queued by `scheduleMultDrop`.
+  // Retries the sample every script tick; on timeout, drops the
+  // top-center fallback so a wave that never produced a live enemy
+  // (shouldn't happen, but a paranoid invariant) still pays out.
+  private resolvePendingDrops(): void {
+    for (let i = this.pendingDrops.length - 1; i >= 0; i--) {
+      const pd = this.pendingDrops[i] as { tier: EntityTier; framesLeft: number };
+      pd.framesLeft -= 1;
+      if (this.tryAssignDrop(pd.tier)) {
+        this.pendingDrops.splice(i, 1);
+        continue;
+      }
+      if (pd.framesLeft <= 0) {
+        const kind = MULT_DROP_BY_TIER[pd.tier];
+        this.spawn(kind, GAME_W / 2, MULT_DROP_FALLBACK_Y, 0, MULT_DROP_DRIFT_VY);
+        this.pendingDrops.splice(i, 1);
+      }
+    }
   }
 
   // Permanently disable a script and propagate down its race / all
@@ -750,8 +880,12 @@ export class StageManager {
     if (indexInActive !== last) this.active[indexInActive] = this.active[last]!;
     this.active.pop();
 
-    for (const c of e.kind.damageClass) this.damages[c].remove(e);
-    for (const c of e.activeDamagedBy) this.damagedBy[c].remove(e);
+    if (e.kind instanceof MultDropKind) {
+      this.drops.remove(e);
+    } else {
+      for (const c of e.kind.damageClass) this.damages[c].remove(e);
+      for (const c of e.activeDamagedBy) this.damagedBy[c].remove(e);
+    }
 
     // Disable the entity's script (and any race-child) so any in-flight
     // wakeups — wait-queue entries, dialogue/death/music callbacks,
@@ -800,7 +934,37 @@ export class StageManager {
     while (this.tickElapsed >= StageManager.TICK_MS) {
       this.tickElapsed -= StageManager.TICK_MS;
       this.tickQueue(this.scriptWaiting);
+      // Score side-effects piggyback on the same 60Hz tick so they stay
+      // locked to simulation time, not wall-clock. Chain decay drops
+      // mult back to multFloor after CHAIN_DECAY_FRAMES of no kills;
+      // alive-tick adds 1 × mult every ALIVE_TICK_FRAMES while the run
+      // is unpaused. Both are gated by the `paused` early-return above.
+      // Score side-effects are gated on the post-tutorial flag — nothing
+      // accrues while the intro is teaching the player to dodge / bomb /
+      // fire. `tickChain` is idempotent at mult=1 (no chain to break),
+      // so leaving it out of the gate would be harmless; included for
+      // symmetry with the alive-tick + pending-drops resolver.
+      if (this.scoringActive) {
+        tickChain(this.score);
+        this.aliveTickAccum += 1;
+        if (this.aliveTickAccum >= ALIVE_TICK_FRAMES) {
+          this.aliveTickAccum = 0;
+          recordAliveTick(this.score);
+        }
+        // Retry-sample the wave-end multiplier drops queued by
+        // scheduleMultDrop. Gated by the same paused early-return so a
+        // dialogue mid-wave doesn't burn the per-pending-drop timeout.
+        this.resolvePendingDrops();
+      }
     }
+
+    // Multiplier-drop magnet trigger: player must be in the top 40% of
+    // the playfield to vacuum drops. Inverted from the safe-bottom
+    // pattern — risk should be where the bullets are. See
+    // src/docs/scoring-system.md → "Magnet zone".
+    const magnetActive = this.player.y < GAME_H * MAGNET_THRESHOLD_FRAC;
+    const playerX = this.player.x;
+    const playerY = this.player.y;
 
     for (let i = this.active.length - 1; i >= 0; i--) {
       const e = this.active[i];
@@ -812,6 +976,17 @@ export class StageManager {
       }
 
       e.updateAnim();
+
+      // Magnet pull on drops while the player is in the magnet zone.
+      // Vector from drop → player, normalised, scaled by MAGNET_SPEED;
+      // overlap handler fires when contact lands so no extra hysteresis
+      // is needed.
+      if (magnetActive && e.kind instanceof MultDropKind) {
+        const dx = playerX - e.x;
+        const dy = playerY - e.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1) e.body.setVelocity((dx / d) * MAGNET_SPEED, (dy / d) * MAGNET_SPEED);
+      }
 
       const inX = e.x >= -CULL_MARGIN && e.x <= GAME_W + CULL_MARGIN;
       const inY = e.y >= -CULL_MARGIN && e.y <= GAME_H + CULL_MARGIN;

@@ -332,6 +332,7 @@ export const itAdmin = new EntityKind({
 // end, which is well past the active reading window.
 export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'it admin');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     const laserSpeech: SpeechSchedule = [
       'Change your email password. Now.',

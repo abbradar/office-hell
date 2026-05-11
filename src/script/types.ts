@@ -1,5 +1,6 @@
 import type { Entity } from '../entities/Entity';
 import type { DialogueOpts } from '../ui/dialogue';
+import { recordKill } from './score';
 
 // Every object-form yield a script can emit. Each carries an optional
 // `yieldReason` (added uniformly via the intersection in `ScriptYield`)
@@ -69,6 +70,13 @@ export type DamageClass = (typeof DAMAGE_CLASSES)[number];
 // side length.
 export type HitboxShape = 'circle' | 'square';
 
+// Encounter weight class. Drives kill-score bonuses and the value of the
+// per-wave multiplier drop the kind carries. Default is `regular`. Bosses
+// inherit `boss` through BossKind's constructor; mini-bosses are
+// hand-marked on the (currently non-existent) kinds that warrant them.
+// See src/docs/scoring-system.md.
+export type EntityTier = 'regular' | 'miniBoss' | 'boss';
+
 export type EntityKindOpts = {
   sprite: string | null;
   hitboxRadius: number;
@@ -80,11 +88,25 @@ export type EntityKindOpts = {
   // Optional generator that runs in place of `die()` when HP hits 0. The
   // default `takeDamage` locks incoming damage off (so a stray hit a
   // frame later can't re-fire the script) and hands the entity to
-  // `runScript`. The script itself is responsible for eventually calling
-  // `self.die()` — typically after a flicker / dialogue / shudder beat.
-  // Used by every boss for its own defeat sequence; null on plain
-  // entities that just disappear on death.
+  // `runScript` — typically after a flicker / dialogue / shudder beat.
+  // The script is responsible for eventually calling `self.die()`. Used
+  // by every boss for its own defeat sequence; null on plain entities
+  // that just disappear on death.
   deathScript?: EntityScript;
+  // When true, spawning the entity rotates the sprite to face its
+  // initial velocity vector (`rotation = atan2(vy, vx)`). The sprite
+  // art is assumed to be drawn pointing **right** at rotation 0 —
+  // i.e. its forward direction is +x. Use for elongated / directional
+  // bullets like droplets, daggers, lasers; leave false (default) for
+  // circular bullets where rotation has no visible effect.
+  //
+  // Rotation is set ONCE at spawn time. Bullets whose velocity changes
+  // after spawn (homing, curving) won't re-rotate to match — handle
+  // that in their `defaultScript` if needed.
+  rotateToVelocity?: boolean;
+  // Encounter weight class. Defaults to `regular`. BossKind forces
+  // `boss` in its constructor. See src/docs/scoring-system.md.
+  tier?: EntityTier;
 };
 
 export class EntityKind {
@@ -96,6 +118,8 @@ export class EntityKind {
   readonly damagedByClass: DamageClass[];
   readonly defaultScript?: EntityScript;
   readonly deathScript: EntityScript | null;
+  readonly rotateToVelocity: boolean;
+  readonly tier: EntityTier;
 
   constructor(opts: EntityKindOpts) {
     this.sprite = opts.sprite;
@@ -106,6 +130,8 @@ export class EntityKind {
     this.damagedByClass = opts.damagedByClass;
     this.defaultScript = opts.defaultScript;
     this.deathScript = opts.deathScript ?? null;
+    this.rotateToVelocity = opts.rotateToVelocity ?? false;
+    this.tier = opts.tier ?? 'regular';
   }
 
   targetCollision(self: Entity, target: Entity): void {
@@ -120,7 +146,17 @@ export class EntityKind {
       // Count enemy kills for the run-wide score. Guarded against the player
       // (PlayerKind.takeDamage routes through super) — counting the player's
       // own death would overlap with `hpLost` and skew the inter-stage quips.
-      if (self !== self.stage.player) self.stage.score.kills++;
+      // recordKill applies tier-based base score, point-blank bonus, ×mult,
+      // and bumps the chain — see src/docs/scoring-system.md.
+      if (self !== self.stage.player) {
+        // `kills++` is run-wide telemetry the inter-stage dialog reads;
+        // it counts every kill regardless of the scoring gate (the quip
+        // "you sent N colleagues away" should reflect tutorial kills
+        // too). `recordKill` is the scoreboard path — gated so the
+        // tutorial doesn't bank points.
+        self.stage.score.kills++;
+        if (self.stage.scoringActive) recordKill(self.stage.score, self);
+      }
       if (this.deathScript !== null) {
         // Lock incoming damage off so a stray bullet that lands a frame
         // later can't re-enter takeDamage and double-fire the death

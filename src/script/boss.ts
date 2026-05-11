@@ -94,7 +94,14 @@ export class BossKind extends EntityKind {
   readonly hittableDamagedBy: DamageClass[];
 
   constructor(opts: EntityKindOpts) {
-    super({ ...opts, damagedByClass: [], deathScript: opts.deathScript ?? bossDeathScript });
+    super({
+      ...opts,
+      damagedByClass: [],
+      deathScript: opts.deathScript ?? bossDeathScript,
+      // Boss tier is mandatory for the score/drop system; opts.tier is
+      // ignored if the caller tried to set anything else.
+      tier: 'boss',
+    });
     this.hittableDamagedBy = opts.damagedByClass;
   }
 }

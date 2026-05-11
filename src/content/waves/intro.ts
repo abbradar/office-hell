@@ -338,6 +338,10 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
     // first wave plays normally.
     const p = self.stage.player;
     p.lockControls();
+    // Pause scoring for the duration of the tutorial — kills, drops, the
+    // alive-tick all start counting only when the player has full agency.
+    // Flipped back on at the end of this block (see post-tutorial cleanup).
+    self.stage.scoringActive = false;
     // Shooting stays off through the dodge window too — the player can move
     // to evade the email but can't fire back until the bomb tutorial has
     // unlocked their kit. Re-enabled together with bombs at the end.
@@ -400,6 +404,8 @@ export function* introMonologue(self: Entity): Generator<ScriptYield, void, void
     p.render();
     p.unlockControls();
     self.stage.running = true;
+    // Tutorial's done — open the scoring gate.
+    self.stage.scoringActive = true;
 
     // Only mark the intro completed on a natural finish — skipping a
     // first-time run shouldn't unlock the skip option for the next one

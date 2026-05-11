@@ -3,16 +3,24 @@ import bgDoorsUrl from '../assets/bg/doors.png';
 import bgFloorUrl from '../assets/bg/floor.png';
 import bgWallsUrl from '../assets/bg/walls.png';
 import blueExplosionUrl from '../assets/bullets/blue_explosion.png';
+import blueLongerDropletUrl from '../assets/bullets/blue_longer_droplet.png';
 import cameraBulletUrl from '../assets/bullets/camera.png';
 import chartCellUrl from '../assets/bullets/chartCell.png';
 import drinkBulletUrl from '../assets/bullets/drink.png';
 import emailBulletUrl from '../assets/bullets/email.png';
+import greedDiamondXsUrl from '../assets/bullets/greed_diamond_xs.png';
+import lavaDropletHardUrl from '../assets/bullets/lava_droplet_hard.png';
 import missedCallUrl from '../assets/bullets/missedCall.png';
 import pillBulletUrl from '../assets/bullets/pill.png';
 import playerBulletUrl from '../assets/bullets/player_bullet.png';
 import questionBulletUrl from '../assets/bullets/question.png';
+import redCrossUrl from '../assets/bullets/red_cross.png';
+import redDiamondMdUrl from '../assets/bullets/red_diamond_md.png';
+import redDropletHardUrl from '../assets/bullets/red_droplet_hard.png';
 import redExplosionUrl from '../assets/bullets/red_explosion.png';
 import reportBulletUrl from '../assets/bullets/report.png';
+import smallRedDropletUrl from '../assets/bullets/small_red_droplet.png';
+import yellowDiamondSmUrl from '../assets/bullets/yellow_diamond_sm.png';
 import menuLogoUrl from '../assets/images/office hell text logo2.png';
 import bombExplosionUrl from '../assets/misc/bomb_explosion.png';
 import waterDispenserUrl from '../assets/misc/water_dispenser.png';
@@ -208,6 +216,31 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
 // Themed bullet sprites — paper, envelope, missed call, etc. The texture
 // keys here are the lookup names used by entity kinds; the filenames drop
 // the `Bullet` suffix since they all live under `assets/bullets/`.
+export const SMALL_RED_DROPLET_KEY = 'smallRedDroplet';
+export const BLUE_LONGER_DROPLET_KEY = 'blueLongerDroplet';
+export const RED_CROSS_KEY = 'redCross';
+export const RED_DIAMOND_MD_KEY = 'redDiamondMd';
+export const YELLOW_DIAMOND_SM_KEY = 'yellowDiamondSm';
+export const GREED_DIAMOND_XS_KEY = 'greedDiamondXs';
+// Hard-edged droplet pair, 13×8 directional sprites — used by the
+// final boss's arc-wave (phase 1 climax). Sprite art is drawn
+// pointing right at rotation 0, so `rotateToVelocity: true` on the
+// kind aims each bullet along its travel vector.
+export const LAVA_DROPLET_HARD_KEY = 'lavaDropletHard';
+export const RED_DROPLET_HARD_KEY = 'redDropletHard';
+
+// Bordered variant of the 14×10 email bullet sprite — used by the final
+// boss's email volley as a visually distinct accent over the loose
+// `emailBullet` sprite. 1 px #ff5e62 frame around the bbox; inner 14×10
+// region is left transparent and overdrawn with the source image so the
+// envelope's own pixels stay unmodified. Built post-load (the source
+// image must exist) — see `generateEmailBorderedTexture` below.
+export const EMAIL_BORDERED_KEY = 'emailBordered';
+const EMAIL_W = 14;
+const EMAIL_H = 10;
+const EMAIL_BORDERED_W = EMAIL_W + 2;
+const EMAIL_BORDERED_H = EMAIL_H + 2;
+
 export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image('reportBullet', reportBulletUrl);
   scene.load.image('missedCall', missedCallUrl);
@@ -217,6 +250,29 @@ export function preloadBullets(scene: Phaser.Scene): void {
   scene.load.image('drinkBullet', drinkBulletUrl);
   scene.load.image('pillBullet', pillBulletUrl);
   scene.load.image('cameraBullet', cameraBulletUrl);
+  scene.load.image(SMALL_RED_DROPLET_KEY, smallRedDropletUrl);
+  scene.load.image(BLUE_LONGER_DROPLET_KEY, blueLongerDropletUrl);
+  scene.load.image(RED_CROSS_KEY, redCrossUrl);
+  scene.load.image(RED_DIAMOND_MD_KEY, redDiamondMdUrl);
+  scene.load.image(YELLOW_DIAMOND_SM_KEY, yellowDiamondSmUrl);
+  scene.load.image(GREED_DIAMOND_XS_KEY, greedDiamondXsUrl);
+  scene.load.image(LAVA_DROPLET_HARD_KEY, lavaDropletHardUrl);
+  scene.load.image(RED_DROPLET_HARD_KEY, redDropletHardUrl);
+}
+
+// Multiplier-drop pickup — 8×8 solid green square, drawn at runtime.
+// Placeholder for v1; replace with an asset when the wider art pass
+// arrives. The 8×8 size makes a 4-px-radius square hitbox unambiguous
+// (every visible pixel is collide-able).
+export const MULT_DROP_KEY = 'mult_drop';
+const MULT_DROP_SIZE = 8;
+const COLOR_MULT_DROP = 0x66ff8a; // bright office-fluorescent green
+export function generateMultDropTexture(scene: Phaser.Scene): void {
+  const g = scene.add.graphics();
+  g.fillStyle(COLOR_MULT_DROP, 1);
+  g.fillRect(0, 0, MULT_DROP_SIZE, MULT_DROP_SIZE);
+  g.generateTexture(MULT_DROP_KEY, MULT_DROP_SIZE, MULT_DROP_SIZE);
+  g.destroy();
 }
 
 // Bulk-register every synchronous runtime texture (the round default
@@ -226,4 +282,28 @@ export function preloadBullets(scene: Phaser.Scene): void {
 export function generateTextures(scene: Phaser.Scene): void {
   generateDoorsBboxTexture(scene);
   generateBulletTexture(scene);
+  generateMultDropTexture(scene);
+}
+
+// Bordered email bullet — draws a 1 px #ff5e62 frame around the 14×10
+// email sprite into a 16×12 canvas. Must run AFTER the `emailBullet`
+// PNG has loaded (the source image is drawn into the canvas), so this
+// is invoked from BootScene's load-complete handler, not from the
+// synchronous `generateTextures` microtask.
+export function generateEmailBorderedTexture(scene: Phaser.Scene): void {
+  const canvas = scene.textures.createCanvas(EMAIL_BORDERED_KEY, EMAIL_BORDERED_W, EMAIL_BORDERED_H);
+  if (!canvas) return;
+  const ctx = canvas.getContext();
+  ctx.fillStyle = '#ff5e62';
+  // 4 strips: top + bottom (full width), left + right (between corners).
+  // Drawing as strips rather than a 16×12 fill keeps the inner 14×10
+  // region transparent so the envelope's transparent pixels don't get
+  // colour-bled by the border.
+  ctx.fillRect(0, 0, EMAIL_BORDERED_W, 1);
+  ctx.fillRect(0, EMAIL_BORDERED_H - 1, EMAIL_BORDERED_W, 1);
+  ctx.fillRect(0, 1, 1, EMAIL_H);
+  ctx.fillRect(EMAIL_BORDERED_W - 1, 1, 1, EMAIL_H);
+  const src = scene.textures.get('emailBullet').getSourceImage();
+  ctx.drawImage(src as CanvasImageSource, 1, 1);
+  canvas.refresh();
 }

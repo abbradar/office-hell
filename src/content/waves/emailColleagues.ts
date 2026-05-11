@@ -140,6 +140,7 @@ export const emailColleague = new EntityKind({
 const EMAIL_OPENER_UPPER_Y = 250;
 export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'email colleagues');
+  self.stage.scheduleMultDrop('regular');
   yield* alignDoor(self, EMAIL_OPENER_UPPER_Y);
   yield* suspendRunning(self, function* () {
     const PASS_DELAY = 60;
@@ -181,6 +182,7 @@ export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void,
 const EMAIL_PINCH_MID_Y = 250;
 export function* emailColleagues2(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'email colleagues 2');
+  self.stage.scheduleMultDrop('regular');
   yield* alignDoor(self, EMAIL_PINCH_MID_Y);
   yield* suspendRunning(self, function* () {
     const PAIR_BEAT = 12;

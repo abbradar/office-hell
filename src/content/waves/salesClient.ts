@@ -129,6 +129,7 @@ export const importantClient = new EntityKind({
 // before the client appears to be confirmed.
 export function* salesClientWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'sales & client');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     self.spawn(sales, SALES_X, -30, 0, 0);
     yield 30;

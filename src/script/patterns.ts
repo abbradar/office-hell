@@ -1,7 +1,7 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
-import { blueExplosion, redExplosion } from '../content/kinds';
+import { blueExplosion, bullet, redExplosion } from '../content/kinds';
 import {
   BLUE_EXPLOSION_FRAME_DURATION_FRAMES,
   BLUE_EXPLOSION_FRAME_W,
@@ -150,6 +150,109 @@ export function arc(
   const step = (toAngle - fromAngle) / (count - 1);
   for (let i = 0; i < count; i++) {
     shootAt(self, kind, fromAngle + i * step, speed);
+  }
+}
+
+// Stationary or rotating arc of bullets at a fixed radius around a
+// center point — unlike `arc`, the bullets do NOT propagate outward.
+// Each tick the pattern recomputes every bullet's (x, y) from its
+// current angular position, so the arc reads as a wall/barrier that
+// either sits in place (`rotateSpeed = 0`, default) or sweeps around
+// the center at the chosen angular rate. Generator — `yield*` it.
+//
+// Bullet positions are driven directly by writing `body.x` / `body.y`
+// each frame (no physics velocity), so the arc stays exactly on its
+// orbit regardless of the engine's arcade-physics integration. Bullets
+// are still damaging via their hitbox; only their motion is bypassed.
+//
+// Lifetime: runs for `durationFrames` physics frames (default Infinity
+// — race with `waitSeconds(N)` or another helper to time-box). All
+// bullets die at the end. Race-cancellation is honoured: when the
+// containing race wins elsewhere, the generator's `finally` (implicit
+// in the runtime's drop) runs through and the bullets are cleaned up.
+export function* orbitArc(
+  self: Entity,
+  opts: {
+    // Bullets evenly spaced from `fromRad` to `toRad` (inclusive of
+    // both endpoints, like `arc`). For an N-th of a full circle ring
+    // pass `fromRad: 0, toRad: 2*Math.PI * (count - 1) / count`.
+    count: number;
+    kind: EntityKind;
+    // Distance from the center, in pixels.
+    radius: number;
+    fromRad: number;
+    toRad: number;
+    // Angular velocity in radians per second. 0 = static arc;
+    // positive = clockwise (Phaser convention); negative = CCW.
+    rotateSpeed?: number;
+    // Total lifetime in physics frames. Default Infinity — pattern
+    // runs until cancelled by an outer `race`. The pattern will not
+    // re-spawn bullets after they're killed (e.g. by a player bomb).
+    durationFrames?: number;
+    // Entity to orbit around. Defaults to `self`. Pass the boss when
+    // running the pattern from a controller entity placed elsewhere,
+    // so the arc tracks the boss instead of the controller.
+    centerEntity?: Entity;
+  },
+): Generator<ScriptYield, void, void> {
+  const { count, kind, radius, fromRad, toRad } = opts;
+  if (count <= 0) return;
+  const rotateSpeed = opts.rotateSpeed ?? 0;
+  const duration = opts.durationFrames ?? Number.POSITIVE_INFINITY;
+  const center = opts.centerEntity ?? self;
+
+  if (offScreen(self)) return;
+  shoot();
+
+  // Per-bullet base angles. `count === 1` puts the single bullet at
+  // `fromRad`; otherwise endpoints are inclusive so the last bullet
+  // lands exactly at `toRad`.
+  const baseAngles: number[] = [];
+  if (count === 1) {
+    baseAngles.push(fromRad);
+  } else {
+    const step = (toRad - fromRad) / (count - 1);
+    for (let i = 0; i < count; i++) baseAngles.push(fromRad + i * step);
+  }
+
+  // Spawn at initial positions with zero velocity; subsequent frames
+  // rewrite x/y directly. Holding a reference to each spawned entity
+  // lets us update them per tick + clean them up on exit.
+  const bullets: Entity[] = [];
+  for (let i = 0; i < count; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounded by count
+    const a = baseAngles[i]!;
+    const x = center.x + radius * Math.cos(a);
+    const y = center.y + radius * Math.sin(a);
+    bullets.push(self.spawn(kind, x, y, 0, 0));
+  }
+
+  // Rotation phase accumulates over time; each bullet's effective
+  // angle is `baseAngles[i] + phase`.
+  let phase = 0;
+  const phasePerFrame = rotateSpeed / SCRIPT_FPS;
+  let elapsed = 0;
+  while (elapsed < duration) {
+    yield 1;
+    elapsed++;
+    if (phasePerFrame !== 0) phase += phasePerFrame;
+    const cx = center.x;
+    const cy = center.y;
+    for (let i = 0; i < count; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by count
+      const b = bullets[i]!;
+      if (!b.alive) continue;
+      // biome-ignore lint/style/noNonNullAssertion: bounded by count
+      const a = baseAngles[i]! + phase;
+      b.x = cx + radius * Math.cos(a);
+      b.y = cy + radius * Math.sin(a);
+    }
+  }
+
+  // Clean up surviving bullets so a finite-duration arc doesn't
+  // leave a stationary "wall" behind on the field.
+  for (const b of bullets) {
+    if (b.alive) b.die();
   }
 }
 
@@ -725,5 +828,83 @@ export function* lineRedExplosion(
     stepFrames: 9,
     framesPerSpawn: 5,
     ...opts,
+  });
+}
+
+// `lineStroke` with a built-in telegraph → detonate cycle. Draws a
+// non-damaging warning line immediately (lifetime = `offsetMs`), then
+// schedules a damaging lineStroke at the same coordinates `offsetMs`
+// later via `scene.time.delayedCall`. Single-call convenience for
+// callers that want "warn for N ms, then commit". Cancels the
+// lethal phase if the firing entity has died by the time the
+// detonation tick comes around.
+//
+// Side-effect scheduling: the delayedCall uses scene time, which is
+// NOT gated by physics pause — a dialog freeze that overlaps the
+// telegraph window will still let the detonation fire. Acceptable
+// for boss patterns where dialogs happen between attacks; revisit
+// if a pattern needs to be pause-safe.
+export function lineStrokeTelegraph(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  offsetMs: number,
+  opts?: {
+    // Bullet kind to use for both the warning and the detonation.
+    // Default = white `bullet`.
+    kind?: EntityKind;
+    // Physics frames the lethal line stays on screen. Default 30
+    // (~0.5 s) — a brief blink. Bump higher for a "stay out of this
+    // lane" wall.
+    lethalFrames?: number;
+    spacing?: number;
+    color?: number;
+    width?: number;
+  },
+): void {
+  const kind = opts?.kind ?? bullet;
+  const lethalFrames = opts?.lethalFrames ?? 30;
+  const telegraphFrames = Math.max(1, Math.round((offsetMs * SCRIPT_FPS) / 1000));
+  const lineOpts = {
+    spacing: opts?.spacing,
+    color: opts?.color,
+    width: opts?.width,
+  };
+
+  // Warning — non-damaging, fades / draws over its lifetime then
+  // disappears just as the lethal version takes over.
+  lineStroke(self, x1, y1, x2, y2, kind, telegraphFrames, {
+    ...lineOpts,
+    damaging: false,
+  });
+
+  self.scene.time.delayedCall(offsetMs, () => {
+    if (!self.alive) return;
+    lineStroke(self, x1, y1, x2, y2, kind, lethalFrames, {
+      ...lineOpts,
+      damaging: true,
+    });
+  });
+}
+
+// Quick directional camera punch — tweens the main camera's scroll
+// by `dx`/`dy` and yoyos back. Used as a sub-second VFX accent on
+// boss patterns: a positive `dx` punches the world *left* (camera
+// looks right), reading as "screen shake right".
+//
+// Pure side-effect; safe to call from a sync `fire` callback in a
+// beatmap. Multiple overlapping punches stack via Phaser's tween
+// system without fighting each other.
+export function cameraPunch(self: Entity, dx: number, dy = 0, durationMs = 120): void {
+  const cam = self.scene.cameras.main;
+  self.scene.tweens.add({
+    targets: cam,
+    scrollX: cam.scrollX + dx,
+    scrollY: cam.scrollY + dy,
+    duration: durationMs / 2,
+    yoyo: true,
+    ease: 'Quad.easeOut',
   });
 }

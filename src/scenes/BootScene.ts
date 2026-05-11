@@ -9,6 +9,7 @@ import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import {
+  generateEmailBorderedTexture,
   generateTextures,
   preloadBackgrounds,
   preloadBlueExplosion,
@@ -239,6 +240,10 @@ export class BootScene extends Phaser.Scene {
           registerElevatorAnims(this);
           registerBombAnims(this);
           registerBlueExplosionAnim(this);
+          // Derived textures that need a source image (the email PNG)
+          // must run post-load, not in the synchronous generateTextures
+          // microtask above.
+          generateEmailBorderedTexture(this);
           resolve();
         } catch (err) {
           reject(err);
@@ -378,8 +383,16 @@ export class BootScene extends Phaser.Scene {
     // flip to green `[x]` as each category finishes loading — gives the
     // user concrete feedback on what's still in flight (network-bound
     // music vs. local sprite atlases vs. scene chunks).
+    //
+    // Rows are left-aligned (so the `[ ]` brackets stack into a clean
+    // column) but the group as a whole stays visually centered: build the
+    // rows at a tentative x, measure the widest, then snap every row's
+    // left edge so the widest row's bounding box centers on `cx`. Shorter
+    // labels stop short of the right edge — that's the left-alignment.
     const firstRowY = barY + barH + 18;
     const rowH = 16;
+    const rows: Phaser.GameObjects.Text[] = [];
+    let maxW = 0;
     for (let i = 0; i < CHECKLIST_ITEMS.length; i++) {
       const item = CHECKLIST_ITEMS[i];
       if (!item) continue;
@@ -388,9 +401,13 @@ export class BootScene extends Phaser.Scene {
           color: COLOR_TEXT_DIM_STR,
           fontSize: '12px',
         })
-        .setOrigin(0.5);
+        .setOrigin(0, 0.5);
+      rows.push(row);
+      if (row.width > maxW) maxW = row.width;
       this.checklistRows.set(item.id, row);
     }
+    const left = Math.round(cx - maxW / 2);
+    for (const r of rows) r.setX(left);
   }
 
   private markChecklistDone(id: string): void {

@@ -84,6 +84,7 @@ export const oversleeper = new EntityKind({
 // barrage-stream cleanly without other enemies interfering.
 export function* oversleeperWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'oversleeper');
+  self.stage.scheduleMultDrop('regular');
   // biome-ignore lint/correctness/useYield: spawn-only body; suspendRunning supplies the yield*
   yield* suspendRunning(self, function* () {
     self.spawn(oversleeper, GAME_W * 0.5, -30, 0, 0);

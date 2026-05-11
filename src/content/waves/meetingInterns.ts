@@ -158,6 +158,7 @@ export const meetingIntern = new EntityKind({
 const MEETING_SIDE_Y = 220;
 export function* meetingInternsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'meeting interns');
+  self.stage.scheduleMultDrop('regular');
   yield* alignDoor(self, MEETING_SIDE_Y);
   yield* suspendRunning(self, function* () {
     const TOP_Y = 110;

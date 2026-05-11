@@ -143,6 +143,7 @@ export const hr = new EntityKind({
 
 export function* hrTrioWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'hr trio');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     // Lead HR enters alone with a CV stack and the room's attention. Buffed HP
     // so the player can't kill them before the followers arrive to make this an

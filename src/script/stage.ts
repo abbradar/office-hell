@@ -293,29 +293,86 @@ export type BeatmapBeat = {
 // timestamp. Synchronised to `getMusicTime()` via `waitAudioTimeAtLeast`
 // so layers stay locked to the track even across small frame hitches.
 //
-// Beats whose `t` is already in the past at call time are skipped.
-// That's the load-bearing detail when phases re-enter a beatmap mid-
-// song: a layer that starts in phase 2 should not instant-fire every
-// beat from t=0. Compare each beat to the *current* music clock, not
-// the call-site's "now".
+// Beats whose `t` is in the past by more than ~50 ms at call time are
+// skipped. That's the load-bearing detail when phases re-enter a
+// beatmap mid-song: a layer that starts in phase 2 should not
+// instant-fire every beat from t=0. The 50 ms tolerance preserves
+// **sibling beats at the same `t`** — between firing one beat and
+// checking the next, `waitAudioTimeAtLeast` can overshoot the
+// target by up to one physics frame (~16 ms) plus AudioContext
+// jitter; a strict `<` check would skip same-`t` siblings as
+// "already past". 50 ms covers the worst-case overshoot with
+// plenty of headroom, while true past-beat re-entry (always
+// seconds in the past) still skips correctly.
 //
 // When no music is playing (practice mode running a wave standalone
 // without its parent stage's track), `runBeatmap` falls back to
 // relative `waitSeconds` gaps so the pattern remains tunable. The
 // fallback loses absolute sync — it's a sanity pass, not a substitute
 // for hearing the track.
+const RUN_BEATMAP_SKIP_PAST_TOLERANCE_S = 0.05;
+
+// Spec for a looping beatmap. `intro` fires once at absolute music
+// times; the runner then enters `loop` iterations of `loopDur` seconds
+// each, with each iteration's beat firing at absolute time
+// `loopStartT + iter * loopDur + beat.t`. `loopStartT` defaults to the
+// active track's `introDuration` so `playMusicWithIntro` tracks just
+// work — caller passes it only to override (e.g. tests that compute
+// against a different anchor).
+//
+// Use shape: provide both arrays to mark a beatmap loop-aware; provide
+// only an array to runBeatmap to keep the legacy one-shot path. See
+// src/content/waves/theBoss.ts for the canonical caller.
+export type BeatmapSpec = {
+  intro?: readonly BeatmapBeat[];
+  loop: readonly BeatmapBeat[];
+  loopDur: number;
+  loopStartT?: number;
+};
+
 export function* runBeatmap(
+  self: Entity,
+  beatsOrSpec: readonly BeatmapBeat[] | BeatmapSpec,
+): Generator<ScriptYield, void, void> {
+  if (Array.isArray(beatsOrSpec)) {
+    yield* runBeatmapOnce(self, beatsOrSpec as readonly BeatmapBeat[]);
+    return;
+  }
+  const spec = beatsOrSpec as BeatmapSpec;
+  if (spec.intro && spec.intro.length > 0) {
+    yield* runBeatmapOnce(self, spec.intro);
+  }
+  // Resolve loop anchor: caller-provided override → active track's
+  // intro duration → 0 (no intro). The anchor is queried once per
+  // iteration so a track that hasn't started yet (e.g. test mode
+  // before any music) reads 0 and falls through to the no-music
+  // path inside `runBeatmapOnce`.
+  for (let iter = 0; self.alive; iter++) {
+    const info = getCurrentTrackInfo();
+    const loopStartT = spec.loopStartT ?? info?.introDuration ?? 0;
+    const baseT = loopStartT + iter * spec.loopDur;
+    const shifted: BeatmapBeat[] = spec.loop.map((b) => ({ t: baseT + b.t, fire: b.fire }));
+    yield* runBeatmapOnce(self, shifted);
+  }
+}
+
+// Walk a flat absolute-t beatmap once. Used internally by `runBeatmap`
+// for the intro pass and each loop iteration; exposed implicitly via
+// the array-shape `runBeatmap(self, beats)` overload for back-compat
+// callers that don't need looping.
+function* runBeatmapOnce(
   self: Entity,
   beats: readonly BeatmapBeat[],
 ): Generator<ScriptYield, void, void> {
   const musicTicking = getMusicTime() !== null;
   let prev = 0;
   for (let i = 0; i < beats.length; i++) {
+    if (!self.alive) return;
     // biome-ignore lint/style/noNonNullAssertion: bounded by beats.length
     const beat = beats[i]!;
     if (musicTicking) {
       const now = getMusicTime();
-      if (now !== null && beat.t < now.time) continue;
+      if (now !== null && now.time - beat.t > RUN_BEATMAP_SKIP_PAST_TOLERANCE_S) continue;
       yield* waitAudioTimeAtLeast(beat.t);
     } else {
       const gap = beat.t - prev;
@@ -520,6 +577,19 @@ export function pickDoorCenterY(self: Entity, idealY: number): number | null {
     }
   }
   return best;
+}
+
+// Snapshot of every currently-visible door centre y. The wall sprites
+// have a fixed door cycle that scrolls with the corridor; when the
+// corridor is paused (e.g. during a boss fight), this returns the
+// stable set of "openings" available for random spawn picks. Use this
+// when you don't care which door — just want a random opening.
+export function visibleDoorCenters(self: Entity): number[] {
+  const out: number[] = [];
+  for (const top of computeDoorYs(self.stage.bgScrollY)) {
+    if (isDoorVisible(top)) out.push(top + DOOR_H / 2);
+  }
+  return out;
 }
 
 // Yield until a door's centre is within `tolerance` pixels of `targetY`.

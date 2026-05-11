@@ -88,6 +88,7 @@ export const vacationItaly = new EntityKind({
 // after the previous one, and their per-role SAY_CYCLE keeps them in lockstep.
 export function* vacationPhotosWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'vacation photos');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     self.spawn(vacationItaly, GAME_W * 0.25, -30, 0, 0, { script: makeVacationScript(0) });
     yield SAY_FRAMES;
