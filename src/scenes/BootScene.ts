@@ -9,12 +9,17 @@ import { GAME_H, GAME_W } from '../config';
 import { preloadCharacterSheets, registerAllCharacterAnims } from '../content/characterSheets';
 import { preloadElevator, registerElevatorAnims } from '../content/elevator';
 import {
+  generateEmailBorderedTexture,
   generateTextures,
   preloadBackgrounds,
+  preloadBlueExplosion,
   preloadBombExplosion,
   preloadBullets,
+  preloadMenuLogo,
   preloadPlayerBullet,
+  preloadRedExplosion,
   preloadWaterDispenser,
+  registerBlueExplosionAnim,
   registerBombAnims,
 } from '../content/textures';
 import { isTouchDevice } from '../input/device';
@@ -22,7 +27,13 @@ import { bindLogicalCamera } from '../render/cameraBind';
 import { DISPLAY_RESIZE_EVENT, displayState } from '../render/displayState';
 import { loadInputIcons } from '../ui/inputIcons';
 import { preloadMuteIcons } from '../ui/muteButton';
-import { COLOR_ACCENT_GOLD, COLOR_PANEL_BORDER, COLOR_TEXT_DIM_STR, COLOR_WALL_STR } from '../ui/palette';
+import {
+  COLOR_ACCENT_GOLD,
+  COLOR_ACCENT_GREEN_STR,
+  COLOR_PANEL_BORDER,
+  COLOR_TEXT_DIM_STR,
+  COLOR_WALL_STR,
+} from '../ui/palette';
 
 // Recompute the world-on-canvas geometry shared by every scene.
 //
@@ -74,10 +85,24 @@ export function recomputeDisplay(scene: Phaser.Scene): boolean {
   return resized;
 }
 
+// Loading-screen checklist categories. Each id maps to one row of text
+// under the loading bar — pending rows render dim with a `[ ]` prefix,
+// completed rows flip to a green `[x]` once the category finishes.
+const CHECKLIST_ITEMS: { id: string; label: string }[] = [
+  { id: 'sprites', label: 'Sprites' },
+  { id: 'music', label: 'Music' },
+  { id: 'sfx', label: 'Sound' },
+  { id: 'fonts', label: 'Fonts' },
+  { id: 'code', label: 'Code' },
+];
+
 export class BootScene extends Phaser.Scene {
   // Set in showLoadingUI() during preload(). Phaser guarantees preload runs
   // before create(), so by the time anyone reads it the assignment is in.
   private loadingText!: Phaser.GameObjects.Text;
+  // One Text row per checklist category, keyed by id. Built in
+  // showLoadingUI(); flipped to `[x]` + accent green by markChecklistDone.
+  private checklistRows = new Map<string, Phaser.GameObjects.Text>();
 
   constructor() {
     super('Boot');
@@ -131,9 +156,40 @@ export class BootScene extends Phaser.Scene {
     preloadPlayerBullet(this);
     preloadBullets(this);
     preloadWaterDispenser(this);
+    preloadMenuLogo(this);
     preloadBombExplosion(this);
+    preloadBlueExplosion(this);
+    preloadRedExplosion(this);
     preloadAudio(this);
     preloadMuteIcons(this);
+
+    // Categorise every queued file into a checklist bucket so each
+    // category's row can flip independently as files trickle in. Audio
+    // splits by suffix (keys ending in `Sfx` are one-shot samples;
+    // everything else is a music loop); non-audio files all roll up to
+    // 'sprites'. Walking the loader's pending list before `load.start()`
+    // gives a deterministic count to decrement against FILE_COMPLETE.
+    type Category = 'music' | 'sfx' | 'sprites';
+    const fileCategory = new Map<string, Category>();
+    const remaining: Record<Category, number> = { music: 0, sfx: 0, sprites: 0 };
+    this.load.list.iterate((file: Phaser.Loader.File) => {
+      let cat: Category;
+      if (file.type === 'audio') {
+        cat = file.key.endsWith('Sfx') ? 'sfx' : 'music';
+      } else {
+        cat = 'sprites';
+      }
+      fileCategory.set(file.key, cat);
+      remaining[cat]++;
+      return true;
+    });
+    this.load.on(Phaser.Loader.Events.FILE_COMPLETE, (key: string) => {
+      const cat = fileCategory.get(key);
+      if (!cat) return;
+      remaining[cat]--;
+      if (remaining[cat] === 0) this.markChecklistDone(cat);
+    });
+
     this.load.start();
 
     // Kick off dynamic-import of every other scene in parallel with the asset
@@ -158,7 +214,23 @@ export class BootScene extends Phaser.Scene {
     // chunk. The loading-screen text uses the Phaser/system default font, so
     // we don't need fonts to render the bar — just to keep MenuScene from
     // measuring text against the wrong family.
-    const fontsPromise = import('../ui/fonts').then((m) => m.preloadFonts());
+    const fontsPromise = import('../ui/fonts')
+      .then((m) => m.preloadFonts())
+      .then(() => this.markChecklistDone('fonts'));
+
+    // Aggregate scene-chunk imports into one promise so the checklist's
+    // 'code' row flips only after every scene is registered. The
+    // individual scene promises are still threaded into the outer
+    // Promise.all so a chunk failure surfaces with the right rejection.
+    Promise.all([
+      menuPromise,
+      gamePromise,
+      endPromise,
+      testMenuPromise,
+      charSelectPromise,
+      patternTestPromise,
+      creditsPromise,
+    ]).then(() => this.markChecklistDone('code'));
 
     const assetsPromise = new Promise<void>((resolve, reject) => {
       this.load.once(Phaser.Loader.Events.COMPLETE, () => {
@@ -167,6 +239,11 @@ export class BootScene extends Phaser.Scene {
           registerAllCharacterAnims(this);
           registerElevatorAnims(this);
           registerBombAnims(this);
+          registerBlueExplosionAnim(this);
+          // Derived textures that need a source image (the email PNG)
+          // must run post-load, not in the synchronous generateTextures
+          // microtask above.
+          generateEmailBorderedTexture(this);
           resolve();
         } catch (err) {
           reject(err);
@@ -301,5 +378,43 @@ export class BootScene extends Phaser.Scene {
       fill.fillStyle(COLOR_ACCENT_GOLD, 1);
       fill.fillRect(barX, barY, barW * value, barH);
     });
+
+    // Per-category checklist under the bar. Rows start dim with `[ ]` and
+    // flip to green `[x]` as each category finishes loading — gives the
+    // user concrete feedback on what's still in flight (network-bound
+    // music vs. local sprite atlases vs. scene chunks).
+    //
+    // Rows are left-aligned (so the `[ ]` brackets stack into a clean
+    // column) but the group as a whole stays visually centered: build the
+    // rows at a tentative x, measure the widest, then snap every row's
+    // left edge so the widest row's bounding box centers on `cx`. Shorter
+    // labels stop short of the right edge — that's the left-alignment.
+    const firstRowY = barY + barH + 18;
+    const rowH = 16;
+    const rows: Phaser.GameObjects.Text[] = [];
+    let maxW = 0;
+    for (let i = 0; i < CHECKLIST_ITEMS.length; i++) {
+      const item = CHECKLIST_ITEMS[i];
+      if (!item) continue;
+      const row = this.add
+        .text(cx, firstRowY + i * rowH, `[ ] ${item.label}`, {
+          color: COLOR_TEXT_DIM_STR,
+          fontSize: '12px',
+        })
+        .setOrigin(0, 0.5);
+      rows.push(row);
+      if (row.width > maxW) maxW = row.width;
+      this.checklistRows.set(item.id, row);
+    }
+    const left = Math.round(cx - maxW / 2);
+    for (const r of rows) r.setX(left);
+  }
+
+  private markChecklistDone(id: string): void {
+    const row = this.checklistRows.get(id);
+    if (!row) return;
+    const label = row.text.replace(/^\[.\] /, '');
+    row.setText(`[x] ${label}`);
+    row.setColor(COLOR_ACCENT_GREEN_STR);
   }
 }

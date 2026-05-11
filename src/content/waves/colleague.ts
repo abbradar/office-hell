@@ -101,6 +101,7 @@ const COLLEAGUE_BAND_Y = 270;
 const COLLEAGUE_BAND_TOLERANCE = 64;
 export function* urgentCallWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'urgent call');
+  self.stage.scheduleMultDrop('regular');
   yield* alignDoor(self, COLLEAGUE_BAND_Y, COLLEAGUE_BAND_TOLERANCE);
   yield* suspendRunning(self, function* () {
     self.spawn(colleague, sideSpawnX(-1), doorY(self, 220), 0, 0);

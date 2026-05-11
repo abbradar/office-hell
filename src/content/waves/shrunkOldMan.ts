@@ -241,6 +241,7 @@ export const shrunkOldMan = new BossKind({
 
 export function* shrunkOldManWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'mr. hodges');
+  self.stage.scheduleMultDrop('boss');
   // Music setup (KAEDALUS_LONG) is owned by the chain function
   // (`fromShrunkOldMan`) — both the live chain and the standalone
   // practice entry route through it. The lethal-hit script below

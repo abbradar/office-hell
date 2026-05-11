@@ -136,6 +136,7 @@ const MEMBERS: readonly MemberSpec[] = [
 
 export function* fridayPartyWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'friday party');
+  self.stage.scheduleMultDrop('regular');
   // biome-ignore lint/correctness/useYield: spawn-only body; suspendRunning supplies the yield*
   yield* suspendRunning(self, function* () {
     self.spawn(normieManager, MANAGER_X, -30, 0, 0);

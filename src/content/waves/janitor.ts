@@ -90,6 +90,7 @@ export const janitor = new HPEntityKind({
 // 3s lead.
 export function* janitorsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'janitor');
+  self.stage.scheduleMultDrop('regular');
   // Pin the topmost door near JANITOR_DOOR_Y before suspending so both
   // janitors emerge through the same panel — without this they'd snap to
   // whichever door happened to be closest, which on a fresh scroll could

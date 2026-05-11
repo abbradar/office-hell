@@ -16,6 +16,7 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
+import { liftMultFloor, MultDropKind, onContinue, refreshChainTimer } from '../script/score';
 import { StageManager } from '../script/StageManager';
 import { DAMAGE_CLASSES, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
@@ -31,6 +32,7 @@ import {
   COLOR_TEXT_PRIMARY_STR,
   COLOR_WALL,
 } from '../ui/palette';
+import { addMuteButton } from '../ui/muteButton';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
 
@@ -43,6 +45,29 @@ const CORRIDOR_SCROLL_PX_PER_MS = 0.1;
 // for "hostile / fps / practice mode" — the only sub-second thing in the
 // line is the displayed FPS itself.
 const HUD_REFRESH_MS = 1000;
+
+// Score / mult readout layout. Score is zero-padded to SCORE_WIDTH
+// digits (`%08d`); mult to MULT_WIDTH (`%03d`). The whole compound
+// right-anchors at HUD_READOUT_RIGHT — left-of-the-mute-icon, with a
+// small gap so the mute glyph never overlaps the digits. The mute
+// icon at the GAME_W edge takes ~28 px including its 6 px margin, so
+// 42 px clears it comfortably regardless of font width quirks.
+const SCORE_WIDTH = 8;
+const MULT_WIDTH = 3;
+const HUD_READOUT_RIGHT = 400 - 42;
+
+// Split a zero-padded numeric string into a leading-zeros run and the
+// significant-digits suffix. Used by the HUD to render the leading
+// zeros at a lower alpha than the real digits, so the eye lands on
+// the meaningful number first. When the whole string is zeros (the
+// value is 0), the last character stays in `digits` so the readout
+// never shows nothing — "00000000" reads as "0000000|0", not "
+// 00000000|".
+function splitLeadingZeros(padded: string): { zeros: string; digits: string } {
+  const i = padded.search(/[^0]/);
+  if (i === -1) return { zeros: padded.slice(0, -1), digits: padded.slice(-1) };
+  return { zeros: padded.slice(0, i), digits: padded.slice(i) };
+}
 
 // Door layout constants live in src/content/doors.ts so stage scripts
 // can compute door y values from the same formula. See that module for
@@ -186,6 +211,16 @@ export class GameScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
   private bossNameText!: Phaser.GameObjects.Text;
+  // Score × multiplier readout in the top-right of the header. Each
+  // number is split into a leading-zeros run (dim) and significant
+  // digits (full alpha); the `×` separator sits in between at full
+  // alpha. Five Texts so the layout reads like a classic arcade
+  // scoreboard. See src/docs/scoring-system.md.
+  private scoreZerosText!: Phaser.GameObjects.Text;
+  private scoreDigitsText!: Phaser.GameObjects.Text;
+  private scoreSepText!: Phaser.GameObjects.Text;
+  private multZerosText!: Phaser.GameObjects.Text;
+  private multDigitsText!: Phaser.GameObjects.Text;
   private bg!: Phaser.GameObjects.TileSprite;
   // Walls layer baked per-frame: walls texture drawn in, then the doors
   // silhouette (BG_DOORS_BBOX_KEY) is erased at each door's y. Eraser and
@@ -322,6 +357,26 @@ export class GameScene extends Phaser.Scene {
       .text(GAME_W / 2, HEADER_H / 2, '', { ...FONT_DIALOGUE_SM, color: COLOR_TEXT_PRIMARY_STR })
       .setOrigin(0.5)
       .setDepth(100);
+    // Score × multiplier readout. Score is rendered zero-padded to 8
+    // digits, mult to 3 (matching the `%08d` / `%03d` shape the user
+    // asked for), with the leading-zero run drawn at alpha 0.7 so the
+    // significant digits read first. Layout is left-to-right:
+    // [score-zeros] [score-digits] [×] [mult-zeros] [mult-digits].
+    // The whole block right-anchors at HUD_READOUT_RIGHT so it stays
+    // clear of the top-right mute icon. See src/docs/scoring-system.md.
+    const scoreStyle = { ...FONT_DIALOGUE_SM, color: COLOR_TEXT_PRIMARY_STR };
+    const multStyle = { ...FONT_DIALOGUE_SM, color: COLOR_ACCENT_RED_STR };
+    const hudY = HEADER_H / 2;
+    this.scoreZerosText = this.add.text(0, hudY, '', scoreStyle).setOrigin(0, 0.5).setAlpha(0.7).setDepth(100);
+    this.scoreDigitsText = this.add.text(0, hudY, '', scoreStyle).setOrigin(0, 0.5).setDepth(100);
+    this.scoreSepText = this.add.text(0, hudY, '×', multStyle).setOrigin(0, 0.5).setDepth(100);
+    this.multZerosText = this.add.text(0, hudY, '', multStyle).setOrigin(0, 0.5).setAlpha(0.7).setDepth(100);
+    this.multDigitsText = this.add.text(0, hudY, '', multStyle).setOrigin(0, 0.5).setDepth(100);
+
+    // Mute toggle in the top-right corner — same widget the menu uses.
+    // The depth-200 icon clears the HUD band; the score readout above
+    // is right-anchored at HUD_READOUT_RIGHT so the two don't collide.
+    addMuteButton(this);
 
     const character = getSelectedCharacter(this);
     if (!character)
@@ -371,6 +426,21 @@ export class GameScene extends Phaser.Scene {
         attacker.kind.targetCollision(attacker, target);
       });
     }
+
+    // Multiplier-drop pickup: one-way overlap with the player. Reading
+    // `floorLift` off MultDropKind lifts the per-stage floor (boss
+    // drops bump it most), refreshes the chain timer (so quiet beats
+    // between waves don't break the chain), and kills the drop. See
+    // src/docs/scoring-system.md.
+    this.physics.add.overlap(this.player, this.stage.drops, (_p, d) => {
+      const drop = d as Entity;
+      if (!drop.alive) return;
+      const kind = drop.kind;
+      if (!(kind instanceof MultDropKind)) return;
+      if (kind.floorLift > 0) liftMultFloor(this.stage.score, kind.floorLift);
+      refreshChainTimer(this.stage.score);
+      drop.die();
+    });
 
     if (isTouchDevice) {
       const bombY = bombButtonY();
@@ -648,6 +718,10 @@ export class GameScene extends Phaser.Scene {
   private revivePlayerWithDeathBomb(): void {
     const p = this.player;
     this.stage.score.continues++;
+    // Continue wipes the run's score column — the scoreboard reflects
+    // untainted runs only. Resets the chain + floor too. See
+    // src/docs/scoring-system.md → reset triggers.
+    onContinue(this.stage.score);
     p.alive = true;
     (p.vars as HPVars).hp = this.playerKind.hp;
     p.body.enable = true;
@@ -778,7 +852,47 @@ export class GameScene extends Phaser.Scene {
 
     this.bossNameText.setText(this.stage.bossName ?? '');
 
+    // Score × mult. Each number is split into a leading-zero run
+    // (alpha 0.7) and the significant digits (full alpha). The block
+    // is laid out left-to-right at runtime so the rightmost glyph
+    // pins to HUD_READOUT_RIGHT regardless of how many leading zeros
+    // collapsed away.
+    this.refreshScoreReadout();
+
     if (this.debugHud) this.debugHud.setText(this.formatDebugLine());
+  }
+
+  // Layout the split score-readout in the HUD band. Score is
+  // zero-padded to 8 digits, mult to 3; the dim-zero / bright-digit
+  // boundary is the first non-zero character (or the last char if the
+  // value is exactly zero, so the readout never shows nothing).
+  // Pieces are positioned left-to-right with their measured widths
+  // chained, and the whole block right-anchors at HUD_READOUT_RIGHT
+  // so the rightmost glyph stays clear of the top-right mute icon.
+  private refreshScoreReadout(): void {
+    const { score, mult } = this.stage.score;
+    const scoreStr = score.toString().padStart(SCORE_WIDTH, '0');
+    const multStr = mult.toString().padStart(MULT_WIDTH, '0');
+    const sZ = splitLeadingZeros(scoreStr);
+    const mZ = splitLeadingZeros(multStr);
+
+    this.scoreZerosText.setText(sZ.zeros);
+    this.scoreDigitsText.setText(sZ.digits);
+    this.multZerosText.setText(mZ.zeros);
+    this.multDigitsText.setText(mZ.digits);
+
+    // Right-pack: position the rightmost element first, then walk left
+    // by each piece's measured width.
+    let x = HUD_READOUT_RIGHT;
+    this.multDigitsText.setX(x - this.multDigitsText.width);
+    x -= this.multDigitsText.width;
+    this.multZerosText.setX(x - this.multZerosText.width);
+    x -= this.multZerosText.width;
+    this.scoreSepText.setX(x - this.scoreSepText.width);
+    x -= this.scoreSepText.width;
+    this.scoreDigitsText.setX(x - this.scoreDigitsText.width);
+    x -= this.scoreDigitsText.width;
+    this.scoreZerosText.setX(x - this.scoreZerosText.width);
   }
 
   // Death animation: freeze the world (stage script + physics), strobe the

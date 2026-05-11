@@ -364,6 +364,7 @@ export const gymBroFromPhase2 = makeGymBro(1);
 // damageable via becomeHittable.
 export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'gym bro');
+  self.stage.scheduleMultDrop('boss');
   // Music setup (switch to retro-02) is owned by the chain function
   // (`fromGymBro`) — both the live chain and the standalone practice
   // entry route through it so the music is correct before the wave

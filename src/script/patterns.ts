@@ -1,6 +1,12 @@
 import { shoot } from '../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import type { Entity } from '../entities/Entity';
+import { blueExplosion, bullet, redExplosion } from '../content/kinds';
+import {
+  BLUE_EXPLOSION_FRAME_DURATION_FRAMES,
+  BLUE_EXPLOSION_FRAME_W,
+  RED_EXPLOSION_FRAMES,
+} from '../content/textures';
 import { type EntityKind, INERT_KIND, type ScriptYield } from './types';
 
 // True once the entity's center is past any screen edge — i.e. it's at least
@@ -160,6 +166,109 @@ export function arc(
   const step = (toAngle - fromAngle) / (count - 1);
   for (let i = 0; i < count; i++) {
     shootAt(self, kind, fromAngle + i * step, speed);
+  }
+}
+
+// Stationary or rotating arc of bullets at a fixed radius around a
+// center point — unlike `arc`, the bullets do NOT propagate outward.
+// Each tick the pattern recomputes every bullet's (x, y) from its
+// current angular position, so the arc reads as a wall/barrier that
+// either sits in place (`rotateSpeed = 0`, default) or sweeps around
+// the center at the chosen angular rate. Generator — `yield*` it.
+//
+// Bullet positions are driven directly by writing `body.x` / `body.y`
+// each frame (no physics velocity), so the arc stays exactly on its
+// orbit regardless of the engine's arcade-physics integration. Bullets
+// are still damaging via their hitbox; only their motion is bypassed.
+//
+// Lifetime: runs for `durationFrames` physics frames (default Infinity
+// — race with `waitSeconds(N)` or another helper to time-box). All
+// bullets die at the end. Race-cancellation is honoured: when the
+// containing race wins elsewhere, the generator's `finally` (implicit
+// in the runtime's drop) runs through and the bullets are cleaned up.
+export function* orbitArc(
+  self: Entity,
+  opts: {
+    // Bullets evenly spaced from `fromRad` to `toRad` (inclusive of
+    // both endpoints, like `arc`). For an N-th of a full circle ring
+    // pass `fromRad: 0, toRad: 2*Math.PI * (count - 1) / count`.
+    count: number;
+    kind: EntityKind;
+    // Distance from the center, in pixels.
+    radius: number;
+    fromRad: number;
+    toRad: number;
+    // Angular velocity in radians per second. 0 = static arc;
+    // positive = clockwise (Phaser convention); negative = CCW.
+    rotateSpeed?: number;
+    // Total lifetime in physics frames. Default Infinity — pattern
+    // runs until cancelled by an outer `race`. The pattern will not
+    // re-spawn bullets after they're killed (e.g. by a player bomb).
+    durationFrames?: number;
+    // Entity to orbit around. Defaults to `self`. Pass the boss when
+    // running the pattern from a controller entity placed elsewhere,
+    // so the arc tracks the boss instead of the controller.
+    centerEntity?: Entity;
+  },
+): Generator<ScriptYield, void, void> {
+  const { count, kind, radius, fromRad, toRad } = opts;
+  if (count <= 0) return;
+  const rotateSpeed = opts.rotateSpeed ?? 0;
+  const duration = opts.durationFrames ?? Number.POSITIVE_INFINITY;
+  const center = opts.centerEntity ?? self;
+
+  if (offScreen(self)) return;
+  shoot();
+
+  // Per-bullet base angles. `count === 1` puts the single bullet at
+  // `fromRad`; otherwise endpoints are inclusive so the last bullet
+  // lands exactly at `toRad`.
+  const baseAngles: number[] = [];
+  if (count === 1) {
+    baseAngles.push(fromRad);
+  } else {
+    const step = (toRad - fromRad) / (count - 1);
+    for (let i = 0; i < count; i++) baseAngles.push(fromRad + i * step);
+  }
+
+  // Spawn at initial positions with zero velocity; subsequent frames
+  // rewrite x/y directly. Holding a reference to each spawned entity
+  // lets us update them per tick + clean them up on exit.
+  const bullets: Entity[] = [];
+  for (let i = 0; i < count; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounded by count
+    const a = baseAngles[i]!;
+    const x = center.x + radius * Math.cos(a);
+    const y = center.y + radius * Math.sin(a);
+    bullets.push(self.spawn(kind, x, y, 0, 0));
+  }
+
+  // Rotation phase accumulates over time; each bullet's effective
+  // angle is `baseAngles[i] + phase`.
+  let phase = 0;
+  const phasePerFrame = rotateSpeed / SCRIPT_FPS;
+  let elapsed = 0;
+  while (elapsed < duration) {
+    yield 1;
+    elapsed++;
+    if (phasePerFrame !== 0) phase += phasePerFrame;
+    const cx = center.x;
+    const cy = center.y;
+    for (let i = 0; i < count; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by count
+      const b = bullets[i]!;
+      if (!b.alive) continue;
+      // biome-ignore lint/style/noNonNullAssertion: bounded by count
+      const a = baseAngles[i]! + phase;
+      b.x = cx + radius * Math.cos(a);
+      b.y = cy + radius * Math.sin(a);
+    }
+  }
+
+  // Clean up surviving bullets so a finite-duration arc doesn't
+  // leave a stationary "wall" behind on the field.
+  for (const b of bullets) {
+    if (b.alive) b.die();
   }
 }
 
@@ -544,5 +653,271 @@ export function lineStroke(
       line.destroy();
       e.die();
     },
+  });
+}
+
+// Propagating shockwave of explosion sprites along a line from
+// (x1,y1) to (x2,y2). Each tile is a `blueExplosion` entity placed
+// at a fixed position; the pattern drives the *sprite frame* of
+// every active tile manually each tick.
+//
+// Algorithm — every tick advances frames on existing tiles; spawns
+// happen every `framesPerSpawn` ticks:
+//
+//   framesPerSpawn = 1 (default — front + tail tightly chained):
+//     tick 0:  spawn tile 0, frame 0
+//     tick 1:  tile 0 → frame 1; spawn tile 1, frame 0
+//     tick 2:  tile 0 → frame 2; tile 1 → frame 1; spawn tile 2, frame 0
+//     …
+//
+//   framesPerSpawn = 3 (each tile holds 3 frames in place before the
+//                       next position joins):
+//     tick 0:  spawn tile 0, frame 0
+//     tick 1:  tile 0 → frame 1
+//     tick 2:  tile 0 → frame 2
+//     tick 3:  tile 0 → frame 3; spawn tile 1, frame 0
+//     tick 4:  tile 0 → frame 4; tile 1 → frame 1
+//     …
+//
+// A tile dies after it advances past the last animation frame.
+// Direction-agnostic — "from down to up" is just
+// `lineExplosion(self, x, GAME_H-50, x, 50)`.
+//
+// All tiles are damaging while alive (each tile's hitbox is the
+// entity's `hitboxRadius`). The propagating front is the player's
+// telegraph; the trailing tail is the danger zone.
+export function* lineExplosion(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  opts?: {
+    // Distance between consecutive tile positions, in pixels.
+    // Default = sprite width + 6 px so adjacent tiles have a small
+    // visible gap between them.
+    stepPx?: number;
+    // Wavefront propagation speed in pixels per second — i.e. how
+    // fast the leading edge advances. Convenience over `stepFrames`:
+    // internally rewrites `stepFrames` to hit the requested speed
+    // given the chosen `stepPx` + `framesPerSpawn`. Ignored when
+    // `stepFrames` is set explicitly.
+    speedPxPerSec?: number;
+    // Physics frames between sprite-frame ticks. Default = each
+    // animation frame's intended duration. Each tile shows each of
+    // its sprite frames for exactly `stepFrames` physics frames.
+    // Explicit `stepFrames` overrides `speedPxPerSec`.
+    stepFrames?: number;
+    // How many sprite-frame ticks each tile holds *in place* before
+    // the next position spawns. Default 1 (front spawns every tick,
+    // every existing tile lags one frame behind its neighbour).
+    // Set to 3 to give each tile a 3-frame head-start in place
+    // before the next tile joins — the trailing tiles spread out
+    // visibly with 3 sprite frames between adjacent positions
+    // instead of 1, and the wavefront speed drops proportionally
+    // unless `speedPxPerSec` compensates.
+    framesPerSpawn?: number;
+    // Override the spawned entity kind. Must be a spritesheet kind
+    // with at least `frameCount` frames. Default is `blueExplosion`.
+    kind?: EntityKind;
+    // Number of sprite frames in the kind's spritesheet. Default
+    // 7 (matches `blueExplosion` after the uniform-grid re-pack +
+    // scatter merge).
+    frameCount?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  const stepPx = opts?.stepPx ?? BLUE_EXPLOSION_FRAME_W + 6;
+  const framesPerSpawn = Math.max(1, Math.round(opts?.framesPerSpawn ?? 1));
+  // Resolution order for tick spacing:
+  //   1. explicit `stepFrames`           — exact, integer
+  //   2. derived from `speedPxPerSec`    — wavefront moves `stepPx`
+  //                                        every `framesPerSpawn`
+  //                                        ticks; back out the
+  //                                        per-tick frame budget
+  //                                        from that
+  //   3. animation's per-frame duration  — keeps each sprite frame
+  //                                        on screen the intended
+  //                                        time
+  const stepFrames =
+    opts?.stepFrames ??
+    (opts?.speedPxPerSec !== undefined
+      ? Math.max(1, Math.round((stepPx * SCRIPT_FPS) / (opts.speedPxPerSec * framesPerSpawn)))
+      : BLUE_EXPLOSION_FRAME_DURATION_FRAMES);
+  const kind = opts?.kind ?? blueExplosion;
+  const frameCount = opts?.frameCount ?? 7;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return;
+
+  // Fixed stride from (x1,y1); positions land every stepPx along the
+  // line. The last position may sit slightly short of (x2,y2) when
+  // the distance isn't a clean multiple of stepPx — that's the right
+  // trade-off vs interpolating, which would compress the spacing.
+  const positions = Math.max(1, Math.floor(dist / stepPx) + 1);
+  const ux = dx / dist;
+  const uy = dy / dist;
+
+  // Per-position slot: the active entity at that position, and the
+  // sprite frame it currently shows. `null` once the tile has died
+  // or before it has been spawned.
+  type Slot = { entity: Entity; frame: number } | null;
+  const slots: Slot[] = new Array(positions).fill(null);
+
+  shoot();
+  // Total ticks: last tile spawns at tick (positions-1)*framesPerSpawn
+  // and lives for `frameCount` more ticks before dying.
+  const totalTicks = (positions - 1) * framesPerSpawn + frameCount;
+
+  for (let tick = 0; tick < totalTicks; tick++) {
+    // 1. Advance frame on every active slot. A slot whose new frame
+    //    is past the last animation frame is killed and cleared.
+    for (let p = 0; p < positions; p++) {
+      const slot = slots[p];
+      if (!slot) continue;
+      slot.frame++;
+      if (slot.frame >= frameCount) {
+        if (slot.entity.alive) slot.entity.die();
+        slots[p] = null;
+      } else {
+        slot.entity.setFrame(slot.frame);
+      }
+    }
+
+    // 2. Spawn the next tile every `framesPerSpawn` ticks. The
+    //    position index is the tick count divided by the spawn
+    //    cadence — only valid when the tick lands on a spawn beat
+    //    AND there's still a position to fill.
+    if (tick % framesPerSpawn === 0) {
+      const i = tick / framesPerSpawn;
+      if (i < positions) {
+        const px = x1 + ux * i * stepPx;
+        const py = y1 + uy * i * stepPx;
+        const entity = self.spawn(kind, px, py, 0, 0);
+        entity.setFrame(0);
+        slots[i] = { entity, frame: 0 };
+      }
+    }
+
+    yield stepFrames;
+  }
+
+  // Cleanup — any tile still alive at the end (shouldn't happen if
+  // totalTicks is right) gets killed defensively.
+  for (const slot of slots) {
+    if (slot && slot.entity.alive) slot.entity.die();
+  }
+}
+
+// Same algorithm as `lineExplosion`, pre-baked with the
+// `redExplosion` sprite + a slower / sparser default profile:
+// wide spacing between tiles (60 px), long frame hold (9 phys frames
+// per sprite frame), and five frames in place before the next spawn.
+// Effective wavefront speed at defaults ≈ 80 px/s — a deliberate,
+// ominous march vs. the blue variant's quick snap.
+//
+// All `lineExplosion` opts are accepted; user-supplied values
+// override the wrapper's defaults.
+export function* lineRedExplosion(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  opts?: {
+    stepPx?: number;
+    speedPxPerSec?: number;
+    stepFrames?: number;
+    framesPerSpawn?: number;
+    kind?: EntityKind;
+    frameCount?: number;
+  },
+): Generator<ScriptYield, void, void> {
+  yield* lineExplosion(self, x1, y1, x2, y2, {
+    kind: redExplosion,
+    frameCount: RED_EXPLOSION_FRAMES,
+    stepPx: 60,
+    stepFrames: 9,
+    framesPerSpawn: 5,
+    ...opts,
+  });
+}
+
+// `lineStroke` with a built-in telegraph → detonate cycle. Draws a
+// non-damaging warning line immediately (lifetime = `offsetMs`), then
+// schedules a damaging lineStroke at the same coordinates `offsetMs`
+// later via `scene.time.delayedCall`. Single-call convenience for
+// callers that want "warn for N ms, then commit". Cancels the
+// lethal phase if the firing entity has died by the time the
+// detonation tick comes around.
+//
+// Side-effect scheduling: the delayedCall uses scene time, which is
+// NOT gated by physics pause — a dialog freeze that overlaps the
+// telegraph window will still let the detonation fire. Acceptable
+// for boss patterns where dialogs happen between attacks; revisit
+// if a pattern needs to be pause-safe.
+export function lineStrokeTelegraph(
+  self: Entity,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  offsetMs: number,
+  opts?: {
+    // Bullet kind to use for both the warning and the detonation.
+    // Default = white `bullet`.
+    kind?: EntityKind;
+    // Physics frames the lethal line stays on screen. Default 30
+    // (~0.5 s) — a brief blink. Bump higher for a "stay out of this
+    // lane" wall.
+    lethalFrames?: number;
+    spacing?: number;
+    color?: number;
+    width?: number;
+  },
+): void {
+  const kind = opts?.kind ?? bullet;
+  const lethalFrames = opts?.lethalFrames ?? 30;
+  const telegraphFrames = Math.max(1, Math.round((offsetMs * SCRIPT_FPS) / 1000));
+  const lineOpts = {
+    spacing: opts?.spacing,
+    color: opts?.color,
+    width: opts?.width,
+  };
+
+  // Warning — non-damaging, fades / draws over its lifetime then
+  // disappears just as the lethal version takes over.
+  lineStroke(self, x1, y1, x2, y2, kind, telegraphFrames, {
+    ...lineOpts,
+    damaging: false,
+  });
+
+  self.scene.time.delayedCall(offsetMs, () => {
+    if (!self.alive) return;
+    lineStroke(self, x1, y1, x2, y2, kind, lethalFrames, {
+      ...lineOpts,
+      damaging: true,
+    });
+  });
+}
+
+// Quick directional camera punch — tweens the main camera's scroll
+// by `dx`/`dy` and yoyos back. Used as a sub-second VFX accent on
+// boss patterns: a positive `dx` punches the world *left* (camera
+// looks right), reading as "screen shake right".
+//
+// Pure side-effect; safe to call from a sync `fire` callback in a
+// beatmap. Multiple overlapping punches stack via Phaser's tween
+// system without fighting each other.
+export function cameraPunch(self: Entity, dx: number, dy = 0, durationMs = 120): void {
+  const cam = self.scene.cameras.main;
+  self.scene.tweens.add({
+    targets: cam,
+    scrollX: cam.scrollX + dx,
+    scrollY: cam.scrollY + dy,
+    duration: durationMs / 2,
+    yoyo: true,
+    ease: 'Quad.easeOut',
   });
 }

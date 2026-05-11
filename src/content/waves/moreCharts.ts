@@ -359,6 +359,7 @@ export const slideColleague = new HPEntityKind({
 // the bar-chart one comes in to do the same with columns.
 export function* moreChartsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'more charts');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     const pie = self.spawn(slideColleague, GAME_W * 0.5, -30, 0, 0, {
       script: pieColleagueScript,

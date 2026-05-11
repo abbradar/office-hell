@@ -12,12 +12,12 @@ export const STAGE1_RETRO_02_LOOP_KEY = 'stage1Retro02Loop';
 export const STAGE1_RETRO_03_OPENING_KEY = 'stage1Retro03Opening';
 export const STAGE1_RETRO_03_LOOP_KEY = 'stage1Retro03Loop';
 
-// Stage 2 final-boss track. Distinct from stage 1's retro_03 so the
-// final-boss bookend has its own intensity instead of recycling the
-// mid-stage-1 boss theme. Intro plays once at the boss entrance, then
-// hands off to the loop for the rest of the fight.
-export const STAGE2_RETRO_03_OPENING_KEY = 'stage2Retro03Opening';
-export const STAGE2_RETRO_03_LOOP_KEY = 'stage2Retro03Loop';
+// Final-boss track — the "metal" loop. Distinct from stage 1's retro_03
+// so the final-boss bookend has its own intensity instead of recycling
+// the mid-stage-1 boss theme. Intro plays once at the boss entrance,
+// then hands off to the loop for the rest of the fight.
+export const FINAL_BOSS_METAL_OPENING_KEY = 'finalBossMetalOpening';
+export const FINAL_BOSS_METAL_LOOP_KEY = 'finalBossMetalLoop';
 
 // Ending — "Unchained Destiny". Plays under the post-stage-2 walk-home
 // scene with the credits roll fading over the corridor.

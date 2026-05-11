@@ -300,6 +300,7 @@ function* itAdminScript(self: Entity) {
 // phase now carries the bullet-pattern weight on the same sprite.
 export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'it admin');
+  self.stage.scheduleMultDrop('regular');
   // biome-ignore lint/correctness/useYield: spawn-only body; suspendRunning supplies the yield*
   yield* suspendRunning(self, function* () {
     self.spawn(itAdmin, GAME_W / 2, -30, 0, 0, {

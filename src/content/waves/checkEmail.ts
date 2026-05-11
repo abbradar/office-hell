@@ -74,6 +74,7 @@ export const checkEmailCoworker = new HPEntityKind({
 // the pattern, then a paired follow-up so the rings overlap.
 export function* checkEmailWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'check email');
+  self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
     self.spawn(checkEmailCoworker, GAME_W * 0.3, -30, 0, 0);
     yield 110;

@@ -14,8 +14,8 @@ export const SECTIONS: Section[] = [
   {
     heading: 'TEAM',
     entries: [
-      { name: 'abbradar', role: 'code, stage design' },
-      { name: 'vuvko', role: 'code, sound design, pattern design' },
+      { name: 'abbradar', role: 'code, stage design, pattern design' },
+      { name: 'vuvko', role: 'code, sound design, stage design, pattern design' },
       { name: 'const', role: 'code, pattern design' },
       { name: 'nclbrt', role: 'art design, character design' },
     ],
@@ -34,11 +34,12 @@ export const SECTIONS: Section[] = [
   {
     heading: 'ART & ICONS & SFX',
     entries: [
-      { name: 'Kenney', url: 'opengameart.org/users/kenney' },
+      { name: 'Kenney.nl', url: 'opengameart.org/users/kenney' },
       { name: 'Top Down Sprite Maker', url: 'flinkerflitzer.itch.io/tdsm' },
       { name: 'Animated Elevator', url: 'pixel-assembly.itch.io/animated-elevator' },
       { name: 'Furniture Office Set', url: 'stcrbcn.itch.io/furniture-office-set' },
       { name: 'Explosions by helpcomputer', url: 'opengameart.org/content/explosions-2' },
+      { name: 'Bullet Collection 1 (M484)', url: 'opengameart.org/content/bullet-collection-1-m484' },
     ],
   },
   {

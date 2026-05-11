@@ -17,7 +17,7 @@ import { GAME_W, SCRIPT_FPS } from '../config';
 import { computeDoorYs, DOOR_H, isDoorVisible } from '../content/doors';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from './patterns';
-import { EnemyBulletEntityKind, type ScriptYield } from './types';
+import { EnemyBulletEntityKind, type HPVars, type ScriptYield } from './types';
 
 // Set the HUD's current-wave label. Pure side-effect, not a generator —
 // callers don't `yield*` it. Writes `stage.wave`; the StageManager
@@ -118,6 +118,14 @@ export function* waitSeconds(seconds: number): Generator<ScriptYield, void, void
 // (matching the runner's empty-race behaviour).
 export function* race(...iters: Array<Generator<ScriptYield, void, void>>): Generator<ScriptYield, void, void> {
   yield { race: iters };
+}
+
+// Run the given generators in parallel; resume the parent only after
+// every one of them has finished. Mirror of `race`, but join semantics.
+// An empty array resolves on the next frame (matching the runner's
+// empty-all behaviour).
+export function* all(...iters: Array<Generator<ScriptYield, void, void>>): Generator<ScriptYield, void, void> {
+  yield { all: iters };
 }
 
 // Run `inner` with a hard time budget. After `seconds` of game time
@@ -270,6 +278,164 @@ export function* waitTrackEnded(): Generator<ScriptYield, void, void> {
   yield* waitForMusicTimeReach(nextBoundary, 'loop ended');
 }
 
+// --- beatmap-driven patterns ---------------------------------------------
+
+// One entry in a beatmap. `t` is the music timestamp (seconds from
+// track start) at which `fire` should run; `fire` is a sync callback
+// the runtime invokes against the active boss/enemy. Beatmaps are
+// authored as plain arrays so a song's structure stays declarative.
+export type BeatmapBeat = {
+  t: number;
+  fire: (self: Entity, index: number) => void;
+};
+
+// Walk a beatmap, firing each beat's callback at its target music
+// timestamp. Synchronised to `getMusicTime()` via `waitAudioTimeAtLeast`
+// so layers stay locked to the track even across small frame hitches.
+//
+// Beats whose `t` is in the past by more than ~50 ms at call time are
+// skipped. That's the load-bearing detail when phases re-enter a
+// beatmap mid-song: a layer that starts in phase 2 should not
+// instant-fire every beat from t=0. The 50 ms tolerance preserves
+// **sibling beats at the same `t`** — between firing one beat and
+// checking the next, `waitAudioTimeAtLeast` can overshoot the
+// target by up to one physics frame (~16 ms) plus AudioContext
+// jitter; a strict `<` check would skip same-`t` siblings as
+// "already past". 50 ms covers the worst-case overshoot with
+// plenty of headroom, while true past-beat re-entry (always
+// seconds in the past) still skips correctly.
+//
+// When no music is playing (practice mode running a wave standalone
+// without its parent stage's track), `runBeatmap` falls back to
+// relative `waitSeconds` gaps so the pattern remains tunable. The
+// fallback loses absolute sync — it's a sanity pass, not a substitute
+// for hearing the track.
+const RUN_BEATMAP_SKIP_PAST_TOLERANCE_S = 0.05;
+
+// Spec for a looping beatmap. `intro` fires once at absolute music
+// times; the runner then enters `loop` iterations of `loopDur` seconds
+// each, with each iteration's beat firing at absolute time
+// `loopStartT + iter * loopDur + beat.t`. `loopStartT` defaults to the
+// active track's `introDuration` so `playMusicWithIntro` tracks just
+// work — caller passes it only to override (e.g. tests that compute
+// against a different anchor).
+//
+// Use shape: provide both arrays to mark a beatmap loop-aware; provide
+// only an array to runBeatmap to keep the legacy one-shot path. See
+// src/content/waves/theBoss.ts for the canonical caller.
+export type BeatmapSpec = {
+  intro?: readonly BeatmapBeat[];
+  loop: readonly BeatmapBeat[];
+  loopDur: number;
+  loopStartT?: number;
+};
+
+export function* runBeatmap(
+  self: Entity,
+  beatsOrSpec: readonly BeatmapBeat[] | BeatmapSpec,
+): Generator<ScriptYield, void, void> {
+  if (Array.isArray(beatsOrSpec)) {
+    yield* runBeatmapOnce(self, beatsOrSpec as readonly BeatmapBeat[]);
+    return;
+  }
+  const spec = beatsOrSpec as BeatmapSpec;
+  if (spec.intro && spec.intro.length > 0) {
+    yield* runBeatmapOnce(self, spec.intro);
+  }
+  // Resolve loop anchor: caller-provided override → active track's
+  // intro duration → 0 (no intro). The anchor is queried once per
+  // iteration so a track that hasn't started yet (e.g. test mode
+  // before any music) reads 0 and falls through to the no-music
+  // path inside `runBeatmapOnce`.
+  for (let iter = 0; self.alive; iter++) {
+    const info = getCurrentTrackInfo();
+    const loopStartT = spec.loopStartT ?? info?.introDuration ?? 0;
+    const baseT = loopStartT + iter * spec.loopDur;
+    const shifted: BeatmapBeat[] = spec.loop.map((b) => ({ t: baseT + b.t, fire: b.fire }));
+    yield* runBeatmapOnce(self, shifted);
+  }
+}
+
+// Walk a flat absolute-t beatmap once. Used internally by `runBeatmap`
+// for the intro pass and each loop iteration; exposed implicitly via
+// the array-shape `runBeatmap(self, beats)` overload for back-compat
+// callers that don't need looping.
+function* runBeatmapOnce(
+  self: Entity,
+  beats: readonly BeatmapBeat[],
+): Generator<ScriptYield, void, void> {
+  const musicTicking = getMusicTime() !== null;
+  let prev = 0;
+  for (let i = 0; i < beats.length; i++) {
+    if (!self.alive) return;
+    // biome-ignore lint/style/noNonNullAssertion: bounded by beats.length
+    const beat = beats[i]!;
+    if (musicTicking) {
+      const now = getMusicTime();
+      if (now !== null && now.time - beat.t > RUN_BEATMAP_SKIP_PAST_TOLERANCE_S) continue;
+      yield* waitAudioTimeAtLeast(beat.t);
+    } else {
+      const gap = beat.t - prev;
+      if (gap > 0) yield* waitSeconds(gap);
+      prev = beat.t;
+    }
+    beat.fire(self, i);
+  }
+}
+
+// Park the calling generator until `self.hp` drops below `threshold`.
+// One physics-frame poll per tick; HP only changes on collision so
+// the cost is negligible. Used as a phase-end racer:
+//   yield* race(...layers, untilHpBelow(self, max * 0.5));
+// the racer wins as soon as the boss crosses the threshold, race()
+// cancels every layer cleanly, the next phase's race() starts fresh.
+export function* untilHpBelow(self: Entity, threshold: number): Generator<ScriptYield, void, void> {
+  // HP lives on `self.vars` for HPEntityKind entities post-refactor;
+  // entities without an `hp` field on vars (no-HP kinds) are never
+  // damageable and this helper has no meaningful guard for them, so
+  // treat them as "below threshold" → resolve immediately.
+  while (((self.vars as HPVars | null)?.hp ?? 0) > threshold) yield 1;
+}
+
+// HP gate that snaps the resolution to the next bar boundary of the
+// active music track. Use for phase transitions that should land on
+// a musical downbeat instead of the moment HP crossed the threshold.
+// `barSeconds` is the duration of one bar in the track (= 4 * BEAT_S);
+// `bars` lets you snap to a wider phrase boundary (1 = next bar, 4 =
+// next 4-bar phrase). Returns immediately after `untilHpBelow` if no
+// music is playing — the snap is a no-op without a clock.
+export function* untilHpBelowQuantisedToBar(
+  self: Entity,
+  threshold: number,
+  barSeconds: number,
+  bars = 1,
+): Generator<ScriptYield, void, void> {
+  yield* untilHpBelow(self, threshold);
+  const m = getMusicTime();
+  if (m === null) return;
+  const stride = barSeconds * bars;
+  const targetTime = Math.ceil(m.time / stride) * stride;
+  yield* waitAudioTimeAtLeast(targetTime);
+}
+
+// HP-OR-music phase termination. Resolves on the earlier of:
+//  - HP dropping below `hpThreshold`
+//  - music time reaching `maxAudioSeconds`
+// Used for phases scheduled against a fixed-length track (no loop
+// repeats): the music boundary forces progression even if the player
+// can't damage fast enough, mirroring the Touhou spell-card-timer
+// model.
+export function* untilPhaseEnd(
+  self: Entity,
+  hpThreshold: number,
+  maxAudioSeconds: number,
+): Generator<ScriptYield, void, void> {
+  yield* race(
+    untilHpBelow(self, hpThreshold),
+    waitAudioTimeAtLeast(maxAudioSeconds),
+  );
+}
+
 // --- world-state waits ----------------------------------------------------
 
 // Yield until every enemy has died or left the screen. Bullets in
@@ -415,6 +581,19 @@ export function pickDoorCenterY(self: Entity, idealY: number): number | null {
     }
   }
   return best;
+}
+
+// Snapshot of every currently-visible door centre y. The wall sprites
+// have a fixed door cycle that scrolls with the corridor; when the
+// corridor is paused (e.g. during a boss fight), this returns the
+// stable set of "openings" available for random spawn picks. Use this
+// when you don't care which door — just want a random opening.
+export function visibleDoorCenters(self: Entity): number[] {
+  const out: number[] = [];
+  for (const top of computeDoorYs(self.stage.bgScrollY)) {
+    if (isDoorVisible(top)) out.push(top + DOOR_H / 2);
+  }
+  return out;
 }
 
 // Yield until a door's centre is within `tolerance` pixels of `targetY`.
