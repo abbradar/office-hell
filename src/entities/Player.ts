@@ -7,7 +7,7 @@ import type { CharacterDef } from '../content/characters';
 import { playerBullet } from '../content/kinds';
 import type { PlayerKind } from '../content/player';
 import type { StageManager } from '../script/StageManager';
-import type { DamageClass } from '../script/types';
+import type { DamageClass, HPVars } from '../script/types';
 import { COLOR_DANGER, COLOR_NO_TINT } from '../ui/palette';
 import { Entity } from './Entity';
 
@@ -75,6 +75,12 @@ export class Player extends Entity {
   // independently of movement. Used by the intro to let the player dodge
   // without being able to shoot back before the bomb tutorial unlocks them.
   firingEnabled = true;
+  // Same idea, for focus mode: while false, controlUpdate refuses to flip
+  // `focused` on regardless of Shift state, so the player can't stumble
+  // into focus-walking before the intro's focus tutorial introduces it.
+  // Defaults true so practice / test / music modes (which skip the intro)
+  // get focus from the menu — only the real-stage intro flips it off.
+  focusEnabled = true;
   // Cutscene flag — when set together with `walkAnim`, updateAnim plays
   // the walk animation in the current `facing` direction even though
   // velocity is zero. Used by the ending scene where the player walks
@@ -142,7 +148,7 @@ export class Player extends Entity {
 
     this.stage = stage;
     this.kind = kind;
-    this.hp = kind.hp;
+    this.vars = { hp: kind.hp } satisfies HPVars;
     this.alive = true;
     this.hasEnteredScreen = true;
 
@@ -375,7 +381,7 @@ export class Player extends Entity {
     const maxY = GAME_H - halfH;
 
     const kbActive = input.kbDirX !== 0 || input.kbDirY !== 0;
-    this.focused = kbActive && input.focusHeld;
+    this.focused = kbActive && input.focusHeld && this.focusEnabled;
 
     let newVx = 0;
     let newVy = 0;

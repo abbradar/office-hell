@@ -230,7 +230,6 @@ function makeFanSpiralController(durationS: number): EntityKind {
   return new EntityKind({
     sprite: null,
     hitboxRadius: 0,
-    hp: null,
     damageClass: [],
     damagedByClass: [],
     defaultScript: script,
@@ -283,7 +282,6 @@ function* counterPetalScript(self: Entity): Generator<ScriptYield, void, void> {
 const counterPetalController = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
   damageClass: [],
   damagedByClass: [],
   defaultScript: counterPetalScript,
@@ -411,7 +409,6 @@ function* vertExplosionRunnerScript(self: Entity): Generator<ScriptYield, void, 
 const vertExplosionRunner = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
   damageClass: [],
   damagedByClass: [],
   defaultScript: vertExplosionRunnerScript,
@@ -453,7 +450,6 @@ function makeVertExplosionDirector(
   return new EntityKind({
     sprite: null,
     hitboxRadius: 0,
-    hp: null,
     damageClass: [],
     damagedByClass: [],
     defaultScript: script,
@@ -573,7 +569,6 @@ function makeArcWaveController(side: 1 | -1, startDelayS: number): EntityKind {
   return new EntityKind({
     sprite: null,
     hitboxRadius: 0,
-    hp: null,
     damageClass: [],
     damagedByClass: [],
     defaultScript: script,
@@ -657,7 +652,6 @@ function* topAssistantScript(self: Entity): Generator<ScriptYield, void, void> {
 const topAssistant = new EntityKind({
   sprite: 'hr',
   hitboxRadius: 16,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [], // invulnerable — player bullets pass through
   defaultScript: topAssistantScript,
@@ -691,7 +685,6 @@ function* topAssistantDirectorScript(self: Entity): Generator<ScriptYield, void,
 const topAssistantDirector = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
   damageClass: [],
   damagedByClass: [],
   defaultScript: topAssistantDirectorScript,

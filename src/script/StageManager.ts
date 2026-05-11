@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { onceMusicComplete } from '../audio/music/loop';
-import { CULL_MARGIN, ENTITY_POOL_SIZE, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
+import { CULL_MARGIN, GAME_H, GAME_W, SCRIPT_FPS } from '../config';
 import { directionFromVelocity } from '../content/animations';
 import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
@@ -9,11 +9,18 @@ import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
 import { MULT_DROP_BY_TIER } from '../content/kinds';
 import { ALIVE_TICK_FRAMES, GameScore, MultDropKind, recordAliveTick, tickChain } from './score';
 import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
-import { INERT_KIND } from './types';
+import { HPEntityKind } from './types';
 
 type ClassGroups = Record<DamageClass, Phaser.Physics.Arcade.Group>;
 
 type ScriptIter = Generator<ScriptYield, void, void>;
+
+// Shared frozen sentinel handed to `spawn` when the caller omits its
+// `opts` argument — `spawn` is on the hot path (every bullet spawn
+// flows through it) so allocating a fresh `{}` per call would churn
+// the GC for no benefit. The frozen object guards against accidental
+// mutation; reads of optional fields just return undefined.
+const EMPTY_SPAWN_OPTS = Object.freeze({}) as SpawnOpts;
 
 // Short label describing the leaf wait `v` represents — used by the
 // debug HUD when a script with `debugYieldReasons` yields. A caller-
@@ -138,9 +145,10 @@ const MULT_DROP_FALLBACK_Y = 40;
 // spawns one (a misconfiguration) doesn't leak the pending entry.
 const PENDING_DROP_TIMEOUT_FRAMES = 300;
 
-// The runtime that runs a stage: owns the entity pool, the script
-// scheduler (wait queue, races, drops), the dialogue + bubble managers,
-// the pause flag, and the stage scratchpad (`globals` + `beat`).
+// The runtime that runs a stage: owns the active entity list, the
+// script scheduler (wait queue, races, drops), the dialogue + bubble
+// managers, the pause flag, and the stage scratchpad (`globals` +
+// `beat`).
 //
 // Constructed once per `GameScene`; throwing the manager away is the
 // reset for stage-local state. Anything an entity script can yield is
@@ -228,7 +236,6 @@ export class StageManager {
   // per-tick resolver retries until one appears or the timeout fires.
   private pendingDrops: { tier: EntityTier; framesLeft: number }[] = [];
 
-  private readonly free: Entity[] = [];
   private readonly active: Entity[] = [];
   // Two waiting queues, one per "clock":
   //
@@ -278,8 +285,6 @@ export class StageManager {
     this.bubbles = new BubbleManager(scene);
     this.dialogue = new DialogueManager(scene);
 
-    for (let i = 0; i < ENTITY_POOL_SIZE; i++) this.free.push(this.makeEntity());
-
     // Subscribe to arcade physics' per-step event. Each emit corresponds
     // to exactly one fixed simulation step run by World.update / step,
     // and the emit happens AFTER body integration and collider processing
@@ -317,66 +322,38 @@ export class StageManager {
     }
   }
 
-  private makeEntity(): Entity {
-    const e = new Entity(this.scene, 0, 0, 'bullet');
+  spawn<TOpts extends SpawnOpts>(
+    kind: EntityKind<TOpts>,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    opts: TOpts = EMPTY_SPAWN_OPTS as TOpts,
+  ): Entity {
+    // Fresh entity per spawn — no pooling. Phaser sprites need a texture
+    // even when invisible, so sprite-less kinds (the inert stage
+    // controller) get a dummy bullet texture and setVisible(false).
+    const e = new Entity(this.scene, x, y, kind.sprite ?? 'bullet');
     e.stage = this;
     this.scene.add.existing(e);
     this.scene.physics.add.existing(e);
-    e.setActive(false).setVisible(false);
-    const body = e.body;
-    body.enable = false;
-    body.setAllowGravity(false);
-    return e;
-  }
-
-  spawn(kind: EntityKind, x: number, y: number, vx: number, vy: number, opts: SpawnOpts = {}): Entity {
-    const e = this.free.pop() ?? this.makeEntity();
-
-    const prevFresh = e.x === 0 && e.y === 0;
-    const prevOnScreen = !prevFresh && e.x >= 0 && e.x <= GAME_W && e.y >= 0 && e.y <= GAME_H;
-    if (prevOnScreen || e.visible || e.alive) {
-      console.warn(
-        `[spawn-suspicious t=${performance.now().toFixed(0)}] kind=${kind.sprite} target=(${x.toFixed(1)},${y.toFixed(1)}) prevKind=${e.kind.sprite} prevPos=(${e.x.toFixed(1)},${e.y.toFixed(1)}) visible=${e.visible} alive=${e.alive}`,
-      );
-    }
 
     e.kind = kind;
-    e.hp = opts.hp ?? kind.hp;
     e.alive = true;
-    e.gen++;
-    e.hasEnteredScreen = false;
-    e.onDeathQueue = null;
-    e.vars = null;
-    e.walkAnim = false;
-    e.animSuppressed = false;
 
-    if (kind.sprite !== null) {
-      e.setTexture(kind.sprite);
-      e.setVisible(true);
-    } else {
-      e.setVisible(false);
-    }
-    e.anims.stop();
-    // Reset scale to (1, 1) so a pooled entity that was last spawned as a
-    // setScale-driven beam doesn't render the next bullet kind oversized.
-    // The Arcade Body auto-tracks GameObject scale, so this also restores
-    // the body's source size for the upcoming hitbox configuration below.
-    e.setScale(1);
-    // Reset alpha so a pooled entity that was last spawned as a faint
-    // starter-laser cell (setAlpha < 1) doesn't render the next bullet
-    // kind ghostly grey.
-    e.setAlpha(1);
-    e.setActive(true);
+    if (kind.sprite === null) e.setVisible(false);
     // Bullets sit between floor (-10) and walls (-9) so the wall texture
     // occludes a stray bullet, and the doors' transparent middle still lets
     // it show through an open doorway. Criterion is "deals damage, can't be
-    // hurt" — bullet kinds — and it must re-apply every spawn so a pooled
-    // entity reused for a different kind doesn't keep the previous depth.
-    e.setDepth(kind.hp === null && kind.damageClass.length > 0 ? -9.5 : 0);
+    // hurt" — no-HP kinds (bullets, beams) with a damageClass.
+    e.setDepth(!(kind instanceof HPEntityKind) && kind.damageClass.length > 0 ? -9.5 : 0);
 
     // Group.add() runs a createCallback that overwrites body properties
     // (velocity, drag, gravity, etc.) with the group's defaults, so we
-    // must add to groups BEFORE configuring the body. Multiplier drops
+    // must add to groups BEFORE configuring the body. The group config
+    // sets allowGravity=false, so adding to any group gives us the
+    // correct gravity setting; for entities that aren't in any group
+    // (no damage classes) we set it directly below. Multiplier drops
     // bypass damages/damagedBy entirely — they live in their own
     // `drops` group so the player's overlap handler is one-way collect,
     // not damage exchange.
@@ -391,6 +368,7 @@ export class StageManager {
     }
 
     const body = e.body;
+    body.setAllowGravity(false);
     if (kind.hitboxRadius > 0) {
       body.enable = true;
       if (kind.hitboxShape === 'square') {
@@ -403,7 +381,6 @@ export class StageManager {
       body.reset(x, y);
       body.setVelocity(vx, vy);
     } else {
-      e.setPosition(x, y);
       body.enable = false;
     }
 
@@ -436,6 +413,13 @@ export class StageManager {
     // own kind). Mirrors beginAll / beginRace, which run children eagerly
     // inside the parent's processYield.
     this.active.push(e);
+
+    // Kind-level init hook — runs after per-life state is reset and the
+    // entity is on the active list, before its script starts. Empty by
+    // default; HP-bearing kinds use it to seed `vars.hp` (honouring the
+    // per-spawn `opts.hp` override), phased bosses additionally seed
+    // `vars.phaseIdx`.
+    kind.init(e, opts);
 
     // `??` would treat an explicit `null` as "missing" and fall back to
     // the kind's default; check for undefined so callers can opt out of
@@ -530,10 +514,10 @@ export class StageManager {
     const candidates: Entity[] = [];
     for (const c of this.damages.player.getChildren()) {
       const e = c as Entity;
-      // Live enemies only — `hp !== null` partitions enemies (which
-      // carry HP) from bullets (which don't). `alive` guards entities
-      // mid-death-script.
-      if (e.alive && e.hp !== null) candidates.push(e);
+      // Live enemies only — `kind instanceof HPEntityKind` partitions
+      // enemies (which carry HP) from bullets (which don't). `alive`
+      // guards entities mid-death-script.
+      if (e.alive && e.kind instanceof HPEntityKind) candidates.push(e);
     }
     if (candidates.length === 0) return false;
     const kind = MULT_DROP_BY_TIER[tier];
@@ -897,15 +881,7 @@ export class StageManager {
       e.script = null;
     }
 
-    e.alive = false;
-    e.onDeathQueue = null;
-    e.kind = INERT_KIND;
-    e.hp = null;
-    e.setActive(false).setVisible(false);
-    const body = e.body;
-    body.setVelocity(0, 0);
-    body.enable = false;
-    this.free.push(e);
+    e.destroy();
   }
 
   update(time: number, delta: number): void {

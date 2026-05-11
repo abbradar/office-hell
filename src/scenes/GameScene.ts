@@ -18,7 +18,7 @@ import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
 import { liftMultFloor, MultDropKind, onContinue, refreshChainTimer } from '../script/score';
 import { StageManager } from '../script/StageManager';
-import { DAMAGE_CLASSES } from '../script/types';
+import { DAMAGE_CLASSES, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import {
   COLOR_ACCENT_GOLD,
@@ -723,7 +723,7 @@ export class GameScene extends Phaser.Scene {
     // src/docs/scoring-system.md → reset triggers.
     onContinue(this.stage.score);
     p.alive = true;
-    p.hp = this.playerKind.hp;
+    (p.vars as HPVars).hp = this.playerKind.hp;
     p.body.enable = true;
     p.setVelocity(0, 0);
     p.setVisible(true);
@@ -837,7 +837,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
     // Player isn't part of stage.active, so its anim doesn't get the per-tick
-    // refresh that pooled entities get inside stage.update — drive it here. Run
+    // refresh that other entities get inside stage.update — drive it here. Run
     // even while paused so the dialogue's first frame doesn't show a stale anim
     // from before the cutscene started.
     this.player.updateAnim();

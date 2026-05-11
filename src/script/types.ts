@@ -81,17 +81,21 @@ export type EntityKindOpts = {
   sprite: string | null;
   hitboxRadius: number;
   hitboxShape?: HitboxShape;
-  hp: number | null;
-  damageClass: DamageClass[];
-  damagedByClass: DamageClass[];
+  // Damage classes the entity *deals* to anything in `damages[c]`. Both
+  // sides default to `[]` so bullet definitions can omit `damagedByClass`
+  // and inert stage controllers can omit both. Subclasses with stricter
+  // requirements (e.g. `EnemyBulletEntityKind`) validate at construction.
+  damageClass?: DamageClass[];
+  damagedByClass?: DamageClass[];
   defaultScript?: EntityScript;
   // Optional generator that runs in place of `die()` when HP hits 0. The
-  // default `takeDamage` locks incoming damage off (so a stray hit a
-  // frame later can't re-fire the script) and hands the entity to
-  // `runScript` — typically after a flicker / dialogue / shudder beat.
-  // The script is responsible for eventually calling `self.die()`. Used
-  // by every boss for its own defeat sequence; null on plain entities
-  // that just disappear on death.
+  // default `takeDamage` (on `HPEntityKind`) locks incoming damage off
+  // (so a stray hit a frame later can't re-fire the script) and hands
+  // the entity to `runScript`. The script itself is responsible for
+  // eventually calling `self.die()` — typically after a flicker /
+  // dialogue / shudder beat. Used by every boss for its own defeat
+  // sequence; null on plain entities that just disappear on death.
+  // Ignored on bare `EntityKind` (no HP → never reaches the death path).
   deathScript?: EntityScript;
   // When true, spawning the entity rotates the sprite to face its
   // initial velocity vector (`rotation = atan2(vy, vx)`). The sprite
@@ -109,11 +113,47 @@ export type EntityKindOpts = {
   tier?: EntityTier;
 };
 
-export class EntityKind {
+// Base per-spawn options, supported by every kind. Concrete kinds widen
+// this via the generic `TOpts` parameter on `EntityKind` to advertise
+// extra fields they honour at spawn time (e.g. `HPEntityKind` adds
+// `hp`). `StageManager.spawn` is generic over the kind so the opts
+// argument is typed against the actual kind's `TOpts` — passing a
+// kind-specific field to a kind that doesn't accept it is a type error
+// at the call site rather than silently ignored.
+export type SpawnOpts = {
+  // Override the kind's `defaultScript`. Pass a generator to run that
+  // instead, or `null` to spawn the entity with no script at all (useful
+  // when the outer script wants to drive the entity itself). Omit to
+  // accept the kind's default.
+  script?: EntityScript | null;
+  // Override the kind's damagedByClass for this individual spawn — e.g. to make
+  // a boss unhittable during its intro and then re-enable damage after dialogue.
+  damagedByClass?: DamageClass[];
+  // When true, each leaf yield of this script (and any raced child) writes
+  // a description to `manager.lastYieldReason` so the HUD can show what
+  // the script is currently parked on. Used by the stage script.
+  debugYieldReasons?: boolean;
+};
+
+// Base entity kind — no HP, can't be damaged. The default `takeDamage`
+// throws, so anything in a `damagedBy` group must be an `HPEntityKind`
+// (the engine routes damage through `takeDamage`). `targetCollision`
+// damages the target and dies — the bullet behaviour, since bullets
+// and other one-shot projectiles are the canonical no-HP kind.
+//
+// Use this directly for inert kinds (the stage controller, ambient
+// props) and for bullets / beams that should consume on impact.
+//
+// `TOpts` is the per-spawn options shape this kind accepts. Subclasses
+// fix it to a wider type by extending the parameterised base directly
+// (e.g. `class HPEntityKind extends EntityKind<HPSpawnOpts>`); call
+// sites of `StageManager.spawn` are typed against the kind's TOpts so
+// passing a kind-specific field to a kind that doesn't accept it is a
+// type error at the call site rather than silently ignored.
+export class EntityKind<TOpts = SpawnOpts> {
   readonly sprite: string | null;
   readonly hitboxRadius: number;
   readonly hitboxShape: HitboxShape;
-  readonly hp: number | null;
   readonly damageClass: DamageClass[];
   readonly damagedByClass: DamageClass[];
   readonly defaultScript?: EntityScript;
@@ -125,24 +165,89 @@ export class EntityKind {
     this.sprite = opts.sprite;
     this.hitboxRadius = opts.hitboxRadius;
     this.hitboxShape = opts.hitboxShape ?? 'circle';
-    this.hp = opts.hp;
-    this.damageClass = opts.damageClass;
-    this.damagedByClass = opts.damagedByClass;
+    this.damageClass = opts.damageClass ?? [];
+    this.damagedByClass = opts.damagedByClass ?? [];
     this.defaultScript = opts.defaultScript;
     this.deathScript = opts.deathScript ?? null;
     this.rotateToVelocity = opts.rotateToVelocity ?? false;
     this.tier = opts.tier ?? 'regular';
   }
 
+  // Per-kind initialisation hook. Runs once per spawn, after the
+  // engine has reset the entity's per-life state (vars, body) but
+  // before its defaultScript starts. `opts` is the (typed) spawn
+  // options the caller passed, so a kind can honour per-spawn
+  // overrides — e.g. `HPEntityKind` reads `opts.hp ?? this.hp` to let
+  // one kind spawn at varying HPs (the lead HR in `hrTrio`). Default
+  // is empty; subclasses override to seed kind-specific state
+  // (`HPEntityKind` primes `vars.hp`, `PhasedBossKind` adds
+  // `vars.phaseIdx`). Called regardless of whether a script will
+  // actually run — `spawn` does not skip init when `opts.script: null`
+  // is passed, so initialiser side-effects are stable for callers that
+  // drive an entity manually.
+  init(_self: Entity, _opts: TOpts): void {}
+
+  // Bullet behaviour — damage the target and die. HP-bearing kinds
+  // override to stay alive after the hit.
   targetCollision(self: Entity, target: Entity): void {
     target.takeDamage(1);
-    if (self.hp === null) self.die();
+    self.die();
   }
 
-  takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    self.hp -= amount;
-    if (self.hp <= 0) {
+  takeDamage(_self: Entity, _amount: number): void {
+    throw new Error(
+      `takeDamage called on no-HP kind (sprite=${this.sprite}); use HPEntityKind for damageable entities`,
+    );
+  }
+}
+
+// Shape of the per-entity vars slot owned by `HPEntityKind`. Cast
+// `self.vars` to this when reading/writing hp on an entity whose kind
+// is known to be `HPEntityKind` (or a subclass). Subclasses with more
+// vars (e.g. PhasedBossKind's `phaseIdx`/`phaseDown`) intersect with
+// this shape rather than redefine it.
+export type HPVars = { hp: number };
+
+// Spawn opts for HP-bearing kinds. Adds an optional per-spawn HP
+// override; without it, the entity starts at the kind's declared `hp`.
+// One kind can therefore back instances at varying HPs (the lead HR in
+// `hrTrio` reuses the regular `hr` kind and just spawns with `opts.hp =
+// LEAD_HP`) without needing a parallel kind definition.
+export type HPSpawnOpts = SpawnOpts & { hp?: number };
+
+// Entity kind with an HP pool. HP is stored on the spawned entity at
+// `self.vars.hp` (typed as `HPVars`) — `init` seeds it from the kind's
+// `hp` value (or the per-spawn `opts.hp` override), and `takeDamage`
+// decrements it, flashing on non-killing hits and routing to
+// `deathScript` (or `die`) when the pool hits zero.
+export type HPEntityKindOpts = EntityKindOpts & { hp: number };
+
+export class HPEntityKind extends EntityKind<HPSpawnOpts> {
+  readonly hp: number;
+
+  constructor(opts: HPEntityKindOpts) {
+    super(opts);
+    this.hp = opts.hp;
+  }
+
+  override init(self: Entity, opts: HPSpawnOpts): void {
+    super.init(self, opts);
+    self.vars = { ...(self.vars ?? {}), hp: opts.hp ?? this.hp } as HPVars;
+  }
+
+  // Don't die on dealing damage — HP-bearing kinds survive contact.
+  override targetCollision(_self: Entity, target: Entity): void {
+    target.takeDamage(1);
+  }
+
+  override takeDamage(self: Entity, amount: number): void {
+    if (self.vars === null) {
+      throw new Error(`HPEntityKind.takeDamage: vars not seeded for sprite=${this.sprite}`);
+    }
+    const vars = self.vars as HPVars;
+    const next = vars.hp - amount;
+    if (next <= 0) {
+      vars.hp = 0;
       // Count enemy kills for the run-wide score. Guarded against the player
       // (PlayerKind.takeDamage routes through super) — counting the player's
       // own death would overlap with `hpLost` and skew the inter-stage quips.
@@ -169,6 +274,7 @@ export class EntityKind {
         self.die();
       }
     } else {
+      vars.hp = next;
       // Non-killing hit: pop a quick red flash + shake so the player sees
       // the damage register. Skipped on the killing blow because the
       // entity is removed from the active list within the same frame and
@@ -178,29 +284,23 @@ export class EntityKind {
   }
 }
 
+// Marker subclass for projectile kinds that damage the player —
+// bullets, reports, question marks, pills, beam cells, etc. Behaves
+// identically to `EntityKind` (no HP, dies on impact via the inherited
+// `targetCollision`); the only purpose of the subclass is to make
+// "find every enemy bullet in flight" a single `instanceof` check for
+// bombs and `clearBullets`. Forces `damageClass = ['player']` (callers
+// don't repeat it) and inherits the default empty `damagedByClass`
+// (bullets are never themselves damageable).
+export class EnemyBulletEntityKind extends EntityKind {
+  constructor(opts: Omit<EntityKindOpts, 'damageClass'>) {
+    super({ ...opts, damageClass: ['player'] });
+  }
+}
+
 export const INERT_KIND = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
   damageClass: [],
   damagedByClass: [],
 });
-
-export type SpawnOpts = {
-  // Override the kind's `defaultScript`. Pass a generator to run that
-  // instead, or `null` to spawn the entity with no script at all (useful
-  // when the outer script wants to drive the entity itself). Omit to
-  // accept the kind's default.
-  script?: EntityScript | null;
-  // Override the kind's damagedByClass for this individual spawn — e.g. to make
-  // a boss unhittable during its intro and then re-enable damage after dialogue.
-  damagedByClass?: DamageClass[];
-  // Override the kind's starting HP for this individual spawn — useful when one
-  // of a kind needs to outlast its peers (e.g. a "lead" enemy that has to
-  // survive long enough to deliver its solo intro).
-  hp?: number;
-  // When true, each leaf yield of this script (and any raced child) writes
-  // a description to `manager.lastYieldReason` so the HUD can show what
-  // the script is currently parked on. Used by the stage script.
-  debugYieldReasons?: boolean;
-};

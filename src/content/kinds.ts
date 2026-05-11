@@ -1,6 +1,6 @@
 import { BULLET_RADIUS } from '../config';
 import { MultDropKind } from '../script/score';
-import { EntityKind, type EntityTier } from '../script/types';
+import { EnemyBulletEntityKind, EntityKind, type EntityTier } from '../script/types';
 import {
   BLUE_EXPLOSION_KEY,
   BLUE_LONGER_DROPLET_KEY,
@@ -16,18 +16,14 @@ import {
   YELLOW_DIAMOND_SM_KEY,
 } from './textures';
 
-export const bullet = new EntityKind({
+export const bullet = new EnemyBulletEntityKind({
   sprite: 'bullet',
   hitboxRadius: BULLET_RADIUS,
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
 export const redBullet = new EntityKind({
   sprite: 'redBullet',
   hitboxRadius: BULLET_RADIUS,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -35,7 +31,6 @@ export const redBullet = new EntityKind({
 export const yellowBullet = new EntityKind({
   sprite: 'yellowBullet',
   hitboxRadius: BULLET_RADIUS,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -43,7 +38,6 @@ export const yellowBullet = new EntityKind({
 export const orangeBullet = new EntityKind({
   sprite: 'orangeBullet',
   hitboxRadius: BULLET_RADIUS,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -54,9 +48,7 @@ export const playerBullet = new EntityKind({
   // shots reward minor positioning errors (Bullet Hell Shmup Design 101:
   // "give the player's shots huge hitboxes").
   hitboxRadius: 5,
-  hp: null,
   damageClass: ['enemy'],
-  damagedByClass: [],
 });
 
 // Blue-explosion spritesheet entity — a single sprite that the
@@ -70,7 +62,6 @@ export const playerBullet = new EntityKind({
 export const blueExplosion = new EntityKind({
   sprite: BLUE_EXPLOSION_KEY,
   hitboxRadius: 5,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -83,7 +74,6 @@ export const blueExplosion = new EntityKind({
 export const redExplosion = new EntityKind({
   sprite: RED_EXPLOSION_KEY,
   hitboxRadius: 5,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -98,7 +88,6 @@ export const redExplosion = new EntityKind({
 export const redDroplet = new EntityKind({
   sprite: SMALL_RED_DROPLET_KEY,
   hitboxRadius: 3,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
   rotateToVelocity: true,
@@ -112,7 +101,6 @@ export const redCross = new EntityKind({
   sprite: RED_CROSS_KEY,
   hitboxRadius: 5,
   hitboxShape: 'square',
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -123,7 +111,6 @@ export const redCross = new EntityKind({
 export const blueLongerDroplet = new EntityKind({
   sprite: BLUE_LONGER_DROPLET_KEY,
   hitboxRadius: 3,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
   rotateToVelocity: true,
@@ -136,7 +123,6 @@ export const redDiamondMd = new EntityKind({
   sprite: RED_DIAMOND_MD_KEY,
   hitboxRadius: 5,
   hitboxShape: 'square',
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -147,7 +133,6 @@ export const yellowDiamondSm = new EntityKind({
   sprite: YELLOW_DIAMOND_SM_KEY,
   hitboxRadius: 4,
   hitboxShape: 'square',
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -160,7 +145,6 @@ export const greedDiamondXs = new EntityKind({
   sprite: GREED_DIAMOND_XS_KEY,
   hitboxRadius: 3,
   hitboxShape: 'square',
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -175,7 +159,6 @@ export const emailBordered = new EntityKind({
   sprite: EMAIL_BORDERED_KEY,
   hitboxRadius: 5,
   hitboxShape: 'square',
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
 });
@@ -189,7 +172,6 @@ export const emailBordered = new EntityKind({
 export const lavaDropletHard = new EntityKind({
   sprite: LAVA_DROPLET_HARD_KEY,
   hitboxRadius: 3,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
   rotateToVelocity: true,
@@ -198,7 +180,6 @@ export const lavaDropletHard = new EntityKind({
 export const redDropletHard = new EntityKind({
   sprite: RED_DROPLET_HARD_KEY,
   hitboxRadius: 3,
-  hp: null,
   damageClass: ['player'],
   damagedByClass: [],
   rotateToVelocity: true,
@@ -215,7 +196,6 @@ const multDropOpts = {
   sprite: MULT_DROP_KEY,
   hitboxRadius: 4,
   hitboxShape: 'square' as const,
-  hp: null,
   damageClass: [] as never[],
   damagedByClass: [] as never[],
 };

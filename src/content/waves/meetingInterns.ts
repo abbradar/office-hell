@@ -3,7 +3,7 @@ import { GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
 import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { EnemyBulletEntityKind, type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
 // Meeting-call intern — heartier than the opener intern. Drifts in,
@@ -17,13 +17,10 @@ import { bullet } from '../kinds';
 // velocity vector aimed at the player, so the arrow locks into shape
 // once fully deployed and rolls in as a unit.
 
-export const cameraBullet = new EntityKind({
+export const cameraBullet = new EnemyBulletEntityKind({
   sprite: 'cameraBullet',
   hitboxRadius: 5,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
 const ENTRY_SPEED = 110;
@@ -140,7 +137,7 @@ function makeMeetingInternScript(targetX: number, targetY: number, phase: number
   };
 }
 
-export const meetingIntern = new EntityKind({
+export const meetingIntern = new HPEntityKind({
   sprite: 'checkEmail',
   hitboxRadius: 16,
   hp: 30,

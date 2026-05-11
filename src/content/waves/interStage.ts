@@ -1,9 +1,10 @@
 import { GAME_H, PLAYER_Y } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, waitSeconds } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { findClosestDoorLine, markWave, waitSeconds, walkThroughDoorLine } from '../../script/stage';
+import { EntityKind, type HPVars, type ScriptYield } from '../../script/types';
 import { CHARACTERS } from '../characters';
+import { PLAYER_BOMBS } from '../player';
 import { PROP_WATER_DISPENSER_KEY } from '../textures';
 
 // Inter-stage breather: the player walks up to a water cooler at the
@@ -25,8 +26,14 @@ const COOLER_Y = GAME_H / 2;
 // and the cooler appears to come closer". Slide duration falls out of
 // distance / floor speed so the cooler reads as stationary in world.
 const COOLER_SLIDE_START_Y = -50;
-// Offsets above / below the cooler the two characters end up at when
-// they meet. Sized so neither sprite overlaps the dispenser sprite.
+// Both characters meet on the same vertical line, just to the right
+// of the cooler — at COOLER_X = 36 the cooler sits flush against the
+// 18-px-wide left wall, so anything at COOLER_X - 10 lands half-
+// embedded in it. The 10-px x-offset puts the line clear of the
+// cooler's right edge while keeping the pair visually clustered
+// around it. The 36-px y-offsets above / below are sized so neither
+// 48-px-tall sprite overlaps the 32-px-tall cooler.
+const MEET_X = COOLER_X + 10;
 const PLAYER_DEST_Y = COOLER_Y + 36;
 const OTHER_DEST_Y = COOLER_Y - 36;
 // Walking speed (px/s). Matches the PLAYER_SPEED-derived rule of thumb
@@ -36,6 +43,11 @@ const WALK_SPEED = 80;
 // Beat between arriving at the cooler and the dialog opening — gives
 // both sprites a moment to settle into idle frames.
 const SETTLE_SECONDS = 0.4;
+// After the conversation ends and the other MC peels off, the player
+// pauses for this long before the "feeling a bit better now" line —
+// gives the other a few visible steps of exit before the dialog
+// freezes the world.
+const REFRESH_PAUSE_SECONDS = 0.6;
 // Where the cooler ends up sitting just above the player at PLAYER_Y.
 const COOLER_REST_Y = PLAYER_Y - 36;
 // Floor-scroll baseline (px/s). Mirrors GameScene.CORRIDOR_SCROLL_PX_PER_MS
@@ -46,7 +58,13 @@ const FLOOR_SCROLL_PX_PER_SEC = 100;
 // past the bottom edge by enough that the cull margin / off-screen
 // destruction handles cleanup.
 const COOLER_EXIT_Y = GAME_H + 50;
-const OTHER_EXIT_Y = COOLER_EXIT_Y;
+// X the player sidesteps to after the dialog, before the floor-scroll
+// hand-off carries her back to PLAYER_Y. Picked so the 48-px sprite
+// fully clears the 32-px cooler horizontally (centres ≥ 24 + 16 =
+// 40 px apart): without it, the cooler tweens down past her in
+// Phase C through the middle of her body instead of cleanly to her
+// left.
+const PLAYER_SIDESTEP_X = COOLER_X + 40;
 
 export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'water cooler');
@@ -82,17 +100,25 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   // characters walk over the sprite visually. The 32×32 sprite renders
   // at native size.
   const cooler = scene.add.image(COOLER_X, COOLER_SLIDE_START_Y, PROP_WATER_DISPENSER_KEY).setDepth(-5);
-  // Slide duration = distance ÷ floor speed, so the cooler descends in
-  // lockstep with the corridor scroll.
+  // Drive the cooler off `stage.bgScrollY` (mirrored from GameScene each
+  // frame) rather than a wall-clock tween paired with a separate
+  // `waitSeconds`. The two timers are sized to last the same duration
+  // but can drain on different frames — when the script wait wakes
+  // first, Phase 2 starts (stage.running = false, player walks up to the
+  // cooler) while the tween is still nudging the cooler down, so the
+  // player walks toward a cooler that's still moving. Tying the
+  // descent to bgScrollY makes "cooler is a fixture in the world" the
+  // literal mechanism: it advances exactly when (and as fast as) the
+  // floor does, so it cannot drift.
   const slideDist = COOLER_Y - COOLER_SLIDE_START_Y;
-  const slideMs = (slideDist / FLOOR_SCROLL_PX_PER_SEC) * 1000;
-  scene.tweens.add({
-    targets: cooler,
-    y: COOLER_Y,
-    duration: slideMs,
-    ease: 'Linear',
-  });
-  yield* waitSeconds(slideMs / 1000);
+  const slideStartScroll = stage.bgScrollY;
+  while (true) {
+    const advance = stage.bgScrollY - slideStartScroll;
+    if (advance >= slideDist) break;
+    cooler.y = COOLER_SLIDE_START_Y + advance;
+    yield 1;
+  }
+  cooler.y = COOLER_Y;
 
   // ─── Approach + dialog (unchanged from the original) ────────────────
   //
@@ -110,21 +136,15 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   const otherKind = new EntityKind({
     sprite: otherCh.sprite,
     hitboxRadius: 1,
-    hp: null,
-    damageClass: [],
-    damagedByClass: [],
   });
-  const other = self.spawn(otherKind, COOLER_X, -30, 0, 0);
+  const other = self.spawn(otherKind, MEET_X, -30, 0, 0);
   other.walkAnim = true;
 
-  // Walk both to the cooler in parallel. Player approaches from
-  // below, other from above. The `all` join waits until both moveTo
-  // generators finish.
+  // Walk both to the cooler in parallel along the same vertical line
+  // (MEET_X). Player approaches from below, other from above. The
+  // `all` join waits until both moveTo generators finish.
   yield {
-    all: [
-      moveTo(player, COOLER_X + 10, PLAYER_DEST_Y, WALK_SPEED),
-      moveTo(other, COOLER_X - 10, OTHER_DEST_Y, WALK_SPEED),
-    ],
+    all: [moveTo(player, MEET_X, PLAYER_DEST_Y, WALK_SPEED), moveTo(other, MEET_X, OTHER_DEST_Y, WALK_SPEED)],
   };
 
   // Face each other — moveTo zeroes velocity on arrival, so updateAnim
@@ -143,48 +163,38 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
   // the engine (bullets fired, kills, HP lost, bombs used, continues
   // taken) so the lines reflect how the player actually played stage 1.
   const score = stage.score;
-  const excuses = score.bullets;
-  const colleagues = score.kills;
-  const angry = score.bombs;
-  const hits = score.hpLost;
-  const continues = score.continues;
-  const excusesLine =
-    excuses === 1 && colleagues === 1
-      ? 'I told one excuse to send one colleague away from me.'
-      : excuses === 1
-        ? `I told one excuse to send ${colleagues} colleagues away from me.`
-        : colleagues === 1
-          ? `I told ${excuses} excuses to send one colleague away from me.`
-          : `I told ${excuses} excuses to send ${colleagues} colleagues away from me.`;
   const angryLine =
-    angry === 0
+    score.bombs === 0
       ? "At least I didn't get angry."
-      : angry === 1
+      : score.bombs === 1
         ? 'I even got angry once.'
-        : `I even got angry ${angry} times.`;
+        : `I even got angry ${score.bombs} times.`;
   const lines: { speaker: 'left' | 'right'; text: string }[] = [
     { speaker: 'right', text: `Evening, ${playerCh.name}. Everyone is running mad around.` },
-    { speaker: 'left', text: 'Today is even more than usual. Are you not leaving?' },
-    { speaker: 'right', text: 'I was going to, but ran into some colleagues.' },
-    { speaker: 'left', text: 'Ah, I know the feeling.' },
-    { speaker: 'left', text: excusesLine },
+    { speaker: 'left', text: 'Today is even worse than usual. Not leaving yet?' },
+    { speaker: 'right', text: 'My colleagues literally haunt me.' },
+    { speaker: 'left', text: 'Spot on.' },
+    { speaker: 'left', text: `I already sent ${score.kills} colleagues away from me.` },
     { speaker: 'left', text: angryLine },
   ];
-  if (hits > 0) {
+  if (score.hpLost > 0) {
     lines.push({
       speaker: 'left',
-      text: hits === 1 ? 'They even got me once.' : `They even got me ${hits} times.`,
+      text: score.hpLost === 1 ? 'They also got me once.' : `They also got me ${score.hpLost} times.`,
     });
   }
-  if (continues >= 1) {
+  if (score.continues >= 1) {
     lines.push({
       speaker: 'left',
-      text: continues === 1 ? 'And I thought of just quitting.' : `And I thought of just quitting ${continues} times.`,
+      text:
+        score.continues === 1
+          ? 'And I event thought of quitting.'
+          : `And I even thought of quitting ${score.continues} times.`,
     });
   }
-  lines.push({speaker: 'right', text: "Well, today is certainly a strange day. Try not to loose your head."});
-  lines.push({speaker: 'left', text: "You too. See you around, I guess?"});
-  lines.push({speaker: 'right', text: "If there will be more of those collegues."});
+  lines.push({ speaker: 'right', text: 'Ugh. Feeling you.' });
+  lines.push({ speaker: 'left', text: 'See you around, I guess?' });
+  lines.push({ speaker: 'right', text: 'Hopefully not today anymore.' });
   yield self.dialogue({
     left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
     right: { sprite: otherCh.sprite, frame: otherCh.frame, name: otherCh.name },
@@ -193,9 +203,33 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
 
   // ─── Post-dialog: other exits, floor carries player+cooler down ────
   //
-  // Phase A — other walks off-screen up. Floor still not moving; the
-  // player is rooted at PLAYER_DEST_Y until the next phase.
-  yield* moveTo(other, COOLER_X - 10, OTHER_EXIT_Y, WALK_SPEED);
+  // Phase A — in parallel: the other MC walks out through the closest
+  // upper-left door, while the player takes a beat by the cooler — a
+  // sip of water "refreshes" her (HP + bombs restored, with a relief
+  // line) — and then sidesteps right of the cooler so the cooler can
+  // tween down past her cleanly in Phase C instead of through her
+  // sprite. Floor still not moving. The refresh line opens a dialog,
+  // which pauses physics; the other freezes mid-step until the line
+  // dismisses, then continues to the door.
+  yield {
+    all: [
+      (function* (): Generator<ScriptYield, void, void> {
+        const exitDoorY = findClosestDoorLine(other, other.y, 'upper') ?? other.y;
+        yield* walkThroughDoorLine(other, exitDoorY, 'left', WALK_SPEED);
+      })(),
+      (function* (): Generator<ScriptYield, void, void> {
+        yield* waitSeconds(REFRESH_PAUSE_SECONDS);
+        (player.vars as HPVars).hp = player.kind.hp;
+        player.kind.bombs = PLAYER_BOMBS;
+        player.render();
+        yield self.dialogue({
+          left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
+          lines: [{ speaker: 'left', text: 'Phew, feeling a bit better now.' }],
+        });
+        yield* moveTo(player, PLAYER_SIDESTEP_X, player.y, WALK_SPEED);
+      })(),
+    ],
+  };
   other.die();
 
   // Phase B — floor scrolls, carrying the player and cooler back to the

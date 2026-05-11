@@ -2,18 +2,15 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { aimed, cluster, moveTo, ring } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { EnemyBulletEntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
 // "Email" bullet — chunky envelope, deliberately larger than the round bullets
 // so an inbound stack reads as a slow wall the player has to weave around
 // rather than another pinprick. No script: drifts on its launch velocity.
-export const emailBullet = new EntityKind({
+export const emailBullet = new EnemyBulletEntityKind({
   sprite: 'emailBullet',
   hitboxRadius: 6,
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
 // Walks in to the top band, asks for an email check, then alternates aimed
@@ -64,7 +61,7 @@ function* checkEmailScript(self: Entity) {
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const checkEmailCoworker = new EntityKind({
+export const checkEmailCoworker = new HPEntityKind({
   sprite: 'checkEmail',
   hitboxRadius: 16,
   hp: 20,

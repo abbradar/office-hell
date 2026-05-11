@@ -1,6 +1,6 @@
 import { BULLET_RADIUS } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { EntityKind } from '../../script/types';
+import { EnemyBulletEntityKind } from '../../script/types';
 
 // Initial radians-per-script-tick the bullet may turn toward the player.
 // Decays linearly to zero over HOMING_DECAY_FRAMES so a near-launch report
@@ -30,11 +30,8 @@ function* reportBulletScript(self: Entity) {
   // so physics carries the bullet straight until it leaves the screen.
 }
 
-export const reportBullet = new EntityKind({
+export const reportBullet = new EnemyBulletEntityKind({
   sprite: 'reportBullet',
   hitboxRadius: BULLET_RADIUS,
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
   defaultScript: reportBulletScript,
 });

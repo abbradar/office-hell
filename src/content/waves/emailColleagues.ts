@@ -1,7 +1,7 @@
 import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { alignDoor, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
+import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
 import { emailBullet } from './checkEmail';
 
 // Email colleague: appears at one side, lobs a few short aimed email
@@ -28,7 +28,7 @@ const EXIT_SPEED = 220;
 const SETTLE_FRAMES = 35;
 const VOLLEY_COUNT = 3;
 const VOLLEY_GAP = 60;
-const EMAILS_PER_VOLLEY = 3;
+const EMAILS_PER_VOLLEY = 4;
 const EMAIL_SPEED = 110;
 const EMAIL_SPREAD = Math.PI / 9;
 
@@ -75,16 +75,17 @@ function makeStationaryEmailColleagueScript(
   dx: number = STATIONARY_ENTRY_DX,
   retreatHold = 0,
   exitVia: 'back' | 'top' = 'back',
+  volleyCount: number = VOLLEY_COUNT,
 ): EntityScript {
   return function* (self: Entity) {
     yield* moveTo(self, self.x + side * dx, self.y, TRAVEL_SPEED);
     yield STATIONARY_HOLD_FRAMES;
-    for (let i = 0; i < VOLLEY_COUNT; i++) {
+    for (let i = 0; i < volleyCount; i++) {
       aimed(self, EMAILS_PER_VOLLEY, emailBullet, EMAIL_SPEED, EMAIL_SPREAD);
       yield VOLLEY_GAP;
     }
     yield retreatHold;
-    // Exit; the pool releases once off-screen.
+    // Exit; the cull loop releases once off-screen.
     if (exitVia === 'top') {
       self.setVelocity(0, -TRAVEL_SPEED);
     } else {
@@ -95,17 +96,30 @@ function makeStationaryEmailColleagueScript(
 
 const leftScript = makeEmailColleagueScript(1);
 const rightScript = makeEmailColleagueScript(-1);
-const stationaryLeftScript = makeStationaryEmailColleagueScript(1);
 const stationaryRightScript = makeStationaryEmailColleagueScript(-1);
-const stationaryLeftFarScript = makeStationaryEmailColleagueScript(
-  1,
-  STATIONARY_ENTRY_DX_FAR,
-  STATIONARY_FAR_RETREAT_HOLD,
-);
 const stationaryRightFarScript = makeStationaryEmailColleagueScript(
   -1,
   STATIONARY_ENTRY_DX_FAR,
   STATIONARY_FAR_RETREAT_HOLD,
+);
+// Trailing left pair of pass 2 fires a single barrage and bolts. The
+// wave's slot is sized so they have to be off-screen by its end, and
+// the time saved on the missing two volleys is handed to urgent-call
+// as pre-retreat hold (see colleague.ts:BEFORE_RETREAT_HOLD).
+const LAST_PAIR_VOLLEYS = 1;
+const stationaryLeftFarShortScript = makeStationaryEmailColleagueScript(
+  1,
+  STATIONARY_ENTRY_DX_FAR,
+  STATIONARY_FAR_RETREAT_HOLD,
+  'back',
+  LAST_PAIR_VOLLEYS,
+);
+const stationaryLeftShortScript = makeStationaryEmailColleagueScript(
+  1,
+  STATIONARY_ENTRY_DX,
+  0,
+  'back',
+  LAST_PAIR_VOLLEYS,
 );
 // Pass-1 opener variants exit via the top instead of retreating back across
 // the corridor — pass 2 enters from the right at the same y while pass 1 is
@@ -114,7 +128,7 @@ const stationaryRightFarScript = makeStationaryEmailColleagueScript(
 const stationaryLeftUpScript = makeStationaryEmailColleagueScript(1, STATIONARY_ENTRY_DX, 0, 'top');
 const stationaryLeftFarUpScript = makeStationaryEmailColleagueScript(1, STATIONARY_ENTRY_DX_FAR, 0, 'top');
 
-export const emailColleague = new EntityKind({
+export const emailColleague = new HPEntityKind({
   sprite: 'sales',
   hitboxRadius: 16,
   hp: 4,
@@ -163,9 +177,9 @@ export function* emailColleaguesWave(self: Entity): Generator<ScriptYield, void,
     yield PAIR_SPACING;
     self.spawn(emailColleague, sideSpawnX(1), doorY(self, 250), 0, 0, { script: stationaryRightScript });
     yield SIDE_GAP;
-    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 250), 0, 0, { script: stationaryLeftFarScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 250), 0, 0, { script: stationaryLeftFarShortScript });
     yield PAIR_SPACING;
-    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 250), 0, 0, { script: stationaryLeftScript });
+    self.spawn(emailColleague, sideSpawnX(-1), doorY(self, 250), 0, 0, { script: stationaryLeftShortScript });
   });
 }
 

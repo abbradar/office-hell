@@ -114,8 +114,5 @@ function* kaedalusBody(self: Entity) {
 export const stageKaedalus = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
   defaultScript: kaedalusBody,
 });

@@ -4,7 +4,7 @@ import { PLAYER_HITBOX_RADIUS } from '../config';
 import type { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { onPlayerHit } from '../script/score';
-import { EntityKind } from '../script/types';
+import { HPEntityKind, type HPVars } from '../script/types';
 import { activateDeathBomb } from './bomb';
 import type { CharacterDef } from './characters';
 
@@ -22,7 +22,7 @@ export type PlayerKindOpts = {
   bombs?: number;
 };
 
-export class PlayerKind extends EntityKind {
+export class PlayerKind extends HPEntityKind {
   readonly character: CharacterDef;
   private hpText: Phaser.GameObjects.Text;
   private bombsText: Phaser.GameObjects.Text;
@@ -50,7 +50,8 @@ export class PlayerKind extends EntityKind {
       this.hpText.setText(`hits: ${this.hits}`);
       this.bombsText.setText('');
     } else {
-      this.hpText.setText('♥'.repeat(Math.max(0, self.hp ?? 0)));
+      const hp = (self.vars as HPVars).hp;
+      this.hpText.setText('♥'.repeat(Math.max(0, hp)));
       this.bombsText.setText('✱'.repeat(this.bombs));
     }
   }
@@ -65,9 +66,10 @@ export class PlayerKind extends EntityKind {
     // Apply damage normally. super.takeDamage decrements hp and calls
     // die() if it hits zero — at which point self.alive flips false and
     // the death sequence takes over.
-    const before = self.hp ?? 0;
+    const vars = self.vars as HPVars;
+    const before = vars.hp;
     super.takeDamage(self, amount);
-    const after = self.hp ?? 0;
+    const after = vars.hp;
     self.stage.score.hpLost += Math.max(0, before - after);
     // Any HP loss resets the chain — the chain is a no-hit streak.
     // Score and multFloor survive; the live mult collapses to 1 and the
@@ -79,7 +81,7 @@ export class PlayerKind extends EntityKind {
     // blink). Bomb counter isn't decremented; this is an emergency
     // between-states grace, not a paid resource. The killing blow
     // (hp == 0) skips this branch and dies normally.
-    if (self.alive && self.hp !== null && self.hp > 0) {
+    if (self.alive && after > 0) {
       const player = self as Player;
       activateDeathBomb(player, player.stage);
     }

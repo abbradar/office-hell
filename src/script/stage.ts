@@ -17,7 +17,7 @@ import { GAME_W, SCRIPT_FPS } from '../config';
 import { computeDoorYs, DOOR_H, isDoorVisible } from '../content/doors';
 import type { Entity } from '../entities/Entity';
 import { moveTo } from './patterns';
-import type { ScriptYield } from './types';
+import { EnemyBulletEntityKind, type HPVars, type ScriptYield } from './types';
 
 // Set the HUD's current-wave label. Pure side-effect, not a generator —
 // callers don't `yield*` it. Writes `stage.wave`; the StageManager
@@ -390,7 +390,11 @@ function* runBeatmapOnce(
 // the racer wins as soon as the boss crosses the threshold, race()
 // cancels every layer cleanly, the next phase's race() starts fresh.
 export function* untilHpBelow(self: Entity, threshold: number): Generator<ScriptYield, void, void> {
-  while ((self.hp ?? 0) > threshold) yield 1;
+  // HP lives on `self.vars` for HPEntityKind entities post-refactor;
+  // entities without an `hp` field on vars (no-HP kinds) are never
+  // damageable and this helper has no meaningful guard for them, so
+  // treat them as "below threshold" → resolve immediately.
+  while (((self.vars as HPVars | null)?.hp ?? 0) > threshold) yield 1;
 }
 
 // HP gate that snaps the resolution to the next bar boundary of the
@@ -472,8 +476,8 @@ export function* waitEntityDead(e: Entity): Generator<ScriptYield, void, void> {
 // Kill every live enemy on the field. Bullets in flight are untouched —
 // only `damagedBy.enemy` (the enemy entities themselves) is swept, so
 // the playfield retains its in-flight projectiles. die() flips the
-// alive flag and fires onDeath; the pool tears the body down on its
-// next sweep.
+// alive flag and fires onDeath; the manager's cull loop tears the body
+// down on its next sweep.
 export function killEnemies(self: Entity): void {
   for (const child of self.stage.damagedBy.enemy.getChildren()) {
     const e = child as Entity;
@@ -484,13 +488,13 @@ export function killEnemies(self: Entity): void {
 // Symmetric counterpart to `killEnemies`: sweep every in-flight bullet
 // while leaving live enemies (and the boss) untouched. Iterates
 // `damages.player` — which holds bullets *and* enemies — and partitions
-// by `hp === null`, the same trick `bomb.ts` uses (bullet kinds have no
-// HP; enemies always do). Useful at phase transitions where the field
-// should reset but the boss should survive.
+// by the `EnemyBulletEntityKind` marker (every player-damaging
+// projectile kind extends it). Useful at phase transitions where the
+// field should reset but the boss should survive.
 export function clearBullets(self: Entity): void {
   for (const child of self.stage.damages.player.getChildren()) {
     const e = child as Entity;
-    if (e.alive && e.hp === null) e.die();
+    if (e.alive && e.kind instanceof EnemyBulletEntityKind) e.die();
   }
 }
 
@@ -636,10 +640,10 @@ export function doorY(self: Entity, idealY: number): number {
 
 // Walk to the door y closest to the entity's current y, then drift off
 // `side` (-1 left, +1 right) at `speed`. Falls back to a straight
-// horizontal exit at the current y if no door is visible — the pool
-// still culls the entity off the far edge. Use this for any enemy whose
-// final beat is a side-exit, so the visual reads as "they left through a
-// door" instead of clipping through the wall.
+// horizontal exit at the current y if no door is visible — the cull
+// loop still releases the entity off the far edge. Use this for any
+// enemy whose final beat is a side-exit, so the visual reads as "they
+// left through a door" instead of clipping through the wall.
 export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
   const exitY = pickDoorCenterY(self, self.y);
   if (exitY !== null && Math.abs(exitY - self.y) > 1) {
@@ -648,36 +652,71 @@ export function* exitThroughSideDoor(self: Entity, side: -1 | 1, speed: number):
   self.setVelocity(side * speed, 0);
 }
 
-// Variant of `exitThroughSideDoor` that always routes through the next
-// visible door downscreen of the entity (i.e. closer to the player), not
-// the closest one in either direction. Use for enemies whose entry
-// motion is "marching forward into the playfield" — sending them back
-// up through the door they came from would read as a retreat the
-// character isn't doing. Falls back to `exitThroughSideDoor` (closest
-// door) if no door is currently below the entity.
-export function* exitThroughForwardDoor(self: Entity, side: -1 | 1, speed: number): Generator<ScriptYield, void, void> {
-  const exitY = pickDoorCenterYForward(self, self.y);
+// Variant of `exitThroughSideDoor` where the door's quadrant relative
+// to the entity is explicit: `vertical = 'lower'` routes through the
+// next door downscreen (the one the entity reaches by walking
+// forward), `'upper'` routes through the next door upscreen (back the
+// way they came). Use for enemies whose entry motion would be
+// contradicted by an arbitrary closest-door exit — interns marching
+// in shouldn't retreat up; an NPC walking down to a meeting shouldn't
+// double back. Falls back to `exitThroughSideDoor` (closest door in
+// any direction) if no door is currently visible in the chosen
+// vertical direction.
+export function* exitThroughDoor(
+  self: Entity,
+  side: 'left' | 'right',
+  vertical: 'upper' | 'lower',
+  speed: number,
+): Generator<ScriptYield, void, void> {
+  const sideSign: -1 | 1 = side === 'left' ? -1 : 1;
+  const exitY = findClosestDoorLine(self, self.y, vertical);
   if (exitY === null) {
-    yield* exitThroughSideDoor(self, side, speed);
+    yield* exitThroughSideDoor(self, sideSign, speed);
     return;
   }
   if (Math.abs(exitY - self.y) > 1) {
     yield* moveTo(self, self.x, exitY, speed);
   }
-  self.setVelocity(side * speed, 0);
+  self.setVelocity(sideSign * speed, 0);
 }
 
-// Pick the centre y of the nearest visible door whose centre sits at
-// or below `fromY` (i.e. the next door the entity would reach by
-// continuing forward into the playfield). Returns null if every visible
-// door is above `fromY`.
-function pickDoorCenterYForward(self: Entity, fromY: number): number | null {
+// Pick the centre y of the nearest visible door on the requested side
+// of `fromY`: 'lower' means downscreen (centre at or below fromY, the
+// next door reached by walking forward), 'upper' means upscreen
+// (centre at or above fromY). Returns null if every visible door is
+// on the other side of `fromY`. Pure relative to `stage.bgScrollY`,
+// so callers can read it on the script clock without touching Phaser.
+export function findClosestDoorLine(self: Entity, fromY: number, vertical: 'upper' | 'lower'): number | null {
   let best: number | null = null;
   for (const top of computeDoorYs(self.stage.bgScrollY)) {
     if (!isDoorVisible(top)) continue;
     const center = top + DOOR_H / 2;
-    if (center < fromY) continue;
-    if (best === null || center < best) best = center;
+    if (vertical === 'lower' ? center < fromY : center > fromY) continue;
+    if (best === null) {
+      best = center;
+    } else if (vertical === 'lower' ? center < best : center > best) {
+      best = center;
+    }
   }
   return best;
+}
+
+// Walk vertically to a door line at `lineY`, then on horizontally
+// through that wall until off-screen. Awaits the full motion. Use
+// for cutscene NPCs whose exit beat is part of the staging — pair
+// with `findClosestDoorLine` to pick the y. The combat-style exit
+// helpers (`exitThroughSideDoor` / `exitThroughDoor`) instead set a
+// velocity and return so the caller can keep firing in parallel;
+// reach for those when the exit isn't a hard cutscene gate.
+export function* walkThroughDoorLine(
+  self: Entity,
+  lineY: number,
+  side: 'left' | 'right',
+  speed: number,
+): Generator<ScriptYield, void, void> {
+  if (Math.abs(lineY - self.y) > 1) {
+    yield* moveTo(self, self.x, lineY, speed);
+  }
+  const sideSign: -1 | 1 = side === 'left' ? -1 : 1;
+  yield* moveTo(self, sideSpawnX(sideSign), lineY, speed);
 }

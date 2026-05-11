@@ -53,7 +53,7 @@ import {
   waitScreenClear,
   waitSeconds,
 } from '../script/stage';
-import { EntityKind, type EntityScript } from '../script/types';
+import { EnemyBulletEntityKind, EntityKind, type EntityScript } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -284,9 +284,6 @@ function generateBlocksCode(blocks: Block[], loopForever: boolean): string {
 const DUMMY_ENEMY = new EntityKind({
   sprite: 'boss',
   hitboxRadius: 16,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
 });
 
 // --- layout ---------------------------------------------------------------
@@ -917,12 +914,9 @@ export class PatternTestScene extends Phaser.Scene {
       g.destroy();
     }
 
-    return new EntityKind({
+    return new EnemyBulletEntityKind({
       sprite: key,
       hitboxRadius: radius,
-      hp: null,
-      damageClass: ['player'],
-      damagedByClass: [],
     });
   }
 

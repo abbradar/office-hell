@@ -2,13 +2,16 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo, spread } from '../../script/patterns';
 import { alignDoor, checkStageOnce, doorY, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
-import { EntityKind, type ScriptYield } from '../../script/types';
+import { HPEntityKind, type ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
 // Janitor: walks out of the uppermost wall door, plants, and fires a long
 // horizontal sweep — a "mop swipe" that fans bullets across the screen.
-// After the first swipe they shuffle a bit further down and swipe again,
-// so the player has to dodge twice from a fresh angle.
+// Three swipes total; between each they shuffle a touch further down so
+// every swipe lands from a fresh angle. Advance + rest fills ~1.5s so
+// the player has time to reposition.
+
+const SWEEP_COUNT = 3;
 
 const SWEEP_STEPS = 28;
 const SWEEP_STEP_FRAMES = 2;
@@ -30,12 +33,6 @@ const ENTRY_X_RIGHT = GAME_W * 0.7;
 const ADVANCE_SPEED = 70;
 const ADVANCE_DY = 58;
 const REST_FRAMES = 40;
-// Drop off the bottom fast enough that the second janitor (spawned 1s
-// after the first) is fully off-screen within the wave's 8s design
-// budget. (Currently runs untimed in stage 2 part 1 pending a timing
-// pass; the budget is what the pacing was sized for.) The two sweeps
-// + advance + rest fill 6+ seconds on their own; the remaining budget
-// is just enough for a brisk exit, not a 220 px/s drift.
 const EXIT_SPEED = 380;
 
 function* sweep(self: Entity, leftToRight: boolean): Generator<ScriptYield, void, void> {
@@ -65,20 +62,18 @@ function* janitorScript(self: Entity) {
   // janitors converge their mop strokes toward the corridor centre.
   const leftToRight = fromLeft;
 
-  yield* sweep(self, leftToRight);
+  for (let i = 0; i < SWEEP_COUNT; i++) {
+    if (i > 0) {
+      yield* moveTo(self, self.x, self.y + ADVANCE_DY, ADVANCE_SPEED);
+      yield REST_FRAMES;
+    }
+    yield* sweep(self, leftToRight);
+  }
 
-  // Shuffle forward a touch, rest, then second swipe from the new position.
-  yield* moveTo(self, self.x, self.y + ADVANCE_DY, ADVANCE_SPEED);
-  yield REST_FRAMES;
-
-  yield* sweep(self, leftToRight);
-
-  // Cut straight to the exit — the post-sweep beat that was here used
-  // to sit inside an 11-second budget; the 8s budget can't afford it.
   self.setVelocity(0, EXIT_SPEED);
 }
 
-export const janitor = new EntityKind({
+export const janitor = new HPEntityKind({
   sprite: 'janitor',
   hitboxRadius: 16,
   hp: 24,

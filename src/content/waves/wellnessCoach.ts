@@ -1,12 +1,13 @@
 import { shoot } from '../../audio/sfx/events';
 import { GAME_H, GAME_W, SCRIPT_FPS } from '../../config';
 import type { Entity } from '../../entities/Entity';
-import { BossKind, becomeHittable, bossShudder } from '../../script/boss';
-import { aimed, moveTo } from '../../script/patterns';
+import { becomeHittable, bossShudder, nextBossPhase, PhasedBossKind, phaseRunning } from '../../script/boss';
+import { moveTo, waitUntilY } from '../../script/patterns';
 import { clearBullets, markWave, prepareForBoss, suspendRunning } from '../../script/stage';
 import type { EntityScript, ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 import { pillBullet } from './pillBullet';
+import { questionBullet } from './questionBullet';
 import { reportBullet } from './reportBullet';
 
 // Wellness Coach: shows up unannounced for an "urgent wellness improvement
@@ -25,9 +26,15 @@ import { reportBullet } from './reportBullet';
 //      picked per breath and shared across all rays so the sun keeps
 //      its rotational symmetry; only the curvature varies between
 //      breaths.
-//   3. Personality test — random-direction reports, no homing, weave
-//      the gaps.
-//   4. Vitamins — narrow aimed pill barrages.
+//   3. Personality test — seven question-mark streams radiating from
+//      Coach, slowly rotating around her so the player has to ride
+//      the sweep between adjacent rays, with a periodic random
+//      scatter of reports layered on top.
+//   4. Vitamins — nine radial "lines" of pill bunches: each cycle picks
+//      a random base angle, then fires a sequence of tight clumps
+//      simultaneously along all nine rays with a micro pause between
+//      clumps. Same rotational-symmetry idea as the breathing exhale
+//      but punchier (clumps instead of streams) and faster.
 //
 // On the lethal phase-4 hit she runs a custom death dialogue whose
 // single line is chosen from the bombs-used delta captured at fight
@@ -49,10 +56,11 @@ const PHASE_HP = 100;
 const ANXIOUS_BUNCH_COUNT = 6;
 const ANXIOUS_BUNCH_SPEED = 200;
 const ANXIOUS_BUNCH_SPREAD_PX = 18;
-// Random-direction bunches fired alongside the player-aimed one on
-// each cluster tick. The aimed bunch keeps pressure honest; the rest
-// spray the field so the boss reads as flailing/anxious.
-const ANXIOUS_RANDOM_CLUSTERS = 3;
+// Flanking bunches fanned around the player-aimed one on each cluster
+// tick: one aimed at the player plus a pair angled to either side.
+// The aimed bunch keeps pressure honest; the flankers force the
+// player to commit to a side instead of just side-stepping the lane.
+const ANXIOUS_FLANK_OFFSETS = [-0.6, -0.3, 0.3, 0.6];
 const ANXIOUS_RING_COUNT = 12;
 const ANXIOUS_RING_SPEED = 95;
 const ANXIOUS_GAP = 28;
@@ -83,16 +91,21 @@ const IN_TO_OUT_GAP = 28;
 // path, just staggered by launch time. Amplitude and frequency are
 // chosen once per exhale and shared across every ray, so the sun has
 // rotational symmetry; only the curvature varies from breath to breath.
-const EXHALE_STREAMS = 10;
+const EXHALE_STREAMS = 20;
 const EXHALE_TICKS = 20;
 const EXHALE_TICK_GAP = 7;
 const EXHALE_BULLET_SPEED = 160;
 // Lateral amplitude in pixels — peak excursion of each ray's sine
-// curve from its base radial. Kept below the inter-ray spacing at
-// mid-screen (124px between adjacent radials at d=200) so adjacent
-// rays brush but don't dissolve into each other.
+// curve from its base radial. With 20 streams the inter-ray spacing
+// at d=200 is only ~62px so adjacent rays interleave; the resulting
+// woven mesh is the intended look.
 const EXHALE_WIGGLE_AMP_MIN = 40;
 const EXHALE_WIGGLE_AMP_MAX = 70;
+// Random scatter bullets fired from Coach on each exhale tick,
+// alongside the sun rays. Speed sits below the rays so they read as
+// a separate hazard layer instead of dissolving into the mesh.
+const EXHALE_RANDOM_PER_TICK = 2;
+const EXHALE_RANDOM_SPEED = 120;
 // Radians per script-tick — controls spatial wavelength of the ray
 // (wavelength ≈ 2π · BULLET_SPEED / (freq · SCRIPT_FPS)). Tuned so a
 // ray displays ~1–1.5 visible waves before leaving the play field.
@@ -107,28 +120,61 @@ const OUT_SAY_FRAMES = EXHALE_TICKS * EXHALE_TICK_GAP + 8;
 
 // --- Phase 3: personality test -----------------------------------------
 
-const TEST_BURSTS = 5;
-const TEST_PER_BURST = 14;
-const TEST_BURST_GAP = 26;
-const TEST_SPEED = 135;
+// Seven question-mark streams radiate from Karen and creep around her,
+// sweeping the field. Each stream fires one bullet every
+// TEST_STREAM_GAP ticks at the stream's *current* angle; because
+// successive bullets launch slightly later (and the angle has rotated
+// by then), the in-flight bullets in a stream form a curving arm. The
+// seven sectors between adjacent rays are the safe "blocks" — the
+// player rides the rotation, sliding between the arms to follow the
+// sweep instead of getting pinned to a wall. On top of the streams a
+// periodic scatter of random-direction reports keeps the player from
+// settling into a comfortable groove inside their sector.
+const TEST_STREAM_COUNT = 7;
+const TEST_STREAM_GAP = 6;
+const TEST_STREAM_SPEED = 135;
+// Radians per script-tick. ~0.012 rad/tick ≈ 41°/sec — a sector
+// (360/7 ≈ 51°) sweeps past the player roughly every 1.25s.
+const TEST_ROT_PER_TICK = 0.012;
+const TEST_SCATTER_PERIOD = 30;
+const TEST_SCATTER_COUNT = 10;
+const TEST_SCATTER_SPEED = 240;
+// Wide cone around the player-aim direction — keeps the scatter
+// directional (player can't just sit on the boss's six o'clock) while
+// preserving the random-spray read.
+const TEST_SCATTER_SPREAD = Math.PI / 2;
 const TEST_SAY = 'Quick\npersonality\ntest!';
-const TEST_SAY_FRAMES = TEST_BURSTS * TEST_BURST_GAP + 12;
+const TEST_SAY_REPEAT_TICKS = 60;
+const TEST_SAY_FRAMES = TEST_SAY_REPEAT_TICKS + 18;
 
 // --- Phase 4: vitamins --------------------------------------------------
 
-const VIT_BURSTS = 6;
-const VIT_PER_BURST = 6;
-const VIT_BURST_GAP = 24;
-const VIT_SPEED = 200;
-const VIT_SPREAD = Math.PI / 20;
+// Twenty-two radial rays around Karen, each ray firing a sequence
+// of tight pill clumps with a micro pause between clumps. 22 rays
+// at ~16° apart leave narrow safe wedges — the player has to thread
+// through them along the rotation rather than parking in a sector.
+const VIT_RAYS = 22;
+// Short barrages: only 2 bunches per anchored aim before the next
+// barrage re-locks on the player. Keeps the pressure aggressive
+// instead of letting one long barrage telegraph a single safe arc.
+const VIT_BUNCHES = 2;
+const VIT_BUNCH_GAP = 5;
+const VIT_BULLETS_PER_BUNCH = 4;
+const VIT_BUNCH_SPREAD_PX = 14;
+const VIT_SPEED = 260;
+// Short rest between barrages — just enough breath to read the
+// rotation reset, then straight into the next salvo.
+const VIT_PHASE_GAP = 10;
 const VIT_SAY = 'Have you taken\nyour supplements?!';
-const VIT_SAY_FRAMES = VIT_BURSTS * VIT_BURST_GAP + 12;
-
-// --- Phase transition ---------------------------------------------------
-
-const TRANSITION_FLASHES = 5;
-const TRANSITION_FLASH_GAP = 10;
-const TRANSITION_HOLD = 20;
+const VIT_SAY_FRAMES = VIT_BUNCHES * VIT_BUNCH_GAP + VIT_PHASE_GAP + 12;
+// Half-way auto-aim: when a pill crosses the screen midline it re-aims
+// at the player once, with the turn capped at this much from its
+// current heading. Cap is small enough that a player who's already
+// laterally clear of the ray's lane only gets a glancing curve, not a
+// hard track — sustained dodging still pays off, but loitering gets
+// punished.
+const VIT_REAIM_MAX_TURN = (10 * Math.PI) / 180;
+const VIT_REAIM_Y = GAME_H / 2;
 
 // --- Helpers ------------------------------------------------------------
 
@@ -141,21 +187,6 @@ function ringFromOutside(self: Entity, count: number, speed: number, baseAngle: 
     const sx = self.x + Math.cos(angle) * SPAWN_RADIUS;
     const sy = self.y + Math.sin(angle) * SPAWN_RADIUS;
     self.spawn(bullet, sx, sy, -Math.cos(angle) * speed, -Math.sin(angle) * speed);
-  }
-}
-
-// Fire `count` reports from the coach in fully random directions, each
-// in a straight line (script: null disables the default homing script
-// on reportBullet). Used by the personality-test phase — the random
-// scatter is the readability hook; homing on top of it would erase the
-// gaps the player needs to weave through.
-function scatterReports(self: Entity, count: number, speed: number): void {
-  shoot();
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    self.spawn(reportBullet, self.x, self.y, Math.cos(angle) * speed, Math.sin(angle) * speed, {
-      script: null,
-    });
   }
 }
 
@@ -229,39 +260,35 @@ function spawnAnxiousBunch(self: Entity, angle: number): void {
   }
 }
 
-// Fire a volley of bunches: one aimed at the player, plus several in
-// random directions. Single shoot() so the SFX doesn't stack on top of
-// itself — the visual volume already sells the burst.
+// Fire a volley of bunches: one aimed at the player plus a fan of
+// flankers offset to either side of the aim. Single shoot() so the
+// SFX doesn't stack on top of itself — the visual volume already
+// sells the burst.
 function anxiousClusterVolley(self: Entity): void {
   shoot();
-  spawnAnxiousBunch(self, self.angleToPlayer());
-  for (let i = 0; i < ANXIOUS_RANDOM_CLUSTERS; i++) {
-    spawnAnxiousBunch(self, Math.random() * Math.PI * 2);
+  const aim = self.angleToPlayer();
+  spawnAnxiousBunch(self, aim);
+  for (const offset of ANXIOUS_FLANK_OFFSETS) {
+    spawnAnxiousBunch(self, aim + offset);
   }
 }
 
 // Pick a random spawn position for an anxious-phase ring, biased away
 // from the player and the boss so the burst is visible and dodgeable
-// rather than a point-blank hit on either. Falls back to a centre-ish
-// position after a few rejected attempts.
+// rather than a point-blank hit on either. Confined to the upper half
+// of the screen so the player's lane stays clear of point-blank ring
+// origins. Falls back to a centre-ish position after a few rejected
+// attempts.
 function pickAnxiousRingPos(self: Entity): { x: number; y: number } {
   const player = self.stage.player;
   for (let i = 0; i < 8; i++) {
     const x = 70 + Math.random() * (GAME_W - 140);
-    const y = 100 + Math.random() * (GAME_H * 0.55);
+    const y = 100 + Math.random() * (GAME_H / 2 - 100);
     if (Math.hypot(x - player.x, y - player.y) < ANXIOUS_RING_PLAYER_AVOID) continue;
     if (Math.hypot(x - self.x, y - self.y) < ANXIOUS_RING_BOSS_AVOID) continue;
     return { x, y };
   }
   return { x: GAME_W / 2, y: GAME_H * 0.4 };
-}
-
-// True while the current phase is still going — i.e. its HP pool hasn't
-// been depleted yet. Phases 1–3 can't kill the boss (the takeDamage
-// override pins HP at zero and sets phaseDown), so this is the only
-// termination condition the phase loops need.
-function phaseRunning(self: Entity): boolean {
-  return self.vars?.phaseDown !== true;
 }
 
 // --- Phase generators ---------------------------------------------------
@@ -321,6 +348,10 @@ function* breathPhase(self: Entity): Generator<ScriptYield, void, void> {
           script: makeExhaleBulletScript(stream),
         });
       }
+      for (let r = 0; r < EXHALE_RANDOM_PER_TICK; r++) {
+        const a = Math.random() * Math.PI * 2;
+        self.spawn(bullet, self.x, self.y, Math.cos(a) * EXHALE_RANDOM_SPEED, Math.sin(a) * EXHALE_RANDOM_SPEED);
+      }
       yield EXHALE_TICK_GAP;
     }
     yield PHASE_GAP;
@@ -328,50 +359,93 @@ function* breathPhase(self: Entity): Generator<ScriptYield, void, void> {
 }
 
 function* personalityPhase(self: Entity): Generator<ScriptYield, void, void> {
+  // Start with one ray pointing straight down so the player reads the
+  // opening fan before the rotation kicks in.
+  let baseAngle = Math.PI / 2;
+  let tick = 0;
   while (phaseRunning(self)) {
-    self.say(TEST_SAY, TEST_SAY_FRAMES);
-    for (let i = 0; i < TEST_BURSTS; i++) {
-      if (!phaseRunning(self)) return;
-      scatterReports(self, TEST_PER_BURST, TEST_SPEED);
-      yield TEST_BURST_GAP;
+    if (tick % TEST_SAY_REPEAT_TICKS === 0) self.say(TEST_SAY, TEST_SAY_FRAMES);
+    if (tick % TEST_STREAM_GAP === 0) {
+      shoot();
+      for (let s = 0; s < TEST_STREAM_COUNT; s++) {
+        const a = baseAngle + (s * Math.PI * 2) / TEST_STREAM_COUNT;
+        self.spawn(questionBullet, self.x, self.y, Math.cos(a) * TEST_STREAM_SPEED, Math.sin(a) * TEST_STREAM_SPEED);
+      }
     }
-    yield PHASE_GAP;
+    if (tick > 0 && tick % TEST_SCATTER_PERIOD === 0) {
+      shoot();
+      const aim = self.angleToPlayer();
+      for (let i = 0; i < TEST_SCATTER_COUNT; i++) {
+        const a = aim + (Math.random() - 0.5) * TEST_SCATTER_SPREAD;
+        self.spawn(reportBullet, self.x, self.y, Math.cos(a) * TEST_SCATTER_SPEED, Math.sin(a) * TEST_SCATTER_SPEED, {
+          script: null,
+        });
+      }
+    }
+    baseAngle += TEST_ROT_PER_TICK;
+    tick++;
+    yield 1;
+  }
+}
+
+// Per-pill auto-aim: fly straight on the launched vector until the
+// bullet crosses the screen midline, then re-aim once at the player
+// with the turn capped at `VIT_REAIM_MAX_TURN`. `waitUntilY` computes
+// the time-to-cross from the current velocity once and yields for that
+// duration — no per-frame polling. Generator returns after the single
+// re-aim — physics then carries the bullet on its new heading until it
+// leaves the field. Bullets fired upward or sideways never cross the
+// midline and `waitUntilY` returns immediately, so the re-aim still
+// fires from their current position; that's fine because the cap means
+// the curve is small and the bullet was already off the player's lane
+// anyway.
+function* vitaminBulletScript(self: Entity): Generator<ScriptYield, void, void> {
+  yield* waitUntilY(self, VIT_REAIM_Y);
+  const v = self.body.velocity;
+  const speed = Math.hypot(v.x, v.y);
+  const cur = Math.atan2(v.y, v.x);
+  let diff = self.angleToPlayer() - cur;
+  // Wrap diff into (-π, π] so we always turn the short way around.
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const turn = Math.max(-VIT_REAIM_MAX_TURN, Math.min(VIT_REAIM_MAX_TURN, diff));
+  self.setMotion(cur + turn, speed);
+}
+
+// Spawn one tight clump of pill bullets all flying along `angle`,
+// scattered across a small disk around the boss so the volley reads
+// as a single fat lump moving as one — the same trick as the
+// anxious-phase bunch, restyled for pills.
+function spawnVitaminBunch(self: Entity, angle: number): void {
+  const vx = Math.cos(angle) * VIT_SPEED;
+  const vy = Math.sin(angle) * VIT_SPEED;
+  for (let i = 0; i < VIT_BULLETS_PER_BUNCH; i++) {
+    const r = Math.random() * VIT_BUNCH_SPREAD_PX;
+    const a = Math.random() * Math.PI * 2;
+    self.spawn(pillBullet, self.x + Math.cos(a) * r, self.y + Math.sin(a) * r, vx, vy, {
+      script: vitaminBulletScript,
+    });
   }
 }
 
 function* vitaminsPhase(self: Entity): Generator<ScriptYield, void, void> {
   // Final phase: loops until the lethal hit lands, at which point
   // takeDamage swaps this script out for coachDeath via runScript.
+  // Every barrage anchors ray 0 on the player, so the only way out
+  // is to keep moving along the rotation.
   while (true) {
     self.say(VIT_SAY, VIT_SAY_FRAMES);
-    for (let i = 0; i < VIT_BURSTS; i++) {
-      aimed(self, VIT_PER_BURST, pillBullet, VIT_SPEED, VIT_SPREAD);
-      yield VIT_BURST_GAP;
+    const baseRot = self.angleToPlayer();
+    for (let b = 0; b < VIT_BUNCHES; b++) {
+      shoot();
+      for (let s = 0; s < VIT_RAYS; s++) {
+        const angle = baseRot + (s * Math.PI * 2) / VIT_RAYS;
+        spawnVitaminBunch(self, angle);
+      }
+      yield VIT_BUNCH_GAP;
     }
-    yield PHASE_GAP;
+    yield VIT_PHASE_GAP;
   }
-}
-
-// Visual reset between phases: lock damage off so the next pool isn't
-// chipped while she's still flashing, judder a few times, sweep the
-// in-flight bullets so the new phase opens on a quiet field, then
-// reset HP and re-arm damage. Does NOT touch self.vars beyond clearing
-// `phaseDown` / advancing `phase` — the takeDamage gate reads them on
-// the next hit.
-function* phaseTransition(self: Entity, nextPhase: number): Generator<ScriptYield, void, void> {
-  self.setDamagedByClasses([]);
-  self.body.setVelocity(0, 0);
-  for (let i = 0; i < TRANSITION_FLASHES; i++) {
-    self.flashDamage();
-    yield TRANSITION_FLASH_GAP;
-  }
-  clearBullets(self);
-  yield TRANSITION_HOLD;
-  self.vars ??= {};
-  self.vars.phase = nextPhase;
-  self.vars.phaseDown = false;
-  self.hp = PHASE_HP;
-  becomeHittable(self);
 }
 
 // --- Death --------------------------------------------------------------
@@ -383,18 +457,11 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.body.setVelocity(0, 0);
   self.body.enable = false;
 
-  const bombsAtStart = (self.vars?.bombsAtStart as number | undefined) ?? 0;
-  const used = Math.max(0, self.stage.score.bombs - bombsAtStart);
-  let line: string;
-  if (used === 0) line = "At least you didn't get angry…";
-  else if (used === 1) line = 'You even got angry a single time…';
-  else line = `You even got angry ${used} times…`;
-
   const ch = self.stage.player.character;
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
-    lines: [{ speaker: 'right', text: line }],
+    lines: [{ speaker: 'right', text: 'Uuu, this go-home attitude is performance-toxic...' }],
   });
 
   clearBullets(self);
@@ -403,37 +470,34 @@ function* coachDeath(self: Entity): Generator<ScriptYield, void, void> {
   self.die();
 }
 
-// --- Kind ---------------------------------------------------------------
-
-// Phases 1-3 cap damage at 0 and signal `phaseDown` so the script can
-// roll into the next phase generator; phase 4's lethal hit defers to
-// the base class, whose `takeDamage` runs the kind's `deathScript`
-// (`coachDeath` below).
-class WellnessCoachKind extends BossKind {
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    const phase = (self.vars?.phase as number | undefined) ?? 1;
-    if (phase >= 4) {
-      super.takeDamage(self, amount);
-      return;
-    }
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      self.hp = 0;
-      self.vars ??= {};
-      self.vars.phaseDown = true;
-      return;
-    }
-    self.flashDamage();
-  }
-}
-
 // --- Script body --------------------------------------------------------
 
-function* coachScript(self: Entity) {
+// One-shot per-fight setup. Live chain reaches this in phase 1; cold-
+// start practice entries (phase 2/3/4) reach it on their first phase
+// script. `bombsAtStart` snapshots the run-wide counter so the death
+// line later reads only the bombs burned in *this* fight slice — a
+// phase-4 practice entry counts zero used-during-fight bombs, which is
+// the desired read.
+function coachSetup(self: Entity): void {
+  self.vars ??= {};
+  if (self.vars.coachInitDone) return;
+  self.vars.coachInitDone = true;
+  // Claim the HUD header now that the fight is starting; release it on
+  // death so the corridor doesn't keep her name pinned afterwards.
+  self.stage.bossName = COACH_NAME;
+  self.onDeath(() => {
+    self.stage.bossName = null;
+  });
+  self.vars.bombsAtStart = self.stage.score.bombs;
+  becomeHittable(self);
+}
+
+// Phase 1 — full intro slide + dialogue + anxious chatter. Chains to
+// phase 2 via `nextBossPhase` (visual transition + advance) and yield*.
+function* coachPhase1Script(self: Entity): Generator<ScriptYield, void, void> {
   // BossKind keeps her unhittable on spawn so the player can't melt her
-  // before she's said her piece; becomeHittable below opts back into
-  // damage after the dialogue.
+  // before she's said her piece; `coachSetup` calls becomeHittable
+  // after the dialogue.
   yield* moveTo(self, ENTRY_X, ENTRY_Y, ENTRY_SPEED);
 
   const ch = self.stage.player.character;
@@ -448,48 +512,52 @@ function* coachScript(self: Entity) {
     ],
   });
 
-  // Claim the HUD header now that the fight is starting; release it on
-  // death so the corridor doesn't keep her name pinned afterwards.
-  self.stage.bossName = COACH_NAME;
-  self.onDeath(() => {
-    self.stage.bossName = null;
-  });
-
-  // Snapshot the run-wide bomb counter so the death line later reads
-  // *only* the bombs the player burned during this fight, not the ones
-  // they spent earlier in the stage.
-  self.vars ??= {};
-  self.vars.phase = 1;
-  self.vars.phaseDown = false;
-  self.vars.bombsAtStart = self.stage.score.bombs;
-  self.hp = PHASE_HP;
-  becomeHittable(self);
-
-  // --- Phase 1 ---
+  coachSetup(self);
   yield* anxiousPhase(self);
-  yield* phaseTransition(self, 2);
+  yield* nextBossPhase(self);
+  yield* coachPhase2Script(self);
+}
 
-  // --- Phase 2 ---
+function* coachPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
+  coachSetup(self);
   yield* breathPhase(self);
-  yield* phaseTransition(self, 3);
+  yield* nextBossPhase(self);
+  yield* coachPhase3Script(self);
+}
 
-  // --- Phase 3 ---
+function* coachPhase3Script(self: Entity): Generator<ScriptYield, void, void> {
+  coachSetup(self);
   yield* personalityPhase(self);
-  yield* phaseTransition(self, 4);
+  yield* nextBossPhase(self);
+  yield* coachPhase4Script(self);
+}
 
-  // --- Phase 4 ---
+function* coachPhase4Script(self: Entity): Generator<ScriptYield, void, void> {
+  coachSetup(self);
   yield* vitaminsPhase(self);
 }
 
-export const wellnessCoach = new WellnessCoachKind({
-  sprite: COACH_SPRITE,
-  hitboxRadius: 22,
-  hp: PHASE_HP,
-  damageClass: ['player'],
-  damagedByClass: ['enemy'],
-  defaultScript: coachScript,
-  deathScript: coachDeath,
-});
+function makeWellnessCoach(startPhaseIdx = 0): PhasedBossKind {
+  return new PhasedBossKind({
+    sprite: COACH_SPRITE,
+    hitboxRadius: 22,
+    phases: [
+      { hp: PHASE_HP, script: coachPhase1Script },
+      { hp: PHASE_HP * 2, script: coachPhase2Script },
+      { hp: PHASE_HP, script: coachPhase3Script },
+      { hp: PHASE_HP, script: coachPhase4Script },
+    ],
+    startPhaseIdx,
+    damageClass: ['player'],
+    damagedByClass: ['enemy'],
+    deathScript: coachDeath,
+  });
+}
+
+export const wellnessCoach = makeWellnessCoach();
+export const wellnessCoachFromPhase2 = makeWellnessCoach(1);
+export const wellnessCoachFromPhase3 = makeWellnessCoach(2);
+export const wellnessCoachFromPhase4 = makeWellnessCoach(3);
 
 export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'wellness coach');
@@ -506,4 +574,29 @@ export function* wellnessCoachWave(self: Entity): Generator<ScriptYield, void, v
     const coach = self.spawn(wellnessCoach, GAME_W / 2, -30, 0, 0);
     yield { until: coach };
   });
+}
+
+// Practice-only entries: spawn Coach already positioned at the fight
+// anchor and skip phase 1's intro+dialog. No `prepareForBoss` — these
+// are always entered from the practice menu, so the field is already
+// clean; `suspendRunning` is enough to stop the floor and lock the
+// wave state.
+function* coachWaveFromPhase(self: Entity, kind: PhasedBossKind, label: string): Generator<ScriptYield, void, void> {
+  markWave(self, label);
+  yield* suspendRunning(self, function* () {
+    const coach = self.spawn(kind, ENTRY_X, ENTRY_Y, 0, 0);
+    yield { until: coach };
+  });
+}
+
+export function* wellnessCoachPhase2Wave(self: Entity): Generator<ScriptYield, void, void> {
+  yield* coachWaveFromPhase(self, wellnessCoachFromPhase2, 'wellness coach p2');
+}
+
+export function* wellnessCoachPhase3Wave(self: Entity): Generator<ScriptYield, void, void> {
+  yield* coachWaveFromPhase(self, wellnessCoachFromPhase3, 'wellness coach p3');
+}
+
+export function* wellnessCoachPhase4Wave(self: Entity): Generator<ScriptYield, void, void> {
+  yield* coachWaveFromPhase(self, wellnessCoachFromPhase4, 'wellness coach p4');
 }

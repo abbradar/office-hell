@@ -3,16 +3,19 @@ import { playJump, playThump, shoot } from '../../audio/sfx/events';
 import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import {
-  BossKind,
+  advanceBossPhase,
   becomeHittable,
+  bossPhaseTransition,
   bossShudder,
   FLICKER_INTERVAL_FRAMES,
   FLICKER_TOGGLES,
+  PhasedBossKind,
   POST_FLICKER_HOLD_FRAMES,
   pauseMusicForDefeat,
+  waitPhaseDown,
 } from '../../script/boss';
-import { aimed, moveTo, ring } from '../../script/patterns';
-import { clearBullets, markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
+import { moveTo, ring, spread } from '../../script/patterns';
+import { markWave, prepareForBoss, race, suspendRunning } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { bullet } from '../kinds';
 
@@ -59,9 +62,21 @@ const JUMP_HOME_X = GAME_W / 2;
 const JUMP_HOME_Y = 170;
 const PHASE_TWO_SLIDE_SPEED = 90;
 const LANDING_HOLD = 18;
-const CONE_BULLETS = 10;
+// Odd so the middle bullet of every cone wave lies exactly on the aim
+// angle — across CONE_WAVES that gives a continuous central stream
+// straight at the player while the rest of the fan brackets it.
+const CONE_BULLETS = 11;
 const CONE_SPREAD = Math.PI / 4;
 const CONE_SPEED = 190;
+const CONE_WAVES = 4;
+const CONE_WAVE_GAP = 5;
+// Random scatter sprinkled along each leg-day jump arc — one bullet at a
+// random angle every SPRAY_EVERY frames, slow enough that it just adds field
+// density rather than turning the jump into a directed threat. The
+// return-to-centre jump skips this so the rest beat stays a clear damage
+// window for the player.
+const SPRAY_EVERY = 4;
+const SPRAY_SPEED = 95;
 // Slow on purpose — the rest beat between rep sets is the player's window to
 // unload damage on a stationary, panting boss.
 const REST_RING_BULLETS = 22;
@@ -91,29 +106,6 @@ function* gymBroDeath(self: Entity): Generator<ScriptYield, void, void> {
   yield* bossShudder(self);
   m.restart();
   self.die();
-}
-
-// Custom kind override so phase-1 damage gets pinned at zero instead of
-// killing the boss; phase-2's lethal hit defers to the base class,
-// whose `takeDamage` runs the kind's `deathScript` (set to gymBroDeath
-// below). The phase-1 race below polls `self.vars.phaseOneDown` for
-// the transition.
-class GymBroKind extends BossKind {
-  override takeDamage(self: Entity, amount: number): void {
-    if (self.hp === null) return;
-    if (self.vars?.phaseTwo === true) {
-      super.takeDamage(self, amount);
-      return;
-    }
-    self.hp -= amount;
-    if (self.hp <= 0) {
-      self.hp = 0;
-      self.vars ??= {};
-      self.vars.phaseOneDown = true;
-      return;
-    }
-    self.flashDamage();
-  }
 }
 
 // Small spread fired from one of Brad's shoulders rather than dead centre.
@@ -149,54 +141,49 @@ function* shoulderCurls(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-// Hula — a slow rotating shell with a faster player-aimed shell on top.
-// Ring A crawls around at a random base angle so the field has a visible
-// rotation; ring B re-aims each rep so one of its bullets flies straight at
-// the player. That guarantees the rep isn't a free pass — the player has to
-// move off the firing line — without making the whole pattern a wall of
-// aimed bullets.
+// Hula — slow rotating shells with a slow player-aimed shell on top. Each
+// shell is fired as a HULA_STACK-deep stack with phase-shifted base angles,
+// so increasing HULA_STACK fills the field with overlapping halos rather
+// than one thicker ring. Speeds stay low across both shells so the bullet
+// count can climb without raising the dodge difficulty.
+const HULA_STACK = 1;
 function* hulaSpin(self: Entity): Generator<ScriptYield, void, void> {
   const reps = 7 + Math.floor(Math.random() * 3);
   let angleA = Math.random() * Math.PI * 2;
   const dirA: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
   const stepA = Math.PI / 20 + Math.random() * (Math.PI / 12);
   const speedA = 95 + Math.random() * 35;
-  const speedB = 165 + Math.random() * 55;
+  const speedB = 110 + Math.random() * 30;
   const countA = 15 + Math.floor(Math.random() * 3);
   const countB = 15 + Math.floor(Math.random() * 3);
   for (let i = 0; i < reps; i++) {
-    ring(self, countA, bullet, speedA, angleA);
-    // Snap ring B's base angle to the player so bullet 0 of the ring is a
-    // direct shot; the rest of the ring stays evenly distributed around it.
+    for (let k = 0; k < HULA_STACK; k++) {
+      ring(self, countA, bullet, speedA, angleA + (k * 2 * Math.PI) / (countA * HULA_STACK));
+    }
     const player = self.stage.player;
     const angleB = Math.atan2(player.y - self.y, player.x - self.x);
-    ring(self, countB, bullet, speedB, angleB);
+    for (let k = 0; k < HULA_STACK; k++) {
+      ring(self, countB, bullet, speedB, angleB + (k * 2 * Math.PI) / (countB * HULA_STACK));
+    }
     angleA += dirA * stepA;
     yield 18 + Math.floor(Math.random() * 6);
   }
 }
 
-const PHASE_ONE_PATTERNS = [shoulderCurls, hulaSpin];
-
 function* phaseOneBarrage(self: Entity): Generator<ScriptYield, void, void> {
   // Single shout ("Make me sweat!") fires from the outer script before this
-  // loop runs. Sub-patterns are picked at random per cycle and each one
-  // re-rolls its own parameters internally, so two adjacent runs of the same
-  // pick still play differently. Termination is handled by the race in
-  // gymBroScript — when waitPhaseOneDown wins this generator gets dropped.
+  // loop runs. Sub-patterns alternate deterministically — hula first so the
+  // dense halo field opens the phase, then shoulder curls, then hula again,
+  // and so on. Each sub-pattern re-rolls its own parameters internally, so
+  // adjacent runs of the same pick still play differently. Termination is
+  // handled by the race in gymBroScript — when waitPhaseDown wins this
+  // generator gets dropped.
+  let useHula = true;
   while (true) {
-    const idx = Math.floor(Math.random() * PHASE_ONE_PATTERNS.length);
-    // biome-ignore lint/style/noNonNullAssertion: bounded by PHASE_ONE_PATTERNS.length
-    yield* PHASE_ONE_PATTERNS[idx]!(self);
+    yield* (useHula ? hulaSpin : shoulderCurls)(self);
+    useHula = !useHula;
     yield 28 + Math.floor(Math.random() * 24);
   }
-}
-
-// Polls each frame for the transition signal the kind override sets when
-// phase-1 HP runs out. Lives as the loser's race partner — when this resolves,
-// the barrage above gets dropped mid-volley.
-function* waitPhaseOneDown(self: Entity): Generator<ScriptYield, void, void> {
-  while (self.vars?.phaseOneDown !== true) yield 1;
 }
 
 // 4 * (1-t) * t parabola; peak at t=0.5 lands at fromY + JUMP_PEAK_OFFSET.
@@ -208,12 +195,17 @@ function* parabolicJump(
   fromY: number,
   toX: number,
   frames: number,
+  spray = false,
 ): Generator<ScriptYield, void, void> {
   for (let f = 1; f <= frames; f++) {
     const t = f / frames;
     self.body.setVelocity(0, 0);
     self.x = fromX + (toX - fromX) * t;
     self.y = fromY + JUMP_PEAK_OFFSET * 4 * t * (1 - t);
+    if (spray && f % SPRAY_EVERY === 0) {
+      const a = Math.random() * Math.PI * 2;
+      self.spawn(bullet, self.x, self.y, Math.cos(a) * SPRAY_SPEED, Math.sin(a) * SPRAY_SPEED);
+    }
     yield 1;
   }
   self.body.setVelocity(0, 0);
@@ -232,17 +224,23 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
       // ping-pongs.
       const targetX = i % 2 === 0 ? JUMP_LEFT_X : JUMP_RIGHT_X;
       playJump();
-      yield* parabolicJump(self, landX, landY, targetX, JUMP_FRAMES);
+      yield* parabolicJump(self, landX, landY, targetX, JUMP_FRAMES, true);
       playThump();
       landX = targetX;
       landY = JUMP_HOME_Y;
       // "One!" / "Two!" alternates per rep — caller asked for these two
       // shouts specifically, so we cycle them rather than counting all four.
       self.say(i % 2 === 0 ? 'One!' : 'Two!', LANDING_HOLD + 30);
-      // Aimed cone fires immediately on landing (aim is captured at call
-      // time, not tracked) — give the player a beat to read it before the
-      // next jump.
-      aimed(self, CONE_BULLETS, bullet, CONE_SPEED, CONE_SPREAD);
+      // Burst of cones fires immediately on landing — aim is captured once
+      // so all CONE_WAVES share the same direction (the player has to clear
+      // the firing line, not just sidestep one fan). The trailing gap
+      // doubles as the read-the-next-jump beat.
+      const player = self.stage.player;
+      const aim = Math.atan2(player.y - self.y, player.x - self.x);
+      for (let w = 0; w < CONE_WAVES; w++) {
+        spread(self, CONE_BULLETS, bullet, CONE_SPEED, aim, CONE_SPREAD);
+        yield CONE_WAVE_GAP;
+      }
       yield LANDING_HOLD;
     }
 
@@ -257,7 +255,29 @@ function* phaseTwoCycle(self: Entity): Generator<ScriptYield, void, void> {
   }
 }
 
-function* gymBroScript(self: Entity) {
+// One-shot per-fight setup, idempotent so cold-start practice entries
+// (any phase) and the live chain (which lands here in phase 1) share
+// the same path. vars.bradInitDone is the latch — first caller wins,
+// later phases short-circuit. The phase-tracking vars themselves are
+// seeded by `PhasedBossKind.init` at spawn time.
+function gymBroSetup(self: Entity): void {
+  self.vars ??= {};
+  if (self.vars.bradInitDone) return;
+  self.vars.bradInitDone = true;
+  // Claim the HUD header now that the fight is actually starting; release it
+  // on death (covers both natural defeat and forced cleanup via release(),
+  // which calls die() too).
+  self.stage.bossName = 'Brad';
+  self.onDeath(() => {
+    self.stage.bossName = null;
+  });
+  becomeHittable(self);
+}
+
+// Phase 1 — full intro slide + dialogue + barrage. Chains into phase 2
+// via the in-script transition (shudder + "Leg day!" + slide). Cold-
+// start practice entry runs the same intro the live chain does.
+function* gymBroPhase1Script(self: Entity): Generator<ScriptYield, void, void> {
   yield* moveTo(self, JUMP_HOME_X, ENTRY_Y, ENTRY_SPEED);
   yield HOLD_BEFORE_TALK;
 
@@ -290,34 +310,14 @@ function* gymBroScript(self: Entity) {
     ],
   });
 
-  // Claim the HUD header now that the fight is actually starting; release it
-  // on death (covers both natural defeat and forced cleanup via release(),
-  // which calls die() too).
-  self.stage.bossName = 'Brad';
-  self.onDeath(() => {
-    self.stage.bossName = null;
-  });
-
-  // --- Phase 1 ---
-  becomeHittable(self);
+  gymBroSetup(self);
   self.say('Make me sweat!', POST_DIALOGUE_HOLD);
   yield POST_DIALOGUE_HOLD;
 
-  yield* race(phaseOneBarrage(self), waitPhaseOneDown(self));
+  yield* race(phaseOneBarrage(self), waitPhaseDown(self));
 
   // --- Transition: shudder, clear field, leg-day declaration ---
-  self.setDamagedByClasses([]);
-  self.body.setVelocity(0, 0);
-  // Five quick flashes spread over ~50 frames so the silhouette visibly
-  // judders before the screen goes quiet.
-  for (let i = 0; i < 5; i++) {
-    self.flashDamage();
-    yield 10;
-  }
-  // clearScreen would sweep the boss too — he sits in damages.player
-  // alongside the bullets — so use the bullet-only variant.
-  clearBullets(self);
-  yield 20;
+  yield* bossPhaseTransition(self);
 
   self.say('Leg day!', 80);
   // Slide down to the jump baseline so the parabola's apex stays clear of
@@ -327,24 +327,36 @@ function* gymBroScript(self: Entity) {
   yield* moveTo(self, JUMP_HOME_X, JUMP_HOME_Y, PHASE_TWO_SLIDE_SPEED);
   yield 30;
 
-  // --- Phase 2 ---
-  self.vars ??= {};
-  self.vars.phaseTwo = true;
-  self.hp = PHASE_TWO_HP;
-  becomeHittable(self);
+  advanceBossPhase(self);
+  yield* gymBroPhase2Script(self);
+}
 
+// Phase 2 — leg-day loop. Cold-start practice entry spawns the boss
+// already positioned at the phase-2 baseline; the live chain arrives
+// via phase 1's transition with the same setup, so no positioning is
+// needed here either. `gymBroSetup` is the no-op-on-second-call latch.
+function* gymBroPhase2Script(self: Entity): Generator<ScriptYield, void, void> {
+  gymBroSetup(self);
   yield* phaseTwoCycle(self);
 }
 
-export const gymBro = new GymBroKind({
-  sprite: 'gymBro',
-  hitboxRadius: 24,
-  hp: PHASE_ONE_HP,
-  damageClass: ['player'],
-  damagedByClass: ['enemy'],
-  defaultScript: gymBroScript,
-  deathScript: gymBroDeath,
-});
+function makeGymBro(startPhaseIdx = 0): PhasedBossKind {
+  return new PhasedBossKind({
+    sprite: 'gymBro',
+    hitboxRadius: 24,
+    phases: [
+      { hp: PHASE_ONE_HP, script: gymBroPhase1Script },
+      { hp: PHASE_TWO_HP, script: gymBroPhase2Script },
+    ],
+    startPhaseIdx,
+    damageClass: ['player'],
+    damagedByClass: ['enemy'],
+    deathScript: gymBroDeath,
+  });
+}
+
+export const gymBro = makeGymBro();
+export const gymBroFromPhase2 = makeGymBro(1);
 
 // Wave wrapper that mirrors the final boss's entrance pattern: clear
 // the field, beat, then drop the boss in. BossKind keeps him unhittable
@@ -360,6 +372,20 @@ export function* gymBroWave(self: Entity): Generator<ScriptYield, void, void> {
   yield* prepareForBoss(self);
   yield* suspendRunning(self, function* () {
     const boss = self.spawn(gymBro, GAME_W / 2, -60, 0, 0);
+    yield { until: boss };
+  });
+}
+
+// Practice-only entry: drop Brad straight into phase 2 (leg-day loop)
+// at the jump-baseline position. No intro slide, no dialogue. The
+// field is assumed clean (practice mode always launches into the
+// menu's "from this wave" entry with no live enemies), so the
+// pre-boss field-clean beat is skipped — `suspendRunning` is enough
+// to stop the floor and lock the wave state.
+export function* gymBroPhase2Wave(self: Entity): Generator<ScriptYield, void, void> {
+  markWave(self, 'gym bro p2');
+  yield* suspendRunning(self, function* () {
+    const boss = self.spawn(gymBroFromPhase2, JUMP_HOME_X, JUMP_HOME_Y, 0, 0);
     yield { until: boss };
   });
 }

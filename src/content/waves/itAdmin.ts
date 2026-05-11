@@ -1,66 +1,58 @@
-import { shoot } from '../../audio/sfx/events';
+import { playClick, shoot } from '../../audio/sfx/events';
 import { DEADZONE_Y, GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, suspendRunning } from '../../script/stage';
-import { EntityKind, type EntityScript, type ScriptYield } from '../../script/types';
-import { bullet } from '../kinds';
+import { exitThroughSideDoor, markWave, suspendRunning } from '../../script/stage';
+import { EnemyBulletEntityKind, EntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
+import { kbdKey } from '../textures';
 
-// IT Admin (the modern stand-in for the old "sysop"): two of them drive in
-// from the top, harangue the player about overdue password changes, and
-// fire from opposite halves of the screen. The first admin shoots
-// consecutive vertical lasers from the top edge in classic Touhou form —
-// a thin "starter laser" runs the full path during the telegraph window,
-// with a brighter pulsing source at the top so the player can read the
-// column to dodge out of, then a thick gradient beam fires straight
-// down: a bright white core, a mid-alpha pink halo, and a soft outer
-// fade glow on the long edges. The strip extends well past the bottom
-// of the screen — only the origin reads, the far end never does. The
-// second admin keeps the legacy "arrow" pack: twelve bullets laid out
-// as a long pointed triangle aimed at the player, all moving in
-// formation so the dodge is read on the shape rather than individual
-// bullets.
+// IT Admin (the modern stand-in for the old "sysop"): a single admin
+// drives in from the top, lectures the player about overdue password
+// changes, fires consecutive vertical lasers from the top edge in
+// classic Touhou form — a thin "starter laser" runs the full path
+// during the telegraph window, with a brighter pulsing source at the
+// top so the player can read the column to dodge out of, then a thick
+// gradient beam fires straight down: a bright white core, a mid-alpha
+// pink halo, and a soft outer fade glow on the long edges. The strip
+// extends well past the bottom of the screen — only the origin reads,
+// the far end never does.
+//
+// Once the lasers are done, the same admin demonstrates a series of
+// bad passwords by typing each one as keyboard-cap bullets that grow
+// as they fly. Caps are self-aimed at the player at spawn time, so a
+// player who hangs back at the bottom of the corridor eats a fan of
+// full-sized hitboxes; crowding the admin during the spray turns the
+// caps into a stream of grazeable specks that haven't had time to
+// inflate yet. After each password the admin barks the quality
+// critique, then moves on; after the final passw0rd! attempt — the
+// one good password — the admin exits, lesson taught.
 
 const ENTRY_SPEED = 100;
 const ENTRY_Y = 90;
 
 const SAY_FRAMES = 100;
-const ADMIN_STAGGER = 90;
 const EXIT_SPEED = 220;
 
-// --- Vertical-beam admin -------------------------------------------------
+// --- Vertical-beam phase -------------------------------------------------
 
-// Beam timings. A beam (warning + lethal + gap) fits in roughly one
-// second; with BEAM_VOLLEYS = 6 that gives the admin ~6s of firing on top
-// of their entry / exit. Player speed is 280 px/s ≈ 4.7 px/frame, and
-// the lethal beam's hitbox is 24 px wide so dodging requires the player
-// centre to move > 16 px from the beam centre — ~3-4 frames of travel.
-// The 22-frame (≈0.37s) warning leaves the rest as reaction headroom.
-const WARNING_FRAMES = 22;
+// Beam timings. A beam (warning + lethal + gap) fits in roughly 1.2s
+// now, so the laserLoop drops a fresh beam roughly once a second
+// while the password sequence runs on top. Player speed is 280 px/s
+// ≈ 4.7 px/frame and the lethal beam's hitbox is 24 px wide, so
+// dodging requires the player centre to move > 16 px from the beam
+// centre — ~3-4 frames of travel. The 44-frame (≈0.73s) warning is
+// twice the original 22: the doubled telegraph window keeps the
+// laser fair now that the player also has to track the keyboard-cap
+// spray's growing-bullet timing at the same time.
+const WARNING_FRAMES = 44;
 const LASER_FRAMES = 14;
 const BEAM_VOLLEY_GAP = 16;
-const BEAM_VOLLEYS = 6;
-// Frames the lethal beam takes to expand from a sliver to its full
-// width at the start of the lethal phase. Short — the beam reads as
-// "energy snapping on" with just enough easing that it doesn't pop in
-// instantly.
 const BEAM_EXPAND_FRAMES = 4;
 
-// Lethal beam geometry. The hitbox is the same 24-px wall the cell-based
-// version had, so dodge timing is unchanged. The visual is drawn as
-// three nested layers: a bright white core, a mid-alpha pink halo
-// matching the hitbox, and a wider faded glow that provides the soft
-// fade at the long edges.
 const BEAM_HIT_WIDTH = 24;
 const BEAM_CORE_WIDTH = 12;
 const BEAM_HALO_WIDTH = 24;
 const BEAM_GLOW_WIDTH = 38;
-
-// Beam length: long enough that the far end is always off the bottom
-// regardless of source y. Sources spawn at DEADZONE_Y, so 2× GAME_H is
-// plenty of headroom for any caller. Anything past GAME_H sits behind
-// the touch-control band (depth 50) on touch devices and clips off the
-// canvas on desktop, so the beam visually has no end.
 const BEAM_LENGTH = GAME_H * 2;
 
 const BEAM_OUTER_TINT = 0xff5577;
@@ -70,70 +62,28 @@ const STARTER_ALPHA = 0.4;
 const STARTER_WIDTH = 2;
 const SOURCE_FLASH_TINT = 0xffd96a;
 
-// Beam graphics sit between floor (-10) and walls (-9), matching the
-// depth bullets / pooled hazards render at — so the side walls and
-// closed door panels still occlude a stray beam tail and the open-door
-// gaps let it show through.
 const BEAM_DEPTH = -9.5;
 
-// Non-damaging entity used for the pulsing source flash at the beam
-// origin. The lethal beam itself is no longer cell-based, but the source
-// flash stays as a sprite so the engine cleans it up automatically when
-// the admin dies mid-warning.
 const beamWarning = new EntityKind({
   sprite: 'chartCell',
   hitboxRadius: 4,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
 });
 
-// Lethal beam. The chartCell sprite is just a placeholder we hide on
-// spawn — the visible beam is rendered into a Graphics strip by the
-// per-bullet script, and the body is resized to a tall rectangle
-// covering the full beam path. damageClass: ['player'] so the player
-// takes a hit any time they cross the strip; hp: null so it can't be
-// shot down by player fire — the script self-destructs on a timer.
-// hitboxRadius is a tiny placeholder; the script overrides body size +
-// offset on spawn.
-const beamLaser = new EntityKind({
+const beamLaser = new EnemyBulletEntityKind({
   sprite: 'chartCell',
   hitboxRadius: 1,
   hitboxShape: 'square',
-  hp: null,
-  damageClass: ['player'],
-  damagedByClass: [],
 });
 
-// Fire one vertical beam from (sx, sy), extending downward past the
-// bottom of the screen. Phase 1: Touhou-style starter laser — a thin
-// faint stripe along the full path so the player can see exactly which
-// lane is about to be lethal — plus a brighter pulsing source flash at
-// (sx, sy) drawing the eye to the origin. Phase 2: a real expanding
-// gradient beam, one rectangular collision body plus a layered Graphics
-// strip (bright white core, mid-alpha pink halo, soft outer glow) that
-// fades on its long edges. The width animates from 0 to full over
-// BEAM_EXPAND_FRAMES so the beam reads as snapping on rather than
-// popping in. The strip extends past the bottom of the screen so the
-// player only sees its origin, never its end.
 function* fireBeam(self: Entity, sx: number, sy: number): Generator<ScriptYield, void, void> {
   const scene = self.scene;
 
-  // Phase 1a — starter laser: thin faint stripe down the full path. One
-  // Graphics rectangle instead of a row of cells; wrapped in try/finally
-  // so a mid-warning admin death (script dropped by the outer race)
-  // still tears it down via iter.return().
   const starter = scene.add.graphics().setDepth(BEAM_DEPTH);
   starter.fillStyle(STARTER_TINT, STARTER_ALPHA);
   starter.fillRect(sx - STARTER_WIDTH / 2, sy, STARTER_WIDTH, BEAM_LENGTH);
 
   try {
-    // Phase 1b — pulsing source flash at the beam start. Spawned as an
-    // entity so the engine cleans it up on admin death without leaving
-    // an orphan sprite. Scale ramps from 1.5× to 3× over the warning
-    // so the cell visibly "charges up", and the alpha pulse adds a
-    // flicker the player can read peripherally.
     self.spawn(beamWarning, sx, sy, 0, 0, {
       script: function* (b: Entity): Generator<ScriptYield, void, void> {
         b.setTint(SOURCE_FLASH_TINT);
@@ -152,46 +102,24 @@ function* fireBeam(self: Entity, sx: number, sy: number): Generator<ScriptYield,
     starter.destroy();
   }
 
-  // Phase 2 — lethal beam. One pooled entity carries both the
-  // rectangular hitbox and the per-frame Graphics that draws the
-  // gradient strip. The pair is torn down together when the script
-  // finishes (or is cancelled by entity culling); this keeps the beam
-  // alive past its parent admin's death without orphaning visuals,
-  // matching the cell-based version's "fire-and-forget" semantics.
   shoot();
   self.spawn(beamLaser, sx, sy, 0, 0, {
     script: function* (b: Entity): Generator<ScriptYield, void, void> {
-      // Hide the placeholder sprite — the gradient strip below renders
-      // the beam itself.
       b.setVisible(false);
-      // Override the kind's tiny placeholder hitbox with a tall slab
-      // covering the full beam path. setSize(..., false) skips the
-      // auto-centring that would otherwise stomp our offset; setOffset
-      // is in sprite-local coords (relative to the sprite's top-left),
-      // and chartCell is 8×8 with origin (0.5, 0.5) so add 4 to the
-      // half-width / put the body's top flush with the sprite centre.
       b.body.setSize(BEAM_HIT_WIDTH, BEAM_LENGTH, false);
       b.body.setOffset(b.width / 2 - BEAM_HIT_WIDTH / 2, b.height / 2);
 
       const g = scene.add.graphics().setDepth(BEAM_DEPTH);
       try {
         for (let t = 0; t < LASER_FRAMES; t++) {
-          // Width grows linearly from 0 → 1 over BEAM_EXPAND_FRAMES,
-          // then holds — the "snap-on" feel without an instant pop.
           const grow = Math.min(1, (t + 1) / BEAM_EXPAND_FRAMES);
           g.clear();
-          // Outer glow: widest, lowest alpha — the soft fade at the
-          // beam's long edges (the "vertical contours").
           const gw = BEAM_GLOW_WIDTH * grow;
           g.fillStyle(BEAM_OUTER_TINT, 0.2);
           g.fillRect(sx - gw / 2, sy, gw, BEAM_LENGTH);
-          // Halo: mid alpha, matches the hitbox width — what hits you
-          // also reads as fully solid.
           const hw = BEAM_HALO_WIDTH * grow;
           g.fillStyle(BEAM_OUTER_TINT, 0.55);
           g.fillRect(sx - hw / 2, sy, hw, BEAM_LENGTH);
-          // Core: narrow, full white, full alpha — drawn last so it
-          // sits on top of the halo within the same Graphics.
           const cw = BEAM_CORE_WIDTH * grow;
           g.fillStyle(BEAM_CORE_TINT, 1);
           g.fillRect(sx - cw / 2, sy, cw, BEAM_LENGTH);
@@ -207,149 +135,176 @@ function* fireBeam(self: Entity, sx: number, sy: number): Generator<ScriptYield,
   yield LASER_FRAMES;
 }
 
-// --- Arrow admin ---------------------------------------------------------
+// --- Keyboard-cap password phase -----------------------------------------
 
-const ARROW_VOLLEYS = 4;
-const ARROW_VOLLEY_GAP = 95;
-const ARROW_SPEED = 200;
-// Arrow geometry, in the arrow's local frame (forward = aim, lateral = ⊥).
-// ROW_STEP: spacing between successive rows along the flight axis.
-// ROW_GAP : perpendicular spacing between adjacent bullets within a row.
-// GAP=27 puts the 11-bullet base row at 10*27 = 270 px wide — ~2/3 of the
-// 400 px playfield. Adjacent bullets in a row leave ~27 - 6 = 21 px of clear
-// space, plenty for the player (hitbox r=4) to thread between them. Head-on
-// dodging the entire arrow is impractical at this width — the intended play
-// is to commit to a lane between two bullets and graze diagonally through.
-const ARROW_ROW_STEP = 14;
-const ARROW_ROW_GAP = 27;
+// Cap-cap geometry: the texture is 16×16, hitbox is a 14×14 square
+// centred on it (`hitboxRadius` = half-extent). Phaser's Arcade body
+// auto-tracks GameObject scale, so growing the sprite via setScale
+// grows the body in lockstep — no per-frame body.setSize() needed.
+const KBD_HITBOX = 7;
 
-// Arrow shape: seven rows widening from a 1-bullet tip to an 11-bullet base,
-// plus a repeated 11-bullet "fletch" trailing row so the arrow reads as a
-// pointed triangle with a heavy tail rather than a thin spike. 47 bullets
-// total. Generated rather than hand-listed so the row math stays readable.
-const ARROW_ROWS: readonly { step: number; count: number }[] = [
-  { step: +3, count: 1 },
-  { step: +2, count: 3 },
-  { step: +1, count: 5 },
-  { step: 0, count: 7 },
-  { step: -1, count: 9 },
-  { step: -2, count: 11 },
-  { step: -3, count: 11 },
-];
+// Caps spawn tiny, expand to about 1.5× the sprite's natural size over
+// KBD_GROW_FRAMES. At KBD_SPEED travelling from y≈90 to a player camped
+// at y≈580 the bullet flight is ~2.5s (150 frames) — comfortably past
+// the grow window, so anyone hugging the bottom rail gets the full-fat
+// hitbox. A player closing the gap to the admin shaves both flight
+// time and grow time, which is the point of the mechanic: crowd the
+// source or eat a big square.
+const KBD_START_SCALE = 0.3;
+const KBD_END_SCALE = 1.6;
+const KBD_GROW_FRAMES = 130;
+const KBD_SPEED = 200;
 
-const ARROW_LAYOUT: readonly [number, number][] = ARROW_ROWS.flatMap(({ step, count }) => {
-  const f = step * ARROW_ROW_STEP;
-  const half = (count - 1) / 2;
-  const row: [number, number][] = [];
-  for (let i = 0; i < count; i++) {
-    row.push([f, (i - half) * ARROW_ROW_GAP]);
-  }
-  return row;
-});
+// Spacing between successive keystrokes in a password. 7 frames ≈
+// 117 ms — fast enough to read as someone typing, slow enough that
+// each cap's spawn-time aim picks up the player's latest x.
+const KBD_CHAR_GAP = 7;
+// Pause after the last cap of a password before the comment lands,
+// so the spray and the quality-critique bubble don't collide.
+const KBD_PASSWORD_POST_GAP = 26;
+// Hold time before moving on to the next password — keeps the comment
+// bubble up long enough to read.
+const KBD_COMMENT_HOLD = 70;
 
-function shootArrow(self: Entity): void {
+// Characters the spray ever fires across all five passwords:
+//   jane / john   → j a n e o h
+//   qwerty        → q w e r t y
+//   1234567890    → 1 2 3 4 5 6 7 8 9 0
+//   password1     → p a s s w o r d 1
+//   passw0rd!     → p a s s w 0 r d !
+// Union (deduped): j a n e o h q w r t y 1234567890 p s d !
+// One kind per character — the spawn path sets the sprite texture from
+// kind.sprite, so a per-char kind lands the right cap on frame 0 with
+// no placeholder flash. All caps share the same 16×16 geometry and
+// hitbox.
+const KBD_CHARS_USED = 'janehoqwrty1234567890psd!';
+const KBD_KINDS: Map<string, EnemyBulletEntityKind> = new Map();
+for (const ch of KBD_CHARS_USED) {
+  KBD_KINDS.set(
+    ch,
+    new EnemyBulletEntityKind({
+      sprite: kbdKey(ch),
+      hitboxRadius: KBD_HITBOX,
+      hitboxShape: 'square',
+    }),
+  );
+}
+
+function spawnKeyCap(self: Entity, ch: string): void {
+  const kind = KBD_KINDS.get(ch);
+  if (kind === undefined) return;
+  // Self-aiming: aim at the player at spawn time. Each cap commits to
+  // a heading on the frame it leaves the admin's keyboard, so a player
+  // who drifts sideways during the spray fans the cap stream out
+  // rather than walking into a static column.
   const aim = self.angleToPlayer();
-  const cos = Math.cos(aim);
-  const sin = Math.sin(aim);
-  // Lateral basis = aim rotated +90°. Used to convert the local (f, p) layout
-  // into world offsets so the triangle is always oriented along its flight.
-  const lx = -sin;
-  const ly = cos;
-  const vx = cos * ARROW_SPEED;
-  const vy = sin * ARROW_SPEED;
+  const vx = Math.cos(aim) * KBD_SPEED;
+  const vy = Math.sin(aim) * KBD_SPEED;
+  self.spawn(kind, self.x, self.y, vx, vy, {
+    script: function* (b: Entity): Generator<ScriptYield, void, void> {
+      b.setScale(KBD_START_SCALE);
+      for (let t = 0; t < KBD_GROW_FRAMES; t++) {
+        const u = (t + 1) / KBD_GROW_FRAMES;
+        b.setScale(KBD_START_SCALE + (KBD_END_SCALE - KBD_START_SCALE) * u);
+        yield 1;
+      }
+      // Hold full size until the cull margin reaps it on its way off
+      // the field. The while-true is the standard script idiom — the
+      // engine drops the script when the entity dies (cull or bomb).
+      while (true) yield 60;
+    },
+  });
+}
 
-  shoot();
-  for (const [f, p] of ARROW_LAYOUT) {
-    const x = self.x + cos * f + lx * p;
-    const y = self.y + sin * f + ly * p;
-    self.spawn(bullet, x, y, vx, vy);
+function* sprayPassword(self: Entity, password: string): Generator<ScriptYield, void, void> {
+  // Fire last-char-first: the caps travel from admin to player, so the
+  // earliest-fired one is also the furthest along the path. Typing in
+  // reverse puts the password's first letter at the front of the
+  // stream (closest to the player) and the last letter still at the
+  // admin's keyboard — the player reads the word top-to-bottom along
+  // its flight path in natural left-to-right / first-to-last order.
+  for (const ch of [...password].reverse()) {
+    playClick();
+    spawnKeyCap(self, ch);
+    yield KBD_CHAR_GAP;
   }
 }
 
-// --- Scripts -------------------------------------------------------------
+// --- Script -------------------------------------------------------------
 
-// Per-volley speech schedule. Each entry is the line to speak at that volley
-// index, or null to fire silently. Both admins fire on every volley regardless
-// of their speech schedule — only the bubbles are gated.
-type SpeechSchedule = readonly (string | null)[];
-
-function makeBeamAdminScript(speech: SpeechSchedule): EntityScript {
-  return function* (self: Entity) {
-    yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-
-    for (let i = 0; i < BEAM_VOLLEYS; i++) {
-      const line = speech[i];
-      if (line) self.say(line, SAY_FRAMES);
-      const aimX = self.stage.player.x;
-      // Beam spawns at DEADZONE_Y so the source flash + starter laser
-      // sit just under the 28-px HUD strip — anything spawned at y = 0
-      // is occluded by the panel (depth 99), which is why an earlier
-      // version of this telegraph was effectively invisible. The beam
-      // extends past the bottom of the screen on its own (BEAM_LENGTH).
-      yield* fireBeam(self, aimX, DEADZONE_Y);
-      yield BEAM_VOLLEY_GAP;
-    }
-
-    self.setVelocity(0, EXIT_SPEED);
-  };
-}
-
-function makeArrowAdminScript(speech: SpeechSchedule): EntityScript {
-  return function* (self: Entity) {
-    yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
-
-    for (let i = 0; i < ARROW_VOLLEYS; i++) {
-      const line = speech[i];
-      if (line) self.say(line, SAY_FRAMES);
-      shootArrow(self);
-      yield ARROW_VOLLEY_GAP;
-    }
-
-    self.setVelocity(0, EXIT_SPEED);
-  };
-}
-
-export const itAdmin = new EntityKind({
+export const itAdmin = new HPEntityKind({
   sprite: 'sysop',
   hitboxRadius: 16,
-  hp: 18,
+  hp: 60,
   damageClass: ['player'],
   damagedByClass: ['enemy'],
 });
 
-// Demo wave: two IT admins from opposite halves of the screen, staggered so
-// the player is dodging the laser admin a beat before the arrow admin
-// piles on. The 0.4 / 0.6 spawn x's pull the sprites in from the side
-// walls so neither straddles a door panel during entry, and keep the
-// arrow admin's wide base row inside the playfield.
-//
-// Speech is split across both admins so no single sprite gets bubble-spammed.
-// Schedule (relative to the laser admin's first volley):
-//   t=0    laser v0 → "Change your email password. Now."
-//   t=185  arrow v1 → "Your last reset was 91 days ago."   (90 stagger + 95 arrow gap)
-//   t=260  laser v5 → '"Password1!" does not count.'        (5 × 52 beam-period)
-// Each bubble lives 100f (SAY_FRAMES); lines 2 and 3 overlap by ~25f near the
-// end, which is well past the active reading window.
+// Infinite beam pump — paired with passwordSequence in a `race` so the
+// engine drops it the moment the passwords are done. An in-flight
+// fireBeam cleans up its starter Graphics via its own try/finally on
+// cancellation; in-flight beam entities continue under their own
+// scripts and tear down on their own LASER_FRAMES timer.
+function* laserLoop(self: Entity): Generator<ScriptYield, void, void> {
+  while (true) {
+    const aimX = self.stage.player.x;
+    yield* fireBeam(self, aimX, DEADZONE_Y);
+    yield BEAM_VOLLEY_GAP;
+  }
+}
+
+function* passwordSequence(self: Entity): Generator<ScriptYield, void, void> {
+  // Player name is lowercased because passwords are conventionally
+  // lowercase; the cap textures render uppercase regardless, like a
+  // real keyboard. Jane / John are both 4 chars — the "Too short!"
+  // critique lands on either.
+  const playerName = self.stage.player.character.name.toLowerCase();
+  const passwords: readonly { pw: string; comment: string | null }[] = [
+    { pw: playerName, comment: 'Too short!' },
+    { pw: 'qwerty', comment: 'No!' },
+    { pw: '1234567890', comment: 'Also no!' },
+    { pw: 'password1', comment: 'Needs a symbol!' },
+    { pw: 'passw0rd!', comment: 'Ugh!' },
+  ];
+
+  for (const { pw, comment } of passwords) {
+    yield* sprayPassword(self, pw);
+    yield KBD_PASSWORD_POST_GAP;
+    if (comment !== null) {
+      self.say(comment, SAY_FRAMES);
+      yield KBD_COMMENT_HOLD;
+    }
+  }
+}
+
+function* itAdminScript(self: Entity) {
+  yield* moveTo(self, self.x, ENTRY_Y, ENTRY_SPEED);
+
+  // Open with the bark, then race lasers against the password sequence
+  // so the player has to read both threats at once — vertical beams
+  // from the top while keyboard caps fan out aimed at their current
+  // position. The race ends when passwordSequence completes (laserLoop
+  // never returns on its own); the admin then walks out the left wall.
+  self.say('Change your email password. Now.', SAY_FRAMES);
+  yield 60;
+
+  yield { race: [laserLoop(self), passwordSequence(self)] };
+
+  yield* exitThroughSideDoor(self, -1, EXIT_SPEED);
+}
+
+// Demo wave: a single IT admin walks down the centre of the corridor,
+// runs the laser phase, demos five bad passwords, and exits through
+// the left wall. The original wave doubled the admin up with an arrow
+// formation from the opposite half; that role is gone — the password
+// phase now carries the bullet-pattern weight on the same sprite.
 export function* itAdminsWave(self: Entity): Generator<ScriptYield, void, void> {
   markWave(self, 'it admin');
   self.stage.scheduleMultDrop('regular');
+  // biome-ignore lint/correctness/useYield: spawn-only body; suspendRunning supplies the yield*
   yield* suspendRunning(self, function* () {
-    const laserSpeech: SpeechSchedule = [
-      'Change your email password. Now.',
-      null,
-      null,
-      null,
-      null,
-      '"Password1!" does not count.',
-    ];
-    const arrowSpeech: SpeechSchedule = [null, 'Your last reset was 91 days ago.', null, null];
-
-    self.spawn(itAdmin, GAME_W * 0.4, -30, 0, 0, {
-      script: makeBeamAdminScript(laserSpeech),
-    });
-    yield ADMIN_STAGGER;
-    self.spawn(itAdmin, GAME_W * 0.6, -30, 0, 0, {
-      script: makeArrowAdminScript(arrowSpeech),
+    self.spawn(itAdmin, GAME_W / 2, -30, 0, 0, {
+      script: itAdminScript,
     });
   });
 }

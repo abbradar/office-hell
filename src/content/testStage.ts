@@ -159,8 +159,5 @@ function* testStageBody(self: Entity) {
 export const stageTest = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
   defaultScript: testStageBody,
 });

@@ -22,12 +22,13 @@ import {
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
+import { allDoorsSpamWave } from './waves/allDoorsSpam';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';
 import { emailColleagues2, emailColleaguesWave } from './waves/emailColleagues';
 import { endingScene } from './waves/ending';
 import { fridayPartyWave } from './waves/fridayParty';
-import { gymBroWave } from './waves/gymBro';
+import { gymBroPhase2Wave, gymBroWave } from './waves/gymBro';
 import { hrTrioWave } from './waves/hrTrio';
 import { internsWave } from './waves/intern';
 import { interStageWaterCooler } from './waves/interStage';
@@ -41,7 +42,13 @@ import { salesClientWave } from './waves/salesClient';
 import { shrunkOldManWave } from './waves/shrunkOldMan';
 import { theBossWave } from './waves/theBoss';
 import { vacationPhotosWave } from './waves/vacationPhotos';
-import { COACH_NAME, wellnessCoachWave } from './waves/wellnessCoach';
+import {
+  COACH_NAME,
+  wellnessCoachPhase2Wave,
+  wellnessCoachPhase3Wave,
+  wellnessCoachPhase4Wave,
+  wellnessCoachWave,
+} from './waves/wellnessCoach';
 
 const PLAYER_OUTRO_SPEED = 220;
 const PLAYER_OUTRO_PAUSE_Y = 110;
@@ -88,10 +95,13 @@ export type WaveDef = {
 
 // === Stage 1 part 1 — retro-01 → retro-02 seam → Brad ===
 //
-// Wave block = 9+15+12+15 = 51s of timed slots + 3 × 3s gaps = 60s,
+// Wave block = 9+13+14+15 = 51s of timed slots + 3 × 3s gaps = 60s,
 // against the 59s part-1 budget (see docs/stage-design.md → "Stage-
-// part durations"). The 15s email-colleagues slot absorbs what used
-// to be two separate 6s+8s waves with a gap. After the block,
+// part durations"). The 13s email-colleagues slot absorbs what used
+// to be two separate 6s+8s waves with a gap; the trailing pair fires
+// only a single barrage to fit the tighter slot, and the saved two
+// seconds were handed to urgent-call (12s → 14s) as pre-retreat hold.
+// After the block,
 // `waitTrackEnded` snaps the cut to the retro-01 loop boundary so
 // the music switch lands on a musical seam rather than mid-bar; then
 // gymBroWave's own `startMusicLoop(retro-02)` performs the actual
@@ -112,7 +122,7 @@ function* fromEmailColleagues(self: Entity): Generator<ScriptYield, void, void> 
   // practice entry point. No intro fanfare — mid-section.
   yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
 
-  yield* timeWave(self, 15, self.stage.separateWave(emailColleaguesWave(self)));
+  yield* timeWave(self, 13, self.stage.separateWave(emailColleaguesWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromUrgentCall(self);
 }
@@ -120,7 +130,7 @@ function* fromEmailColleagues(self: Entity): Generator<ScriptYield, void, void> 
 function* fromUrgentCall(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(STAGE1_RETRO_01_LOOP_KEY);
 
-  yield* timeWave(self, 12, self.stage.separateWave(urgentCallWave(self)));
+  yield* timeWave(self, 14, self.stage.separateWave(urgentCallWave(self)));
   yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromCheckEmail(self);
 }
@@ -144,6 +154,17 @@ function* fromGymBro(self: Entity): Generator<ScriptYield, void, void> {
   yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
 
   yield* self.stage.separateWave(gymBroWave(self));
+  yield* fromMoreCharts(self);
+}
+
+// Practice-only continuation: enter Brad at phase 2 (the leg-day loop)
+// and continue the live chain from there. No live caller routes
+// through this — the menu picks it directly. Music + post-boss
+// continuation match `fromGymBro` exactly so the post-boss section
+// plays as it does in the real stage.
+function* fromGymBroPhase2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_02_LOOP_KEY);
+  yield* self.stage.separateWave(gymBroPhase2Wave(self));
   yield* fromMoreCharts(self);
 }
 
@@ -215,6 +236,30 @@ function* fromWellnessCoach(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromWaterCooler(self);
 }
 
+// Practice-only continuations: enter Coach at phase 2/3/4 and continue
+// the live chain from there. Music + post-boss continuation match
+// `fromWellnessCoach` so the rest of the stage plays as it does live.
+// Skip the intro fanfare (`startMusicLoop`, not `startMusicWithIntro`) —
+// these are mid-fight entries and the opening cue would read as a
+// restart.
+function* fromWellnessCoachPhase2(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase2Wave(self));
+  yield* fromWaterCooler(self);
+}
+
+function* fromWellnessCoachPhase3(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase3Wave(self));
+  yield* fromWaterCooler(self);
+}
+
+function* fromWellnessCoachPhase4(self: Entity): Generator<ScriptYield, void, void> {
+  yield* startMusicLoop(STAGE1_RETRO_03_LOOP_KEY);
+  yield* self.stage.separateWave(wellnessCoachPhase4Wave(self));
+  yield* fromWaterCooler(self);
+}
+
 // === Inter-stage water cooler — silent ===
 //
 // The water-cooler scene plays without music; we cut the stage-1 retro-03
@@ -247,13 +292,21 @@ function* fromItAdmin(self: Entity): Generator<ScriptYield, void, void> {
 
   yield* self.stage.separateWave(itAdminsWave(self));
   yield* waitSeconds(INTER_WAVE_GAP);
+  yield* fromAllDoorsSpam(self);
+}
+
+function* fromAllDoorsSpam(self: Entity): Generator<ScriptYield, void, void> {
+  // Idempotent in the live chain (kaedalus-long already running from
+  // `fromItAdmin`); switches in from menu music when this is the
+  // practice entry point.
+  yield* startMusicLoop(KAEDALUS_LONG_KEY);
+
+  yield* self.stage.separateWave(allDoorsSpamWave(self));
+  yield* waitSeconds(INTER_WAVE_GAP);
   yield* fromSalesClient(self);
 }
 
 function* fromSalesClient(self: Entity): Generator<ScriptYield, void, void> {
-  // Idempotent in the live chain (kaedalus-long already running from
-  // `fromItAdmin`); switches in from menu music when this is the
-  // practice entry point.
   yield* startMusicLoop(KAEDALUS_LONG_KEY);
 
   yield* self.stage.separateWave(salesClientWave(self));
@@ -371,6 +424,7 @@ export const WAVES: WaveDef[] = [
   { id: 'r-urgent-call', name: 'Urgent Call', script: fromUrgentCall },
   { id: 'r-check-email', name: 'Check Email', script: fromCheckEmail },
   { id: 'r-gym-bro', name: 'Mid-Stage Boss — Brad', script: fromGymBro },
+  { id: 'r-gym-bro-p2', name: 'Mid-Stage Boss — Brad (P2: Leg Day)', script: fromGymBroPhase2 },
   { id: 'r-more-charts', name: 'More Charts', script: fromMoreCharts },
   {
     id: 'r-vacation-photos',
@@ -384,8 +438,24 @@ export const WAVES: WaveDef[] = [
     name: `Stage 1 Boss — ${COACH_NAME}`,
     script: fromWellnessCoach,
   },
+  {
+    id: 'r-wellness-coach-p2',
+    name: `Stage 1 Boss — ${COACH_NAME} (P2: Breathing)`,
+    script: fromWellnessCoachPhase2,
+  },
+  {
+    id: 'r-wellness-coach-p3',
+    name: `Stage 1 Boss — ${COACH_NAME} (P3: Personality)`,
+    script: fromWellnessCoachPhase3,
+  },
+  {
+    id: 'r-wellness-coach-p4',
+    name: `Stage 1 Boss — ${COACH_NAME} (P4: Vitamins)`,
+    script: fromWellnessCoachPhase4,
+  },
   { id: 'i-water-cooler', name: 'Inter-stage — Water Cooler', script: fromWaterCooler },
   { id: 'r-it-admin', name: 'IT Admin', script: fromItAdmin },
+  { id: 'r-all-doors-spam', name: 'All-Doors Spam', script: fromAllDoorsSpam },
   { id: 'r-sales-client', name: 'Sales & Client', script: fromSalesClient },
   { id: 'r-janitor', name: 'Janitor', script: fromJanitor },
   { id: 'r-shrunk-old-man', name: 'Mid-Stage Boss — Mr. Hodges', script: fromShrunkOldMan },
@@ -428,9 +498,6 @@ function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
 export const stage = new EntityKind({
   sprite: null,
   hitboxRadius: 0,
-  hp: null,
-  damageClass: [],
-  damagedByClass: [],
   defaultScript: stageBody,
 });
 
@@ -446,9 +513,6 @@ export function makeWaveStage(wave: WaveDef): EntityKind {
   return new EntityKind({
     sprite: null,
     hitboxRadius: 0,
-    hp: null,
-    damageClass: [],
-    damagedByClass: [],
     defaultScript: waveStageScript,
   });
 }

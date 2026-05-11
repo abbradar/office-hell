@@ -58,6 +58,7 @@ export type InputAction =
   | 'fire' // Z (or auto-fire on touch)
   | 'bomb' // X
   | 'moveHorizontal' // ← / →
+  | 'move' // ← / → / ↑ / ↓ (single combined glyph)
   | 'menuUp'
   | 'menuDown'
   | 'menuLeft'
@@ -94,6 +95,9 @@ export const KEYBOARD_ICONS: Record<InputAction, InputIconRef> = {
   // Two icons rendered side-by-side, or use `keyboardArrowsHorizontal` as a
   // single combined glyph if a one-icon prompt fits the layout better.
   moveHorizontal: [kb('arrow_left', keyboardArrowLeft), kb('arrow_right', keyboardArrowRight)],
+  // Single combined glyph showing all four arrows — used by the dodge
+  // tutorial now that the player can move on both axes.
+  move: kb('arrows_all', keyboardArrowsAll),
   menuUp: kb('arrow_up', keyboardArrowUp),
   menuDown: kb('arrow_down', keyboardArrowDown),
   menuLeft: kb('arrow_left', keyboardArrowLeft),

@@ -213,6 +213,53 @@ export function generateBulletTexture(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+// Keyboard-cap bullets — the IT admin's password spray. Each character
+// gets its own 16×16 texture drawn as a beveled grey key-cap with the
+// glyph centered on its face. Texture key is `kbd:<char>`; the kind in
+// itAdmin.ts looks up by `kbdKey(ch)` so the spawn texture lands on
+// frame 0 (no placeholder flash). The cap is always rendered uppercase
+// like a real keyboard, even though the password strings stay
+// lowercase — caps lock isn't part of the gag.
+const KBD_BUTTON_SIZE = 16;
+const KBD_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789!';
+
+export function kbdKey(ch: string): string {
+  return `kbd:${ch}`;
+}
+
+export function generateKeyboardButtonTextures(scene: Phaser.Scene): void {
+  const size = KBD_BUTTON_SIZE;
+  for (const ch of KBD_CHARS) {
+    // createCanvas registers the texture under the key directly and
+    // gives us a raw 2D context — Graphics can't render text, and a
+    // Text+RenderTexture round-trip would mean three temporary game
+    // objects per character we then have to tear down.
+    const tex = scene.textures.createCanvas(kbdKey(ch), size, size);
+    if (tex === null) continue;
+    const ctx = tex.getContext();
+    // Cap face.
+    ctx.fillStyle = '#cccccc';
+    ctx.fillRect(0, 0, size, size);
+    // Bevel — 1px top/left highlight, 1px bottom/right shadow, so the
+    // bullet reads as a key cap rather than a flat tile at any zoom.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, 1);
+    ctx.fillRect(0, 0, 1, size);
+    ctx.fillStyle = '#666666';
+    ctx.fillRect(0, size - 1, size, 1);
+    ctx.fillRect(size - 1, 0, 1, size);
+    // Glyph. Bold monospace at 11px fits within the 14px inner area
+    // with room for the bevel; the +1 baseline nudge centres optically
+    // against the descender-less uppercase / digit / `!` set.
+    ctx.fillStyle = '#202020';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch.toUpperCase(), size / 2, size / 2 + 1);
+    tex.refresh();
+  }
+}
+
 // Themed bullet sprites — paper, envelope, missed call, etc. The texture
 // keys here are the lookup names used by entity kinds; the filenames drop
 // the `Bullet` suffix since they all live under `assets/bullets/`.
@@ -283,6 +330,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateDoorsBboxTexture(scene);
   generateBulletTexture(scene);
   generateMultDropTexture(scene);
+  generateKeyboardButtonTextures(scene);
 }
 
 // Bordered email bullet — draws a 1 px #ff5e62 frame around the 14×10
