@@ -105,6 +105,11 @@ export function* endingScene(self: Entity): Generator<ScriptYield, void, void> {
   // Freeze the corridor scroll while the dialog beats play out so the
   // floor doesn't drift under a stationary monologuing player.
   stage.scrollSpeedMultiplier = 0;
+  // Freeze the scoreboard for the whole walk-home. In the live chain
+  // theBoss already flipped this off after the fight; this is idempotent
+  // there and the load-bearing path when endingScene is launched
+  // directly from the practice menu (with a still-live alive-tick).
+  stage.scoringActive = false;
 
   // Phase 1 — walk into the corridor centre.
   yield* moveTo(player, CENTER_X, CENTER_Y, WALK_SPEED);
