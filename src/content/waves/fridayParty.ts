@@ -4,13 +4,15 @@ import type { Entity } from '../../entities/Entity';
 import { moveTo, ring } from '../../script/patterns';
 import { markWave, suspendRunning } from '../../script/stage';
 import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
+import { nextOrdinaryCoworkerSprite } from '../characters';
 import { bullet } from '../kinds';
 import { drinkBullet } from './drinkBullet';
 
 // Friday Party: a normie middle-manager descends with the rest of the team
 // in tow to drag the player off to a "mandatory team-building" night out.
-// Everyone in the formation shares the manager sprite — a corporate hive —
-// but they fight differently:
+// The manager is the only fixed face in the formation; his ten underlings
+// pull random ordinary-coworker bodies so the squad reads as the office
+// at large rather than ten clones of one guy. They fight differently:
 //   - manager fires sinusoidal "drink" streams the player has to dance
 //     around (graze the crests, do not cross the wave),
 //   - the underlings fire wide, slow rings of bullets that fill the floor
@@ -99,7 +101,7 @@ function makePartyMemberScript(targetY: number, fireOffset: number): EntityScrip
 }
 
 export const normieManager = new HPEntityKind({
-  sprite: 'partyManager',
+  sprite: 'whiteMale1',
   hitboxRadius: 16,
   hp: MANAGER_HP,
   damageClass: ['player'],
@@ -108,7 +110,7 @@ export const normieManager = new HPEntityKind({
 });
 
 export const partyMember = new HPEntityKind({
-  sprite: 'partyManager',
+  sprite: 'whiteMale1',
   hitboxRadius: 16,
   hp: MEMBER_HP,
   damageClass: ['player'],
@@ -143,6 +145,7 @@ export function* fridayPartyWave(self: Entity): Generator<ScriptYield, void, voi
     for (const m of MEMBERS) {
       self.spawn(partyMember, m.x, -30, 0, 0, {
         script: makePartyMemberScript(m.y, m.fireOffset),
+        sprite: nextOrdinaryCoworkerSprite(self.stage),
       });
     }
   });

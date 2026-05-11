@@ -3,6 +3,7 @@ import type { Entity } from '../../entities/Entity';
 import { aimed, cluster, moveTo, ring } from '../../script/patterns';
 import { checkStageOnce, markWave, suspendRunning } from '../../script/stage';
 import { EnemyBulletEntityKind, HPEntityKind, type ScriptYield } from '../../script/types';
+import { nextOrdinaryCoworkerSprite } from '../characters';
 import { bullet } from '../kinds';
 
 // "Email" bullet — chunky envelope, deliberately larger than the round bullets
@@ -61,8 +62,13 @@ function* checkEmailScript(self: Entity) {
   self.setVelocity(0, EXIT_SPEED);
 }
 
+// `sprite` is just the default if nothing overrides at spawn; every
+// spawn in this file passes `nextOrdinaryCoworkerSprite` so each
+// coworker in the wave is drawn from the seeded pool. The default
+// stays sensible for any future caller that spawns this kind without
+// an override.
 export const checkEmailCoworker = new HPEntityKind({
-  sprite: 'checkEmail',
+  sprite: 'whiteFemale1',
   hitboxRadius: 16,
   hp: 20,
   damageClass: ['player'],
@@ -76,10 +82,16 @@ export function* checkEmailWave(self: Entity): Generator<ScriptYield, void, void
   markWave(self, 'check email');
   self.stage.scheduleMultDrop('regular');
   yield* suspendRunning(self, function* () {
-    self.spawn(checkEmailCoworker, GAME_W * 0.3, -30, 0, 0);
+    self.spawn(checkEmailCoworker, GAME_W * 0.3, -30, 0, 0, {
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
+    });
     yield 110;
-    self.spawn(checkEmailCoworker, GAME_W * 0.7, -30, 0, 0);
+    self.spawn(checkEmailCoworker, GAME_W * 0.7, -30, 0, 0, {
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
+    });
     yield 220;
-    self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0);
+    self.spawn(checkEmailCoworker, GAME_W * 0.5, -30, 0, 0, {
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
+    });
   });
 }

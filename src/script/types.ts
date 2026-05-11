@@ -129,6 +129,16 @@ export type SpawnOpts = {
   // Override the kind's damagedByClass for this individual spawn — e.g. to make
   // a boss unhittable during its intro and then re-enable damage after dialogue.
   damagedByClass?: DamageClass[];
+  // Override the kind's `sprite` for this individual spawn. The kind's
+  // `sprite` is the default body model; passing this here swaps in a
+  // different character sheet (same 6×12 layout) so visually-varied
+  // hordes can share one kind. Anim direction / action selection in
+  // `Entity.updateAnim` resolves off the live texture key, so the
+  // override picks up the right walk/idle anims automatically. Must
+  // refer to a sheet preloaded via `CHARACTER_SHEETS` — there's no
+  // late-loading path. Bullet / inert kinds (sprite=null) can't be
+  // overridden this way.
+  sprite?: string;
   // When true, each leaf yield of this script (and any raced child) writes
   // a description to `manager.lastYieldReason` so the HUD can show what
   // the script is currently parked on. Used by the stage script.

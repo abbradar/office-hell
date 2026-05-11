@@ -3,6 +3,7 @@ import type { Entity } from '../../entities/Entity';
 import { aimed, moveTo } from '../../script/patterns';
 import { doorY, exitThroughDoor, markWave, sideSpawnX, suspendRunning } from '../../script/stage';
 import { type EntityScript, HPEntityKind, type ScriptYield } from '../../script/types';
+import { nextOrdinaryCoworkerSprite } from '../characters';
 import { reportBullet } from './reportBullet';
 
 // Stage-globals key gating the intern report-phrase line. The first intern
@@ -36,8 +37,11 @@ function makeInternScript(side: 'left' | 'right'): EntityScript {
   };
 }
 
+// `sprite` is the default if a spawn doesn't override; the interns'
+// horde-style waves below always pass `nextOrdinaryCoworkerSprite` so
+// the body model varies row-to-row.
 export const intern = new HPEntityKind({
-  sprite: 'checkEmail',
+  sprite: 'whiteFemale1',
   hitboxRadius: 16,
   hp: 2,
   damageClass: ['player'],
@@ -57,6 +61,7 @@ export function* internLine(
   for (let i = 0; i < count; i++) {
     self.spawn(intern, startX, -30, 0, 0, {
       script: makeInternScript(side),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     if (i < count - 1) yield spacingFrames;
   }
@@ -101,9 +106,11 @@ function* internSidesLine(self: Entity, y: number): Generator<ScriptYield, void,
   for (const [i, lx] of leftTargets.entries()) {
     self.spawn(intern, sideSpawnX(-1), y, 0, 0, {
       script: makeInternMarchScript(lx, y, -1),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     self.spawn(intern, sideSpawnX(1), y, 0, 0, {
       script: makeInternMarchScript(GAME_W - lx, y, 1),
+      sprite: nextOrdinaryCoworkerSprite(self.stage),
     });
     if (i < leftTargets.length - 1) yield 12;
   }
