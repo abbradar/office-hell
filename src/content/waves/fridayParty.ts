@@ -41,10 +41,7 @@ const DRINK_BULLET_H = 10;
 const DRINK_STREAM_GAP_PX = DRINK_BULLET_H + 2;
 const DRINK_STREAM_BULLETS = 28;
 const DRINK_STREAM_SPEED = 220;
-const DRINK_STREAM_GAP = Math.max(
-  1,
-  Math.round(((DRINK_BULLET_H + DRINK_STREAM_GAP_PX) * 60) / DRINK_STREAM_SPEED),
-);
+const DRINK_STREAM_GAP = Math.max(1, Math.round(((DRINK_BULLET_H + DRINK_STREAM_GAP_PX) * 60) / DRINK_STREAM_SPEED));
 // Replay shoot SFX every Nth bullet so the stream sounds like a stream
 // without saturating the SFX voice cap.
 const DRINK_STREAM_SFX_EVERY = 6;

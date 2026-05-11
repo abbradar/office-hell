@@ -1128,8 +1128,10 @@ function* theBossPhase1Script(self: Entity): Generator<ScriptYield, void, void> 
     lines: [
       { speaker: 'right', text: 'Why are you not at your desk?' },
       { speaker: 'left', text: "It's 11 PM. I just want to go home." },
-      { speaker: 'right', text: "No, today you don't." },
-      { speaker: 'right', text: 'The requests are piling up. You need get back to work.' },
+      { speaker: 'right', text: "No, today you won't." },
+      { speaker: 'right', text: "It's a pivotal moment in our company's history." },
+      { speaker: 'left', text: "Isn't every our day the deadline-is-tomorrow day?" },
+      { speaker: 'right', text: 'You get back now!' },
     ],
   });
 
