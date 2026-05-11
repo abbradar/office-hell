@@ -10,9 +10,7 @@ import {
 import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import { PRACTICE_UNLOCK_KEY_PREFIX } from '../scenes/GameScene';
-import { moveTo } from '../script/patterns';
 import {
-  clearScreen,
   markWave,
   startMusicLoop,
   startMusicWithIntro,
@@ -53,10 +51,6 @@ import {
   wellnessCoachWave,
 } from './waves/wellnessCoach';
 import { workIsFunWave } from './waves/workIsFun';
-
-const PLAYER_OUTRO_SPEED = 220;
-const PLAYER_OUTRO_PAUSE_Y = 110;
-const PLAYER_OUTRO_EXIT_Y = -60;
 
 // Persist that the player has reached a particular wave during a
 // real-stage run. The TestMenu (production builds) hides every wave
@@ -470,8 +464,7 @@ function* fromTheBoss(self: Entity): Generator<ScriptYield, void, void> {
   yield* self.stage.separateWave(theBossWave(self));
   // endingScene stops the boss music, walks the player to centre for
   // the monologue, swells in the unchained-destiny intro, and rolls
-  // the credits. It's a drop-in replacement for the old `fromOutro`
-  // cutscene (which is still wired up for the practice menu).
+  // the credits before the End scene takes over.
   yield* endingScene(self);
 }
 
@@ -492,7 +485,7 @@ function* fromTheBossPhase3(self: Entity): Generator<ScriptYield, void, void> {
   yield* endingScene(self);
 }
 
-// === Intro / outro bookends ===
+// === Intro bookend ===
 //
 // fromIntro is the live chain head; stageBody just calls it and then
 // fires the End-scene transition once the chain unwinds. Practice
@@ -508,27 +501,11 @@ function* fromIntro(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromInterns(self);
 }
 
-// fromOutro is the chain tail — no `yield*` to a successor, control
-// returns to whichever runner started the chain. Live (stageBody)
-// follows with `scene.start('End')`; practice (makeWaveStage) follows
-// with `waitScreenClear` + `scene.start('TestMenu')`. The retro-03 loop
-// from the final-boss fight is cut here so the player's exit walk
-// plays in silence regardless of how we entered.
-function* fromOutro(self: Entity): Generator<ScriptYield, void, void> {
-  markWave(self, 'outro');
-  stopMusicLoop();
-  yield 30;
-  clearScreen(self);
-  yield 30;
-  yield* self.stage.separateWave(playerOutro(self));
-}
-
 // Practice menu order matches the chain order: intro at the top,
-// every wave in the order it plays in the live stage, ending with
-// the outro. Picking any entry runs that continuation, which chains
-// through the rest of the stage to the outro (or until the player
-// dies). The ending scene is practice-only and doesn't sit in the
-// chain, so it's listed last.
+// every wave in the order it plays in the live stage. Picking any
+// entry runs that continuation, which chains through the rest of the
+// stage to the ending (or until the player dies). The ending scene is
+// also exposed as a standalone entry at the bottom for practice.
 export const WAVES: WaveDef[] = [
   { id: 'intro', name: 'Intro — Monologue', script: fromIntro },
   { id: 'r-interns', name: 'Interns', script: fromInterns },
@@ -580,31 +557,13 @@ export const WAVES: WaveDef[] = [
   { id: 'boss', name: 'Final Boss — The Boss', script: fromTheBoss },
   { id: 'boss-p2', name: 'Final Boss — The Boss (P2)', script: fromTheBossPhase2 },
   { id: 'boss-p3', name: 'Final Boss — The Boss (P3)', script: fromTheBossPhase3 },
-  { id: 'outro', name: 'Outro — Player exit', script: fromOutro },
   { id: 'i-ending', name: 'Ending — Walk Home', script: endingScene },
 ];
 
-function* playerOutro(self: Entity): Generator<ScriptYield, void, void> {
-  const p = self.stage.player;
-  // Take the wheel: stop accepting input and let the player float past the top
-  // edge unbothered by the world-bounds clamp the live controls relied on.
-  p.lockControls();
-  p.body.setCollideWorldBounds(false);
-
-  yield* moveTo(p, p.x, PLAYER_OUTRO_PAUSE_Y, PLAYER_OUTRO_SPEED);
-  const ch = p.character;
-  yield self.dialogue({
-    left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
-    lines: [{ speaker: 'left', text: 'I did it. This time, I did it.' }],
-  });
-
-  yield* moveTo(p, p.x, PLAYER_OUTRO_EXIT_Y, PLAYER_OUTRO_SPEED);
-}
-
 // Top-level stage script. The chain head (`fromIntro`) does all the
 // work — everything from the monologue through the boss to the
-// outro is reachable from there via `yield*`. After the chain
-// returns we just fire the End-scene transition.
+// ending credits roll is reachable from there via `yield*`. After
+// the chain returns we just fire the End-scene transition.
 function* stageBody(self: Entity): Generator<ScriptYield, void, void> {
   yield* fromIntro(self);
 

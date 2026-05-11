@@ -10,6 +10,18 @@ export type Entry = { name: string; url?: string; role?: string };
 // unused but harmless.
 export type Section = { heading: string; entries?: Entry[]; body?: string };
 
+// Pre-break a URL at the last slash that fits within `maxChars` so
+// Phaser's whitespace-only word-wrap has somewhere to break it. Short
+// URLs pass through untouched. Shared by both credits surfaces; each
+// passes its own `maxChars` because their text widths differ.
+export function breakLongUrl(url: string, maxChars: number): string {
+  if (url.length <= maxChars) return url;
+  const head = url.slice(0, maxChars + 1);
+  const slashIdx = head.lastIndexOf('/');
+  if (slashIdx <= 0) return url;
+  return `${url.slice(0, slashIdx + 1)}\n${url.slice(slashIdx + 1)}`;
+}
+
 export const SECTIONS: Section[] = [
   {
     heading: 'TEAM',

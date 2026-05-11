@@ -393,7 +393,7 @@ Every `from<Wave>` must therefore begin with one of:
   wave runs under**, even if the live chain already started that track
   upstream;
 - `stopMusicLoop()` for sections that should be silent (e.g.
-  `fromWaterCooler`, `fromOutro`).
+  `fromWaterCooler`).
 
 Both calls are idempotent: `playMusicLoop` short-circuits when
 `current.key` already matches, so the live chain pays nothing — the
