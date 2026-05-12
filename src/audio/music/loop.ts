@@ -442,15 +442,21 @@ let pausedSnaps: PausedSoundSnap[] = [];
 
 function captureBufferOffset(sound: Phaser.Sound.BaseSound, loop: boolean): number {
   if (!musicBus) return 0;
-  const ws = sound as unknown as { startTime: number; totalDuration: number };
+  const ws = sound as unknown as { playTime: number; totalDuration: number };
   const total = ws.totalDuration;
   if (!total) return 0;
-  // `startTime` is the AudioContext time at which the current buffer
-  // source actually started — Phaser refreshes it on each loop wrap from
-  // `update()`. While update is racing the wrap (or throttled by a
-  // background tab) elapsed exceeds `total`; modulo recovers the
-  // equivalent in-bounds position. One-shots clamp to [0, total].
-  const elapsed = musicBus.context.currentTime - ws.startTime;
+  // `playTime` is `startTime - seek` — the virtual AudioContext time at
+  // which the buffer's sample 0 would have started, so `ctx - playTime`
+  // gives the in-buffer position directly. We need this instead of
+  // `startTime` because our resume path calls `play({ seek: X })`, which
+  // Phaser handles by setting `startTime = ctx.currentTime` (the moment
+  // play was called, not adjusted for the seek) while baking the seek
+  // into `playTime`. Using `startTime` here would read back "time since
+  // play call" and silently drop the previous seek on every pause cycle.
+  // Modulo recovers the equivalent in-bounds position when Phaser's
+  // per-frame `update()` hasn't yet caught up with a natural loop wrap;
+  // one-shots clamp to [0, total].
+  const elapsed = musicBus.context.currentTime - ws.playTime;
   if (loop) return ((elapsed % total) + total) % total;
   return Math.max(0, Math.min(total, elapsed));
 }
@@ -490,6 +496,31 @@ function doPauseSounds(): void {
   if (current.intro) captureAndStop(current.intro, false);
   for (const s of current.sounds) captureAndStop(s, !current.oneShot);
   pausedSnaps = snaps;
+
+  // Drift check: three derivations of "where the music is" that should
+  // agree within a frame at the moment of pause. If they don't, one of
+  // the inputs (sound.startTime, trackStartCtxTime, or the delay-scheduled
+  // sound trap in #2 of the suspect list) is the source of the desync.
+  //   - musicTime: getMusicTime()'s logical track clock
+  //   - paused-trackStart: pausedAtCtxTime - trackStartCtxTime, what
+  //     getMusicTime() would have returned at the pause instant
+  //   - loop snap: captured buffer offset for the loop body; for loops
+  //     should equal (musicTime - introDuration) mod loopDuration
+  const mt = getMusicTime();
+  const introDur = current.intro?.totalDuration ?? 0;
+  const loopDur = current.sounds[0]?.totalDuration ?? 0;
+  const loopSnap = snaps.find((s) => s.loop && s.sound !== current?.intro);
+  const expectedLoopSeek =
+    mt && loopDur > 0 ? (((mt.time - introDur) % loopDur) + loopDur) % loopDur : null;
+  mlog('doPauseSounds: drift-check', {
+    musicTime: mt?.time ?? null,
+    pausedMinusStart: trackStartCtxTime !== null ? pausedAtCtxTime - trackStartCtxTime : null,
+    introDur,
+    loopDur,
+    loopSnapOffset: loopSnap?.offset ?? null,
+    expectedLoopSeek,
+    delta: loopSnap && expectedLoopSeek !== null ? loopSnap.offset - expectedLoopSeek : null,
+  });
   mlog('doPauseSounds: done', { snaps: snaps.length });
 }
 
@@ -519,6 +550,16 @@ function doResumeSounds(): void {
     mlog('doResumeSounds: after play', snapshotSound(ps.sound));
   }
   pausedSnaps = [];
+
+  // Verification: getMusicTime() right after replay should equal what it
+  // returned at pause time (we shifted trackStartCtxTime by the full pause
+  // duration). If it doesn't, the trackStartCtxTime shift and the actual
+  // audible position have diverged — that's exactly the desync the player
+  // would hear against the pattern.
+  const mt = getMusicTime();
+  mlog('doResumeSounds: drift-check', {
+    musicTimeAfterResume: mt?.time ?? null,
+  });
   mlog('doResumeSounds: done');
 }
 
