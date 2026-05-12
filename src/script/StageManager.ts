@@ -274,6 +274,22 @@ export class StageManager {
   private pendingDrops: { tier: EntityTier; framesLeft: number }[] = [];
 
   readonly active: Entity[] = [];
+  // Async wake-ups that fired while `paused` was true. The audio
+  // context's clock keeps running through the continue / dialog
+  // pause, so a one-shot music track that reaches its natural end
+  // mid-pause would otherwise call back into `callIter` immediately
+  // and run the script through a music swap (which then clears the
+  // pause state via `stopMusicLoop`, leaving `resumeMusic` a no-op
+  // and the new track audibly restarting from t = 0). Same goes for
+  // `entity.onDeath` callbacks scheduled by `{ until: e }` yields —
+  // entities can die mid-pause and would otherwise wake the parent
+  // script in the middle of the freeze. `tryCallIter` routes wake-ups
+  // through this queue while paused; `unfreeze` drains it on the way
+  // out. Each entry records the `scheduledGen` the wake-up was
+  // registered against so the drain can drop entries whose script
+  // already advanced via an earlier drained sibling (e.g. two
+  // concurrent music-complete listeners on the same parked script).
+  private deferredWakeups: { script: SceneScript; scheduledGen: number }[] = [];
   // Two waiting queues, one per "clock":
   //
   //   physicsWaiting — drained one tick per Phaser WORLD_STEP. Auto-pauses
@@ -664,6 +680,23 @@ export class StageManager {
   // to its parent it tears down the rest of the set there. That keeps
   // this preamble straight (no race-children check needed) and
   // localises the "first finisher wins" rule to one place.
+  // Wake-up funnel for async sources (music COMPLETE listeners,
+  // entity onDeath callbacks). If the manager is paused — continue
+  // overlay, dialogue freeze, ESC pause — defer the wake-up so it
+  // doesn't advance the script through anything (music swaps,
+  // dependent spawns) while the rest of the world is frozen.
+  // `unfreeze` drains the deferred queue in arrival order.
+  // Synchronous callers (the race / spawn / dialogue-dismiss paths
+  // that already happen inside engine-driven ticks) keep calling
+  // `callIter` directly — they're already gated by their own caller.
+  private tryCallIter(script: SceneScript, scheduledGen: number): void {
+    if (this.paused) {
+      this.deferredWakeups.push({ script, scheduledGen });
+      return;
+    }
+    this.callIter(script);
+  }
+
   private callIter(script: SceneScript): void {
     // Callers guarantee the script is still live (generation !== null):
     // wait queue and race / all wake-ups gate on a generation match,
@@ -765,16 +798,20 @@ export class StageManager {
     } else if ('until' in v) {
       if (v.until.alive) {
         const scheduledGen = script.generation;
+        if (scheduledGen === null) return;
+        const wakeGen = scheduledGen;
         v.until.onDeath(() => {
-          if (script.generation === scheduledGen) this.callIter(script);
+          if (script.generation === wakeGen) this.tryCallIter(script, wakeGen);
         });
       } else {
         this.callIter(script);
       }
     } else if ('untilMusicEnds' in v) {
       const scheduledGen = script.generation;
+      if (scheduledGen === null) return;
+      const wakeGen = scheduledGen;
       onceMusicComplete(() => {
-        if (script.generation === scheduledGen) this.callIter(script);
+        if (script.generation === wakeGen) this.tryCallIter(script, wakeGen);
       });
     } else if ('realSeconds' in v) {
       this.scheduleRealTimeWait(script, v.realSeconds);
@@ -898,6 +935,27 @@ export class StageManager {
   unfreeze(): void {
     this.paused = false;
     this.scene.physics.resume();
+    // Drain async wake-ups that fired while paused. Done in arrival
+    // order so the script sees the same sequence it would have under
+    // an unpaused run. If a re-pause happens mid-drain (e.g. a
+    // resumed script opens a dialogue on its first yield), the
+    // remaining entries push back into the queue for the next
+    // unfreeze. Each entry's `scheduledGen` matches what the
+    // original async-wake call site captured: a generation mismatch
+    // at drain time means the script already advanced via an earlier
+    // drained sibling, so the wake-up is silently dropped (just like
+    // the original synchronous gen-check would have done).
+    if (this.deferredWakeups.length === 0) return;
+    const drained = this.deferredWakeups;
+    this.deferredWakeups = [];
+    for (const entry of drained) {
+      if (this.paused) {
+        this.deferredWakeups.push(entry);
+        continue;
+      }
+      if (entry.script.generation !== entry.scheduledGen) continue;
+      this.callIter(entry.script);
+    }
   }
 
   private beginDialogue(opts: DialogueOpts, script: SceneScript): void {

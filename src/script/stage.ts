@@ -223,11 +223,32 @@ export function* waitAudioTimeAtLeast(t: number): Generator<ScriptYield, void, v
 // "audio time 8s reached" vs. "loop ended") rather than a generic
 // wall-clock label.
 function* waitForMusicTimeReach(t: number, reason: string): Generator<ScriptYield, void, void> {
+  let parkCount = 0;
   while (true) {
     const m = getMusicTime();
-    if (m === null) return;
+    if (m === null) {
+      console.log('[music] waitForMusicTimeReach: bail (no track)', { reason, target: t, parkCount });
+      return;
+    }
     const gap = t - m.time;
-    if (gap <= 0) return;
+    if (gap <= 0) {
+      console.log('[music] waitForMusicTimeReach: done', {
+        reason,
+        target: t,
+        musicTime: m.time,
+        overshoot: -gap,
+        parkCount,
+      });
+      return;
+    }
+    console.log('[music] waitForMusicTimeReach: park', {
+      reason,
+      target: t,
+      musicTime: m.time,
+      gap,
+      parkCount,
+    });
+    parkCount++;
     yield { realSeconds: gap, yieldReason: reason };
   }
 }
