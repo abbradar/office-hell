@@ -612,7 +612,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pauseGame(): void {
-    console.warn(`[menu-open t=${performance.now().toFixed(0)}]`);
+    // biome-ignore lint/suspicious/noConsole: gated debug
+    console.log('[music] pauseGame: enter', { t: Math.round(performance.now()) });
     this.state.userPaused = true;
     this.stage.freeze();
     // Freeze Phaser's clock too: `stage.freeze()` only stops the physics
@@ -629,6 +630,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private unpauseGame(): void {
+    // biome-ignore lint/suspicious/noConsole: gated debug
+    console.log('[music] unpauseGame: enter', { t: Math.round(performance.now()) });
     this.state.userPaused = false;
     this.stage.unfreeze();
     this.time.paused = false;
@@ -681,6 +684,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showContinueOverlay(): void {
+    // biome-ignore lint/suspicious/noConsole: gated debug
+    console.log('[music] showContinueOverlay: enter', { t: Math.round(performance.now()) });
     if (this.state.continueOverlay) return;
     this.stage.freeze();
     // Freeze Phaser's clock too — same reason as pauseGame above. Stage
@@ -753,6 +758,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private revivePlayerWithDeathBomb(): void {
+    // biome-ignore lint/suspicious/noConsole: gated debug
+    console.log('[music] revivePlayerWithDeathBomb: enter', { t: Math.round(performance.now()) });
     const p = this.player;
     this.stage.score.continues++;
     // Continue wipes the run's score column — the scoreboard reflects

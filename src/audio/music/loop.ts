@@ -23,6 +23,49 @@
 import Phaser from 'phaser';
 import { musicBus, routeSound } from '../buses';
 
+// Set to `true` to dump a step-by-step trace of every pause / resume /
+// track-swap interaction to the dev console. Each line is prefixed
+// `[music]` so it's easy to filter (`tag:music` in DevTools, or `grep`
+// over a saved log). Leave off in normal play — emits per-frame data.
+const DEBUG_MUSIC = true;
+function mlog(...args: unknown[]): void {
+  if (!DEBUG_MUSIC) return;
+  // biome-ignore lint/suspicious/noConsole: gated debug logger
+  console.log('[music]', ...args);
+}
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? Math.round(performance.now()) : 0;
+}
+function snapshotSound(sound: Phaser.Sound.BaseSound | null): Record<string, unknown> | null {
+  if (!sound) return null;
+  const ws = sound as unknown as {
+    key?: string;
+    isPlaying?: boolean;
+    isPaused?: boolean;
+    startTime?: number;
+    playTime?: number;
+    duration?: number;
+    totalDuration?: number;
+    hasEnded?: boolean;
+    hasLooped?: boolean;
+    currentConfig?: { seek?: number; loop?: boolean; delay?: number };
+  };
+  return {
+    key: ws.key,
+    isPlaying: ws.isPlaying,
+    isPaused: ws.isPaused,
+    startTime: ws.startTime,
+    playTime: ws.playTime,
+    duration: ws.duration,
+    totalDuration: ws.totalDuration,
+    hasEnded: ws.hasEnded,
+    hasLooped: ws.hasLooped,
+    cfgSeek: ws.currentConfig?.seek,
+    cfgLoop: ws.currentConfig?.loop,
+    cfgDelay: ws.currentConfig?.delay,
+  };
+}
+
 let _sm: Phaser.Sound.BaseSoundManager | null = null;
 
 export function setMusicManager(sm: Phaser.Sound.BaseSoundManager): void {
@@ -79,8 +122,22 @@ let autoPaused = false;
 const DEFAULT_VOL = 0.5;
 
 export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {}): void {
-  if (!_sm) return;
-  if (current?.key === key) return;
+  mlog('playMusicLoop: enter', {
+    t: nowMs(),
+    key,
+    opts,
+    currentKey: current?.key ?? null,
+    manualPaused,
+    autoPaused,
+  });
+  if (!_sm) {
+    mlog('playMusicLoop: no sound manager');
+    return;
+  }
+  if (current?.key === key) {
+    mlog('playMusicLoop: idempotent, same key already current');
+    return;
+  }
   stopMusicLoop();
   trackStartCtxTime = null;
 
@@ -145,6 +202,7 @@ function playOneShot(key: string, volume: number): void {
   // audio-time wait on a *next* entry resolves cleanly until the next
   // playMusicLoop call replaces this state. Fire and clear listeners.
   sound.once(Phaser.Sound.Events.COMPLETE, () => {
+    mlog('one-shot COMPLETE fired', { t: nowMs(), key, isStillCurrent: current === state });
     if (current !== state) return;
     state.finished = true;
     const listeners = state.onComplete;
@@ -215,8 +273,19 @@ function playLoopCrossfaded(key: string, volume: number, crossfadeMs: number): v
 }
 
 export function playMusicWithIntro(introKey: string, loopKey: string, opts: { volume?: number } = {}): void {
+  mlog('playMusicWithIntro: enter', {
+    t: nowMs(),
+    introKey,
+    loopKey,
+    currentKey: current?.key ?? null,
+    manualPaused,
+    autoPaused,
+  });
   if (!_sm) return;
-  if (current?.key === loopKey) return;
+  if (current?.key === loopKey) {
+    mlog('playMusicWithIntro: idempotent, already current');
+    return;
+  }
   stopMusicLoop();
   trackStartCtxTime = null;
 
@@ -262,11 +331,19 @@ export function playMusicWithIntro(introKey: string, loopKey: string, opts: { vo
 // swap (loops never complete naturally, so consumers should branch via
 // `getCurrentTrackInfo().oneShot` before calling this).
 export function onceMusicComplete(cb: () => void): void {
+  mlog('onceMusicComplete: register', {
+    t: nowMs(),
+    currentKey: current?.key ?? null,
+    finished: current?.finished ?? null,
+    pendingListeners: current?.onComplete.length ?? 0,
+  });
   if (!current) {
+    mlog('onceMusicComplete: fire-immediate (no current)');
     cb();
     return;
   }
   if (current.finished) {
+    mlog('onceMusicComplete: fire-immediate (already finished)');
     cb();
     return;
   }
@@ -292,17 +369,35 @@ export function isMusicFinished(): boolean | null {
 // reconciliation of `sound.volume`. Returns immediately if no track
 // is playing.
 export function fadeOutMusic(durationMs: number): void {
+  mlog('fadeOutMusic: enter', { t: nowMs(), durationMs, currentKey: current?.key ?? null });
   if (!current) return;
   const target = current;
   for (const s of target.sounds) rampGain(s, 0, durationMs);
   if (target.intro) rampGain(target.intro, 0, durationMs);
   setTimeout(() => {
+    mlog('fadeOutMusic: timeout fired', {
+      t: nowMs(),
+      key: target.key,
+      stillCurrent: current === target,
+      manualPaused,
+      autoPaused,
+    });
     if (current === target) stopMusicLoop();
   }, durationMs);
 }
 
 export function stopMusicLoop(): void {
-  if (!current) return;
+  mlog('stopMusicLoop: enter', {
+    t: nowMs(),
+    currentKey: current?.key ?? null,
+    manualPaused,
+    autoPaused,
+    snaps: pausedSnaps.length,
+  });
+  if (!current) {
+    mlog('stopMusicLoop: no current');
+    return;
+  }
   if (current.scheduled !== null) clearTimeout(current.scheduled);
   for (const s of current.sounds) {
     s.stop();
@@ -322,6 +417,7 @@ export function stopMusicLoop(): void {
   pausedSnaps = [];
   manualPaused = false;
   autoPaused = false;
+  mlog('stopMusicLoop: cleared all state');
 }
 
 // Bypass Phaser's per-sound `pause()`/`resume()` entirely — they're driven
@@ -360,32 +456,70 @@ function captureBufferOffset(sound: Phaser.Sound.BaseSound, loop: boolean): numb
 }
 
 function doPauseSounds(): void {
-  if (!current || !musicBus) return;
-  if (pausedAtCtxTime !== null) return;
+  if (!current || !musicBus) {
+    mlog('doPauseSounds: bail (no current or no bus)', { hasCurrent: !!current, hasBus: !!musicBus });
+    return;
+  }
+  if (pausedAtCtxTime !== null) {
+    mlog('doPauseSounds: bail (already paused)', { pausedAtCtxTime });
+    return;
+  }
   pausedAtCtxTime = musicBus.context.currentTime;
+  mlog('doPauseSounds: enter', {
+    t: nowMs(),
+    key: current.key,
+    oneShot: current.oneShot,
+    finished: current.finished,
+    pausedAtCtxTime,
+    trackStartCtxTime,
+    ctxTime: musicBus.context.currentTime,
+  });
 
   const snaps: PausedSoundSnap[] = [];
   const captureAndStop = (sound: Phaser.Sound.BaseSound, loop: boolean): void => {
     const ws = sound as unknown as { isPlaying: boolean; isPaused: boolean };
-    if (!ws.isPlaying && !ws.isPaused) return;
-    snaps.push({ sound, offset: captureBufferOffset(sound, loop), loop });
+    if (!ws.isPlaying && !ws.isPaused) {
+      mlog('doPauseSounds: skip (not playing)', snapshotSound(sound), { loopArg: loop });
+      return;
+    }
+    const offset = captureBufferOffset(sound, loop);
+    mlog('doPauseSounds: capture+stop', snapshotSound(sound), { loopArg: loop, capturedOffset: offset });
+    snaps.push({ sound, offset, loop });
     sound.stop();
   };
   if (current.intro) captureAndStop(current.intro, false);
   for (const s of current.sounds) captureAndStop(s, !current.oneShot);
   pausedSnaps = snaps;
+  mlog('doPauseSounds: done', { snaps: snaps.length });
 }
 
 function doResumeSounds(): void {
-  if (!current || !musicBus) return;
-  if (pausedAtCtxTime === null) return;
+  if (!current || !musicBus) {
+    mlog('doResumeSounds: bail (no current or no bus)', { hasCurrent: !!current, hasBus: !!musicBus });
+    return;
+  }
+  if (pausedAtCtxTime === null) {
+    mlog('doResumeSounds: bail (pausedAtCtxTime is null)');
+    return;
+  }
   const pauseDuration = musicBus.context.currentTime - pausedAtCtxTime;
   pausedAtCtxTime = null;
   if (trackStartCtxTime !== null) trackStartCtxTime += pauseDuration;
+  mlog('doResumeSounds: enter', {
+    t: nowMs(),
+    key: current.key,
+    pauseDuration,
+    snapsCount: pausedSnaps.length,
+    trackStartCtxTime,
+    ctxTime: musicBus.context.currentTime,
+  });
   for (const ps of pausedSnaps) {
+    mlog('doResumeSounds: play', snapshotSound(ps.sound), { seek: ps.offset, loop: ps.loop });
     ps.sound.play({ seek: ps.offset, loop: ps.loop });
+    mlog('doResumeSounds: after play', snapshotSound(ps.sound));
   }
   pausedSnaps = [];
+  mlog('doResumeSounds: done');
 }
 
 // Pause the active music in place. Used by the ESC pause menu so the score
@@ -393,15 +527,36 @@ function doResumeSounds(): void {
 // the window-blur auto-pause — calling it while the window is blurred just
 // keeps the music paused after focus returns.
 export function pauseMusic(): void {
-  if (manualPaused) return;
+  mlog('pauseMusic: enter', {
+    t: nowMs(),
+    currentKey: current?.key ?? null,
+    manualPaused,
+    autoPaused,
+    snaps: pausedSnaps.length,
+  });
+  if (manualPaused) {
+    mlog('pauseMusic: already manualPaused, returning');
+    return;
+  }
   manualPaused = true;
   doPauseSounds();
 }
 
 export function resumeMusic(): void {
-  if (!manualPaused) return;
+  mlog('resumeMusic: enter', {
+    t: nowMs(),
+    currentKey: current?.key ?? null,
+    manualPaused,
+    autoPaused,
+    snaps: pausedSnaps.length,
+  });
+  if (!manualPaused) {
+    mlog('resumeMusic: not manualPaused, returning');
+    return;
+  }
   manualPaused = false;
   if (!autoPaused) doResumeSounds();
+  else mlog('resumeMusic: autoPaused is true — staying paused');
 }
 
 // Wire the active music to the window's blur/focus state so the score
@@ -418,11 +573,23 @@ export function resumeMusic(): void {
 // the music paused.
 export function installAutoPauseOnBlur(game: Phaser.Game): void {
   const onBlurOrHidden = (): void => {
+    mlog('autoPause (blur/hidden): enter', {
+      t: nowMs(),
+      autoPaused,
+      manualPaused,
+      currentKey: current?.key ?? null,
+    });
     if (autoPaused) return;
     autoPaused = true;
     if (!manualPaused) doPauseSounds();
   };
   const onFocusOrVisible = (): void => {
+    mlog('autoResume (focus/visible): enter', {
+      t: nowMs(),
+      autoPaused,
+      manualPaused,
+      currentKey: current?.key ?? null,
+    });
     if (!autoPaused) return;
     autoPaused = false;
     if (!manualPaused) doResumeSounds();
