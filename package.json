@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "check": "biome check .",
     "format": "biome check --fix .",
-    "prepare": "pre-commit install || true"
+    "prepare": "command -v pre-commit >/dev/null 2>&1 && pre-commit install || true"
   },
   "dependencies": {
     "phaser": "^3.85.0"
