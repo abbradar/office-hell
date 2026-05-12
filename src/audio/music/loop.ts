@@ -30,7 +30,6 @@ import { musicBus, routeSound } from '../buses';
 const DEBUG_MUSIC = true;
 function mlog(...args: unknown[]): void {
   if (!DEBUG_MUSIC) return;
-  // biome-ignore lint/suspicious/noConsole: gated debug logger
   console.log('[music]', ...args);
 }
 function nowMs(): number {
@@ -510,8 +509,7 @@ function doPauseSounds(): void {
   const introDur = current.intro?.totalDuration ?? 0;
   const loopDur = current.sounds[0]?.totalDuration ?? 0;
   const loopSnap = snaps.find((s) => s.loop && s.sound !== current?.intro);
-  const expectedLoopSeek =
-    mt && loopDur > 0 ? (((mt.time - introDur) % loopDur) + loopDur) % loopDur : null;
+  const expectedLoopSeek = mt && loopDur > 0 ? (((mt.time - introDur) % loopDur) + loopDur) % loopDur : null;
   mlog('doPauseSounds: drift-check', {
     musicTime: mt?.time ?? null,
     pausedMinusStart: trackStartCtxTime !== null ? pausedAtCtxTime - trackStartCtxTime : null,

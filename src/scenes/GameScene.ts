@@ -612,7 +612,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pauseGame(): void {
-    // biome-ignore lint/suspicious/noConsole: gated debug
     console.log('[music] pauseGame: enter', { t: Math.round(performance.now()) });
     this.state.userPaused = true;
     this.stage.freeze();
@@ -630,7 +629,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private unpauseGame(): void {
-    // biome-ignore lint/suspicious/noConsole: gated debug
     console.log('[music] unpauseGame: enter', { t: Math.round(performance.now()) });
     this.state.userPaused = false;
     this.stage.unfreeze();
@@ -684,7 +682,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showContinueOverlay(): void {
-    // biome-ignore lint/suspicious/noConsole: gated debug
     console.log('[music] showContinueOverlay: enter', { t: Math.round(performance.now()) });
     if (this.state.continueOverlay) return;
     this.stage.freeze();
@@ -758,7 +755,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private revivePlayerWithDeathBomb(): void {
-    // biome-ignore lint/suspicious/noConsole: gated debug
     console.log('[music] revivePlayerWithDeathBomb: enter', { t: Math.round(performance.now()) });
     const p = this.player;
     this.stage.score.continues++;

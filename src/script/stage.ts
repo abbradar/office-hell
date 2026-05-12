@@ -227,13 +227,11 @@ function* waitForMusicTimeReach(t: number, reason: string): Generator<ScriptYiel
   while (true) {
     const m = getMusicTime();
     if (m === null) {
-      // biome-ignore lint/suspicious/noConsole: gated by [music] grep convention
       console.log('[music] waitForMusicTimeReach: bail (no track)', { reason, target: t, parkCount });
       return;
     }
     const gap = t - m.time;
     if (gap <= 0) {
-      // biome-ignore lint/suspicious/noConsole: gated by [music] grep convention
       console.log('[music] waitForMusicTimeReach: done', {
         reason,
         target: t,
@@ -243,7 +241,6 @@ function* waitForMusicTimeReach(t: number, reason: string): Generator<ScriptYiel
       });
       return;
     }
-    // biome-ignore lint/suspicious/noConsole: gated by [music] grep convention
     console.log('[music] waitForMusicTimeReach: park', {
       reason,
       target: t,
