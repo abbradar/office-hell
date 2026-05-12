@@ -1,8 +1,21 @@
 repos:
   - repo: local
     hooks:
-      - id: biome-format
-        name: biome format
-        entry: biome format --write --no-errors-on-unmatched
+      # Mirror CI's `biome ci .` — lint + format check, no autofix.
+      # If this fails on formatting, run `npm run format` and re-stage.
+      - id: biome-ci
+        name: biome ci
+        entry: biome ci .
         language: system
+        pass_filenames: false
         types_or: [javascript, jsx, ts, tsx, json]
+
+      # Mirror the typecheck half of CI's `npm run build` (`tsc && vite
+      # build`). The vite half is skipped: tsc catches the same import/
+      # type errors and bundling adds ~tens of seconds per commit.
+      - id: tsc
+        name: tsc --noEmit
+        entry: npx tsc --noEmit
+        language: system
+        pass_filenames: false
+        types_or: [ts, tsx]
