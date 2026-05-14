@@ -72,8 +72,10 @@ export const SECTIONS: Section[] = [
       'used to generate any asset or text for the game.',
   },
   {
-    heading: 'CREATED FOR BULLET HELL JAM 7',
-    body: 'itch.io/jam/bullet-jam-7',
+    heading: 'CREATED FOR',
+    body: 
+      'BULLET HELL JAM 7 ' + 
+      '(itch.io/jam/bullet-jam-7)',
   },
   {
     heading: 'SOURCE CODE',
