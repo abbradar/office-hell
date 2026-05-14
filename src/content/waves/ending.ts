@@ -4,7 +4,7 @@ import { stopMusicLoop } from '../../audio/music/loop';
 import { GAME_H, GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { markWave, startMusicWithIntro, waitAudioTimeAtLeast, waitSeconds } from '../../script/stage';
+import { markWave, startMusicWithIntro, waitAudioTimeAtLeast, waitSeconds, withFootsteps } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_LG, FONT_MENU } from '../../ui/fonts';
 import {
@@ -111,8 +111,9 @@ export function* endingScene(self: Entity): Generator<ScriptYield, void, void> {
   // directly from the practice menu (with a still-live alive-tick).
   stage.scoringActive = false;
 
-  // Phase 1 — walk into the corridor centre.
-  yield* moveTo(player, CENTER_X, CENTER_Y, WALK_SPEED);
+  // Phase 1 — walk into the corridor centre. Music hasn't started yet,
+  // so footsteps carry the walk.
+  yield* withFootsteps(moveTo(player, CENTER_X, CENTER_Y, WALK_SPEED));
   player.facing = 'up';
   player.updateAnim();
   yield* waitSeconds(0.4);

@@ -1,3 +1,4 @@
+import { playBossDie, playEnemyDie, playEnemyHit } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
 import type { DialogueOpts } from '../ui/dialogue';
 import { recordKill } from './score';
@@ -271,6 +272,8 @@ export class HPEntityKind extends EntityKind<HPSpawnOpts> {
         // tutorial doesn't bank points.
         self.stage.score.kills++;
         if (self.stage.scoringActive) recordKill(self.stage.score, self);
+        if (this.tier === 'boss' || this.tier === 'miniBoss') playBossDie();
+        else playEnemyDie();
       }
       if (this.deathScript !== null) {
         // Lock incoming damage off so a stray bullet that lands a frame
@@ -290,6 +293,7 @@ export class HPEntityKind extends EntityKind<HPSpawnOpts> {
       // entity is removed from the active list within the same frame and
       // any flash would never paint.
       self.flashDamage();
+      if (self !== self.stage.player) playEnemyHit();
     }
   }
 }

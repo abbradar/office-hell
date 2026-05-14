@@ -4,7 +4,7 @@ import { GAME_W } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { isTouchDevice } from '../../input/device';
 import { moveTo, walkOffScreen } from '../../script/patterns';
-import { clearScreen, race, suspendRunning, waitSeconds } from '../../script/stage';
+import { clearScreen, race, suspendRunning, waitSeconds, withFootsteps } from '../../script/stage';
 import type { ScriptYield } from '../../script/types';
 import { showTutorialBubble } from '../../ui/tutorialBubble';
 import { activateBomb, BOMB_DURATION_MS } from '../bomb';
@@ -215,7 +215,7 @@ function* skippableIntroBody(self: Entity): Generator<ScriptYield, void, void> {
     damagedByClass: [],
     script: null,
   });
-  yield* moveTo(coach, GAME_W / 2, COACH_INTRO_Y, COACH_INTRO_SPEED);
+  yield* withFootsteps(moveTo(coach, GAME_W / 2, COACH_INTRO_Y, COACH_INTRO_SPEED));
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },
     right: { sprite: COACH_SPRITE, frame: 1, name: COACH_NAME },
@@ -234,7 +234,7 @@ function* skippableIntroBody(self: Entity): Generator<ScriptYield, void, void> {
   const email = self.spawn(emailBullet, coach.x, coach.y, vx, vy);
   shoot();
   // Walk her back out the way she came; wait for the off-screen cull.
-  yield* walkOffScreen(coach, 0, -COACH_EXIT_SPEED);
+  yield* withFootsteps(walkOffScreen(coach, 0, -COACH_EXIT_SPEED));
 
   yield self.dialogue({
     left: { sprite: ch.sprite, frame: ch.frame, name: ch.name },

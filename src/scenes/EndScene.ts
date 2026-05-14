@@ -3,6 +3,7 @@ import { stopMusicLoop } from '../audio/music/loop';
 import { GAME_H, GAME_W } from '../config';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
+import { clearSaveState } from '../state/save';
 import { FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -30,6 +31,12 @@ export class EndScene extends Phaser.Scene {
   create(): void {
     bindLogicalCamera(this);
     stopMusicLoop();
+    // On a win, drop the auto-save: there's nothing left to continue
+    // from, and leaving the slot around would let the menu CONTINUE
+    // button park the player on the now-played-through final boss.
+    // On a loss the save stays so the player can resume from the wave
+    // they died on.
+    if (this.won) clearSaveState();
     this.cameras.main.setBackgroundColor(COLOR_WALL_STR);
     addMuteButton(this);
 

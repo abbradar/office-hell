@@ -13,6 +13,7 @@ import {
   playMusicLoop,
   playMusicWithIntro,
 } from '../audio/music/loop';
+import { playFootstep } from '../audio/sfx/events';
 import { GAME_W, SCRIPT_FPS } from '../config';
 import { computeDoorYs, DOOR_H, isDoorVisible } from '../content/doors';
 import type { Entity } from '../entities/Entity';
@@ -126,6 +127,30 @@ export function* race(...iters: Array<Generator<ScriptYield, void, void>>): Gene
 // empty-all behaviour).
 export function* all(...iters: Array<Generator<ScriptYield, void, void>>): Generator<ScriptYield, void, void> {
   yield { all: iters };
+}
+
+// Periodic footstep SFX, fires every ~350ms while the script that
+// hosts it is live. Loops forever — pair with `race(...)` or
+// `withFootsteps` so the ticker is cancelled when the wrapped
+// walking generator finishes. Uses `scriptFrames` so dialogue freezes
+// pause the cadence cleanly (the player isn't walking during a
+// dialog beat). Used in the silent walking scenes (intro coach
+// approach, inter-stage cooler beat, ending walk-home) where no
+// music covers the player's footsteps.
+const FOOTSTEP_INTERVAL_FRAMES = 21;
+export function* footstepTicker(): Generator<ScriptYield, void, void> {
+  while (true) {
+    playFootstep();
+    yield { scriptFrames: FOOTSTEP_INTERVAL_FRAMES, yieldReason: 'footstep tick' };
+  }
+}
+
+// Race `inner` against an infinite `footstepTicker`. The ticker emits
+// a step every ~350ms until `inner` finishes; on completion the race
+// drops the ticker. Use to add walking SFX to a silent-scene
+// generator without rewriting it.
+export function* withFootsteps(inner: Generator<ScriptYield, void, void>): Generator<ScriptYield, void, void> {
+  yield* race(inner, footstepTicker());
 }
 
 // Run `inner` with a hard time budget. After `seconds` of game time

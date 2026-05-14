@@ -120,7 +120,17 @@ let autoPaused = false;
 
 const DEFAULT_VOL = 0.5;
 
-export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?: number; loop?: boolean } = {}): void {
+// `seek` and `fadeInMs` were added for the menu CONTINUE button: rehydrate
+// the loop track from the saved position with a brief gain ramp so the
+// resume reads as a deliberate cue rather than a hard cut. Only honoured
+// on the simple (non-crossfaded) loop path — crossfade ping-pong and
+// intro→loop already own the gain node for their own scheduling. The
+// seek is clamped to the loop's duration on first play (we don't have
+// `totalDuration` until the sound is added).
+export function playMusicLoop(
+  key: string,
+  opts: { volume?: number; crossfadeMs?: number; loop?: boolean; seek?: number; fadeInMs?: number } = {},
+): void {
   mlog('playMusicLoop: enter', {
     t: nowMs(),
     key,
@@ -143,6 +153,8 @@ export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?
   const volume = opts.volume ?? DEFAULT_VOL;
   const crossfadeMs = opts.crossfadeMs ?? 0;
   const loop = opts.loop ?? true;
+  const seek = opts.seek ?? 0;
+  const fadeInMs = opts.fadeInMs ?? 0;
 
   if (!loop) {
     // One-shot: play through once and stop. `waitTrackEnded` fires when the
@@ -150,21 +162,60 @@ export function playMusicLoop(key: string, opts: { volume?: number; crossfadeMs?
     // entries can still gate against this track's clock if they want.
     playOneShot(key, volume);
   } else if (crossfadeMs <= 0) {
-    playLoopSimple(key, volume);
+    playLoopSimple(key, volume, seek, fadeInMs);
   } else {
     playLoopCrossfaded(key, volume, crossfadeMs);
   }
 }
 
-function playLoopSimple(key: string, volume: number): void {
+function playLoopSimple(key: string, volume: number, seek: number, fadeInMs: number): void {
   // biome-ignore lint/style/noNonNullAssertion: caller guarded
   const sm = _sm!;
-  const sound = sm.add(key, { loop: true, volume });
+  // Construct with `volume: 0` when fading in so the first `play()`'s
+  // `applyConfig` doesn't snap gain to the target ahead of the ramp.
+  // After the fade completes we patch `currentConfig.volume` up to
+  // `volume` (see below) — otherwise every subsequent `sound.play()`
+  // (pause/resume, autoPause/autoResume) would walk through
+  // `applyConfig` and reset gain back to 0, leaving the track playing
+  // but silent. That was the desync bug behind the disappearing-music
+  // reports after the menu CONTINUE → ESC-pause path.
+  const initialVolume = fadeInMs > 0 ? 0 : volume;
+  const sound = sm.add(key, { loop: true, volume: initialVolume });
   if (musicBus) routeSound(sound, musicBus);
 
   const start = (): void => {
-    sound.play();
-    trackStartCtxTime = musicBus?.context.currentTime ?? null;
+    // Clamp the seek to the buffer length now that we know the total
+    // duration. A stale snapshot from a previous build (where the track
+    // was shorter) shouldn't crash the resume — just start at 0.
+    const ws = sound as unknown as { totalDuration: number };
+    const total = ws.totalDuration;
+    const clampedSeek = total > 0 && seek > 0 ? Math.min(seek, Math.max(0, total - 0.05)) : 0;
+    if (clampedSeek > 0) sound.play({ seek: clampedSeek });
+    else sound.play();
+    // Align the clock to "music started" exactly the way the un-seeked
+    // path does — `getMusicTime()` returns ctx.currentTime -
+    // trackStartCtxTime, so shifting trackStartCtxTime back by `seek`
+    // makes it report `seek` seconds at the moment play begins. Without
+    // this, audio-time waits inside the wave would think the music just
+    // started, even though it's actually mid-track.
+    const ctxNow = musicBus?.context.currentTime ?? null;
+    trackStartCtxTime = ctxNow !== null ? ctxNow - clampedSeek : null;
+    if (fadeInMs > 0) {
+      rampGain(sound, volume, fadeInMs);
+      // Once the ramp has landed, sync the tracked config volume to
+      // the real target. Phaser's `applyConfig` on the next `play()`
+      // (any future pause/resume) will then re-set gain to `volume`
+      // instead of the original 0 — without this, the resumed track
+      // is audibly silent. Use the sound's own `setVolume` so Phaser
+      // also fires its VOLUME event for any listeners; the gain
+      // setValueAtTime inside `setVolume` lands at the same value
+      // the ramp finishes at, so there's no audible discontinuity.
+      setTimeout(() => {
+        if (!current?.sounds.includes(sound)) return;
+        const ws = sound as unknown as { setVolume?: (v: number) => void };
+        ws.setVolume?.(volume);
+      }, fadeInMs);
+    }
   };
   if (sm.locked) sm.once(Phaser.Sound.Events.UNLOCKED, start);
   else start();
@@ -531,7 +582,19 @@ function doResumeSounds(): void {
     mlog('doResumeSounds: bail (pausedAtCtxTime is null)');
     return;
   }
-  const pauseDuration = musicBus.context.currentTime - pausedAtCtxTime;
+  // Kick the AudioContext if the browser auto-suspended it during a
+  // long hidden / blurred stretch (DevTools detach, tab in the
+  // background). `pauseOnBlur=false` keeps Phaser's per-frame
+  // context.resume() loop from suspending us, but Chromium-family
+  // browsers can still suspend the underlying context after extended
+  // inactivity — calling .resume() here is a no-op if it's already
+  // running, and the only way to unstick playback otherwise.
+  const ctx = musicBus.context as AudioContext;
+  if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+    mlog('doResumeSounds: AudioContext suspended, resuming');
+    void ctx.resume();
+  }
+  const pauseDuration = ctx.currentTime - pausedAtCtxTime;
   pausedAtCtxTime = null;
   if (trackStartCtxTime !== null) trackStartCtxTime += pauseDuration;
   mlog('doResumeSounds: enter', {
@@ -594,8 +657,22 @@ export function resumeMusic(): void {
     return;
   }
   manualPaused = false;
-  if (!autoPaused) doResumeSounds();
-  else mlog('resumeMusic: autoPaused is true — staying paused');
+  // Force-clear `autoPaused`. A manual resume is an explicit "I want
+  // sound back" — the user can only have produced this call from a
+  // pause overlay they can see, which means the tab IS active even if
+  // the matching FOCUS event hasn't dispatched yet (DevTools detach +
+  // a same-frame click can land the resume tap before the focus event
+  // does). Without this clear, `manualPaused=false, autoPaused=true`
+  // becomes a dead state with no remaining path to clear autoPaused,
+  // and the music stays silent. If the window is actually still
+  // blurred, the next BLUR event will re-arm autoPaused and re-pause
+  // through the auto path, so this can't trap audio playing in a
+  // hidden tab.
+  if (autoPaused) {
+    mlog('resumeMusic: force-clearing autoPaused (manual resume overrides)');
+    autoPaused = false;
+  }
+  doResumeSounds();
 }
 
 // Wire the active music to the window's blur/focus state so the score

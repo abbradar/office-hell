@@ -20,7 +20,7 @@
 // final phase is reached.
 
 import { getMusicTime, playMusicLoop, stopMusicLoop } from '../audio/music/loop';
-import { playBossDeath } from '../audio/sfx/events';
+import { playBossPhaseChange, playEnemyHit } from '../audio/sfx/events';
 import type { Entity } from '../entities/Entity';
 import { clearBullets } from './stage';
 import {
@@ -39,15 +39,14 @@ export const FLICKER_TOGGLES = 10;
 export const FLICKER_INTERVAL_FRAMES = 10;
 export const POST_FLICKER_HOLD_FRAMES = 12;
 
-// The standard boss-death visual: stop motion, disable the body, play
-// the death sfx, flicker out, hold. Doesn't call die() — callers do
-// that after any post-shudder work (e.g. restarting music for the next
-// sub-stage). Use as the visual building block in a per-boss death
-// script that prefaces the shudder with a bubble or a real dialogue.
-// Idempotent w.r.t. body.setVelocity / body.enable, so it composes
-// cleanly with pre-shudder beats that already locked the body down.
+// The standard boss-death visual: stop motion, disable the body,
+// flicker out, hold. Doesn't call die() — callers do that after any
+// post-shudder work (e.g. restarting music for the next sub-stage).
+// The death SFX is fired by `HPEntityKind.takeDamage` on the killing
+// blow, one frame upstream of this generator entering. Idempotent
+// w.r.t. body.setVelocity / body.enable, so it composes cleanly with
+// pre-shudder beats that already locked the body down.
 export function* bossShudder(self: Entity): Generator<ScriptYield, void, void> {
-  playBossDeath();
   self.body.setVelocity(0, 0);
   self.body.enable = false;
   for (let i = 0; i < FLICKER_TOGGLES; i++) {
@@ -129,6 +128,7 @@ export const PHASE_TRANSITION_FLASH_GAP = 10;
 export const PHASE_TRANSITION_HOLD = 20;
 
 export function* bossPhaseTransition(self: Entity): Generator<ScriptYield, void, void> {
+  playBossPhaseChange();
   self.setDamagedByClasses([]);
   self.body.setVelocity(0, 0);
   for (let i = 0; i < PHASE_TRANSITION_FLASHES; i++) {
@@ -252,6 +252,7 @@ export class PhasedBossKind extends BossKind {
     }
     vars.hp = next;
     self.flashDamage();
+    playEnemyHit();
   }
 }
 

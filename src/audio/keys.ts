@@ -2,6 +2,14 @@ export const MENU_LOOP_KEY = 'menuLoop';
 export const CLICK_SFX_KEY = 'clickSfx';
 export const SHOOT_SFX_KEY = 'shootSfx';
 export const HURT_SFX_KEY = 'hurtSfx';
+export const PICKUP_SFX_KEY = 'pickupSfx';
+export const ENEMY_HIT_SFX_KEY = 'enemyHitSfx';
+export const ENEMY_DIE_SFX_KEY = 'enemyDieSfx';
+export const BOSS_PHASE_SFX_KEY = 'bossPhaseSfx';
+export const BOSS_DIE_SFX_KEY = 'bossDieSfx';
+export const FOOTSTEP_05_SFX_KEY = 'footstep05Sfx';
+export const FOOTSTEP_06_SFX_KEY = 'footstep06Sfx';
+export const FOOTSTEP_09_SFX_KEY = 'footstep09Sfx';
 
 // Stage 1 music. The retro_01/retro_02 tracks share an opening that plays
 // once before the first loop kicks in; retro_03 is the boss theme with

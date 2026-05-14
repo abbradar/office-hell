@@ -14,15 +14,30 @@ import stage1Retro03LoopUrl from '../assets/audio/loops/stage1/retro_03_loop.ogg
 import stage1Retro03OpeningUrl from '../assets/audio/loops/stage1/retro_03_opening.ogg';
 import finalBossMetalLoopUrl from '../assets/audio/loops/stage2/retro_03_loop.ogg';
 import finalBossMetalOpeningUrl from '../assets/audio/loops/stage2/retro_03_opening.ogg';
+import footstep05SfxUrl from '../assets/audio/sfx/footstep05.ogg';
+import footstep06SfxUrl from '../assets/audio/sfx/footstep06.ogg';
+import footstep09SfxUrl from '../assets/audio/sfx/footstep09.ogg';
 import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
 import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
+import bossDieSfxUrl from '../assets/audio/sfx/zapTwoTone.mp3';
+import bossPhaseSfxUrl from '../assets/audio/sfx/zap1.mp3';
+import enemyDieSfxUrl from '../assets/audio/sfx/pepSound4.mp3';
+import enemyHitSfxUrl from '../assets/audio/sfx/tone1.mp3';
+import pickupSfxUrl from '../assets/audio/sfx/phaserUp4.mp3';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
 import {
+  BOSS_DIE_SFX_KEY,
+  BOSS_PHASE_SFX_KEY,
   CLICK_SFX_KEY,
   ENDING_LOOP_KEY,
   ENDING_OPENING_KEY,
+  ENEMY_DIE_SFX_KEY,
+  ENEMY_HIT_SFX_KEY,
   FINAL_BOSS_METAL_LOOP_KEY,
   FINAL_BOSS_METAL_OPENING_KEY,
+  FOOTSTEP_05_SFX_KEY,
+  FOOTSTEP_06_SFX_KEY,
+  FOOTSTEP_09_SFX_KEY,
   HURT_SFX_KEY,
   KAEDALUS_HODGE_DIALOG_KEY,
   KAEDALUS_HODGE_FIGHT_KEY,
@@ -30,6 +45,7 @@ import {
   KAEDALUS_STAGE2_INTRO_KEY,
   MENU_LOOP_KEY,
   NENE_BOSS_DIALOG_KEY,
+  PICKUP_SFX_KEY,
   SHOOT_SFX_KEY,
   STAGE1_RETRO_01_LOOP_KEY,
   STAGE1_RETRO_02_LOOP_KEY,
@@ -44,6 +60,14 @@ const AUDIO_ASSETS: Record<string, string> = {
   [CLICK_SFX_KEY]: clickSfxUrl,
   [SHOOT_SFX_KEY]: shootSfxUrl,
   [HURT_SFX_KEY]: hurtSfxUrl,
+  [PICKUP_SFX_KEY]: pickupSfxUrl,
+  [ENEMY_HIT_SFX_KEY]: enemyHitSfxUrl,
+  [ENEMY_DIE_SFX_KEY]: enemyDieSfxUrl,
+  [BOSS_PHASE_SFX_KEY]: bossPhaseSfxUrl,
+  [BOSS_DIE_SFX_KEY]: bossDieSfxUrl,
+  [FOOTSTEP_05_SFX_KEY]: footstep05SfxUrl,
+  [FOOTSTEP_06_SFX_KEY]: footstep06SfxUrl,
+  [FOOTSTEP_09_SFX_KEY]: footstep09SfxUrl,
   [STAGE1_RETRO_OPENING_KEY]: stage1RetroOpeningUrl,
   [STAGE1_RETRO_01_LOOP_KEY]: stage1Retro01LoopUrl,
   [STAGE1_RETRO_02_LOOP_KEY]: stage1Retro02LoopUrl,
@@ -73,4 +97,14 @@ export function preloadAudio(scene: Phaser.Scene): void {
 export function configureVoiceCaps(): void {
   setVoiceCap(CLICK_SFX_KEY, 4);
   setVoiceCap(SHOOT_SFX_KEY, 8);
+  // Hit sample fires on every non-killing bullet hit — dense fights can
+  // stack a dozen per frame. Cap at 6 so the layer reads as percussion
+  // rather than a wash.
+  setVoiceCap(ENEMY_HIT_SFX_KEY, 6);
+  setVoiceCap(ENEMY_DIE_SFX_KEY, 6);
+  // Boss-death is louder and rarer — cap small.
+  setVoiceCap(BOSS_DIE_SFX_KEY, 2);
+  setVoiceCap(BOSS_PHASE_SFX_KEY, 2);
+  // Boss pickup bursts 5 drops at once — give each its own voice.
+  setVoiceCap(PICKUP_SFX_KEY, 6);
 }

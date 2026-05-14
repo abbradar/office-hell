@@ -227,10 +227,12 @@ export const redDropletHard = new EntityKind({
 // Multiplier-drop pickup, three flavours keyed by the tier of the wave
 // that emitted them. Visually identical (16×16 white-square-with-green-
 // M tile; replace with tier-distinguished art when the wider pass
-// arrives); the per-tier difference is the `multLift` MultDropKind reads
-// off `tier`. Damage classes are empty so these route into the dedicated
-// `stage.drops` group at spawn, not the damages/damagedBy graph — see
-// StageManager.spawn and src/docs/scoring-system.md.
+// arrives); every pickup is worth a flat +1 mult, and the per-tier
+// difference is the *count* of drops the boss / mini-boss bursts into
+// at death (see DROP_COUNT_BY_TIER in StageManager). Damage classes
+// are empty so these route into the dedicated `stage.drops` group at
+// spawn, not the damages/damagedBy graph — see StageManager.spawn and
+// src/docs/scoring-system.md.
 //
 // Hitbox radius is intentionally larger than the rendered tile (32-px
 // square, 2× the sprite). Pickup needs to feel forgiving — the player's

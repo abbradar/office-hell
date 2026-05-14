@@ -7,9 +7,10 @@ import {
   STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
-import { stopMusicLoop } from '../audio/music/loop';
+import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import { PRACTICE_UNLOCK_KEY_PREFIX } from '../scenes/GameScene';
+import { makeSnapshot, saveSnapshot } from '../state/save';
 import {
   markWave,
   startMusicLoop,
@@ -59,12 +60,21 @@ import { workIsFunWave } from './waves/workIsFun';
 // counting them as "reached" would defeat the gating. Mirrors the
 // flag to `localStorage` so it persists across reloads; Phaser's
 // registry alone is in-memory only. Idempotent.
+//
+// Doubles as the auto-save trigger for the menu CONTINUE feature: on
+// every real-stage wave entry, we snapshot the score + music position
+// keyed to `id`, so a future continue can rehydrate at the same wave
+// boundary. Practice/test runs are gated out (same `player.kind.practice`
+// check) so a practice session never overwrites the live save.
 function markReached(self: Entity, id: string): void {
   // Practice runs play sections in arbitrary order from the menu and
   // shouldn't grant unlocks. The test/music modes never construct a
   // chain through these `from<Wave>` continuations, so they don't need
   // a separate guard.
   if (self.stage.player.kind.practice) return;
+  // Echo the id onto the manager so the death-save path in GameScene can
+  // reuse the same identifier without re-deriving from the HUD label.
+  self.stage.lastReachedWaveId = id;
   const key = PRACTICE_UNLOCK_KEY_PREFIX + id;
   self.scene.game.registry.set(key, true);
   try {
@@ -73,6 +83,19 @@ function markReached(self: Entity, id: string): void {
     // localStorage may be unavailable (private mode); the registry
     // copy still works for the current session.
   }
+  // Auto-save snapshot for the menu CONTINUE button. Captures the
+  // music position at the wave-entry boundary so resume lands on the
+  // same beat the live chain would have landed on. `getMusicTime()`
+  // returns null when no track is playing (e.g. the silent water-
+  // cooler interstage) — in that case we save `music: null` and the
+  // continue path starts the wave's music from offset 0.
+  saveSnapshot(
+    makeSnapshot({
+      waveId: id,
+      score: self.stage.score,
+      music: getMusicTime(),
+    }),
+  );
 }
 
 // Audio-time gap after a wave clears before the next one starts. With
@@ -560,6 +583,13 @@ export const WAVES: WaveDef[] = [
   { id: 'i-ending', name: 'Ending — Walk Home', script: endingScene },
 ];
 
+// Reverse lookup keyed by `WaveDef.id`. The CONTINUE button in MenuScene
+// pulls a wave entry from here using the saved `waveId` so GameScene can
+// build its continue-mode stage entrypoint without exposing the WAVES
+// array index. Built once at module load — the WAVES list itself is a
+// const so no runtime invalidation is needed.
+export const WAVE_BY_ID: Record<string, WaveDef> = Object.fromEntries(WAVES.map((w) => [w.id, w]));
+
 // Top-level stage script. The chain head (`fromIntro`) does all the
 // work — everything from the monologue through the boss to the
 // ending credits roll is reachable from there via `yield*`. After
@@ -590,5 +620,28 @@ export function makeWaveStage(wave: WaveDef): EntityKind {
     sprite: null,
     hitboxRadius: 0,
     defaultScript: waveStageScript,
+  });
+}
+
+// Continue-mode stage entry: identical to `stageBody` (intro → chain →
+// End) except the chain head is whichever wave the saved state pointed
+// at, not `fromIntro`. The wave's chained `yield*` calls cascade through
+// the rest of the stage just like in the live chain, so a continue from
+// the middle plays through to the ending naturally.
+//
+// Unlike `makeWaveStage` (which is practice-mode and ends at TestMenu),
+// this kind runs in real-stage mode: scoring is on, `markReached`
+// auto-saves at each subsequent boundary, the continue overlay is
+// armed, and the chain terminates at the End scene.
+export function makeContinueStage(wave: WaveDef): EntityKind {
+  function* continueStageScript(self: Entity): Generator<ScriptYield, void, void> {
+    yield* wave.script(self);
+    markWave(self, 'end');
+    self.scene.scene.start('End', { won: true });
+  }
+  return new EntityKind({
+    sprite: null,
+    hitboxRadius: 0,
+    defaultScript: continueStageScript,
   });
 }

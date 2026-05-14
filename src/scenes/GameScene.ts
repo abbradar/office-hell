@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { getMusicTime, pauseMusic, resumeMusic, stopMusicLoop } from '../audio/music/loop';
+import { getMusicTime, pauseMusic, playMusicLoop, resumeMusic, stopMusicLoop } from '../audio/music/loop';
 import { playerDeath } from '../audio/sfx/events';
 import { DEADZONE_Y, DEVELOPER_MODE, GAME_H, GAME_W, HEADER_H, WALL_W } from '../config';
 import { activateDeathBomb } from '../content/bomb';
 import { getSelectedCharacter } from '../content/characters';
 import { computeDoorYs, DOOR_COUNT, DOOR_H, DOOR_SPACING } from '../content/doors';
 import { PlayerKind } from '../content/player';
-import { makeWaveStage, stage, type WaveDef } from '../content/stage';
+import { makeContinueStage, makeWaveStage, stage, WAVE_BY_ID, type WaveDef } from '../content/stage';
 import { stageTest } from '../content/testStage';
 import { BG_DOORS_BBOX_KEY, BG_DOORS_KEY, BG_FLOOR_KEY, BG_WALLS_KEY } from '../content/textures';
 import type { Entity } from '../entities/Entity';
@@ -14,9 +14,10 @@ import { Player } from '../entities/Player';
 import { isTouchDevice } from '../input/device';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { displayState } from '../render/displayState';
-import { MultDropKind } from '../script/multDrop';
+import { MultDropKind, triggerPickup } from '../script/multDrop';
 import { StageManager } from '../script/StageManager';
-import { addMult, onContinue } from '../script/score';
+import { onContinue } from '../script/score';
+import { makeSnapshot, restoreScore, type SavedGameState, saveSnapshot } from '../state/save';
 import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -131,6 +132,26 @@ export const PRACTICE_HITS_KEY_PREFIX = 'practiceHits:';
 // is in-memory only).
 export const PRACTICE_UNLOCK_KEY_PREFIX = 'unlock:';
 
+// True when the player has reached at least one wave in a real-stage
+// run. Used by the main menu to gate the PRACTICE entry in production
+// builds — the entry stays hidden until the player has anything
+// non-trivial to replay. localStorage is the authoritative store
+// (the Phaser registry is in-memory only); reads are wrapped because
+// private-mode browsers throw on access.
+export function hasAnyPracticeUnlock(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === null) continue;
+      if (key.startsWith(PRACTICE_UNLOCK_KEY_PREFIX)) return true;
+    }
+  } catch {
+    // localStorage unavailable — treat as no unlocks. Practice stays
+    // hidden in production until the player finds a usable browser.
+  }
+  return false;
+}
+
 // Hydrate registry-backed unlock flags from `localStorage` so per-wave
 // unlocks survive page reloads. Phaser's registry doesn't persist; we
 // mirror writes (see `markReached`) to `localStorage` and pull them
@@ -159,6 +180,12 @@ export type GameSceneData = {
   // of the normal stage. Surfaces an extra debug HUD line built from the
   // music clock + stage queue introspection.
   test?: boolean;
+  // Resume a previously auto-saved run. Mutually exclusive with `practice`
+  // / `test` (the menu CONTINUE button is the only entry, and it doesn't
+  // set the other two). When set, GameScene builds a real-stage chain
+  // entry-point starting at the saved wave, restores GameScore, and seeks
+  // the saved music track in with a brief fade-in. See src/state/save.ts.
+  continueFrom?: SavedGameState;
 };
 
 // Per-run state container. Phaser reuses the same Scene instance across
@@ -178,6 +205,11 @@ class RunState {
   // From init data — set once at scene entry.
   readonly practiceWave: WaveDef | null;
   readonly testMode: boolean;
+  // Saved state when CONTINUE was picked from the menu, or `null` for
+  // a fresh run / practice / test. Read in create() to seed the stage
+  // entrypoint, the score, and the music seek+fade-in. Cleared as soon
+  // as the live run overwrites the save (via the next `markReached`).
+  readonly continueFrom: SavedGameState | null;
   // ESC pause state. Distinct from `stage.paused`, which dialogues also set —
   // we share the same physics/script freeze (set stage.paused + physics.pause)
   // but track this flag so X can route to "exit to menu" only while the
@@ -224,6 +256,7 @@ class RunState {
   constructor(data: GameSceneData | undefined) {
     this.practiceWave = data?.practice ?? null;
     this.testMode = data?.test ?? false;
+    this.continueFrom = data?.continueFrom ?? null;
   }
 }
 
@@ -412,14 +445,22 @@ export class GameScene extends Phaser.Scene {
 
     // Real stage: bombs start at 0; the intro's wellness-coach drop-in
     // unlocks them. Practice / test modes get the full pile so they're
-    // usable straight from the menu.
+    // usable straight from the menu. Continue mode is real-stage with the
+    // intro skipped — bombs default to the full pile so the resumed run
+    // isn't stranded without them.
+    const cont = this.state.continueFrom;
+    const continueWave = cont !== null ? (WAVE_BY_ID[cont.waveId] ?? null) : null;
+    // Treat continue as a real-stage run only when we successfully resolved
+    // the saved wave id. A stale save (id renamed between builds) falls
+    // through to a fresh real-stage run instead of crashing the scene.
+    const isContinue = cont !== null && continueWave !== null;
     const isRealStage = !this.state.practiceWave && !this.state.testMode;
     this.playerKind = new PlayerKind({
       hpText: this.hpText,
       bombsText: this.bombsText,
       practice: this.state.practiceWave !== null,
       character,
-      bombs: isRealStage ? 0 : undefined,
+      bombs: isContinue ? undefined : isRealStage ? 0 : undefined,
     });
     this.player = new Player(this, this.stage, this.playerKind);
     this.stage.player = this.player;
@@ -429,11 +470,39 @@ export class GameScene extends Phaser.Scene {
     // bombs still push/pop on top, but the base depth stays at 1.
     if (this.state.testMode) this.player.pushInvincible();
 
+    // Continue mode: rehydrate the run's score from the snapshot before
+    // the stage script starts ticking. The StageManager constructor
+    // already built a fresh GameScore; restoreScore mutates it in place
+    // so subsequent kill / mult / alive-tick accumulations land on the
+    // saved totals. Music is pre-seeded *after* the stageKind is selected
+    // below so the seek lands as close as possible to the first script
+    // tick — the wave's own `startMusicLoop(KEY)` is idempotent on the
+    // same key and won't restart the track.
+    if (isContinue) restoreScore(this.stage.score, cont.score);
+
     const stageKind = this.state.testMode
       ? stageTest
       : this.state.practiceWave
         ? makeWaveStage(this.state.practiceWave)
-        : stage;
+        : // biome-ignore lint/style/noNonNullAssertion: guarded by isContinue
+          isContinue
+          ? makeContinueStage(continueWave!)
+          : stage;
+
+    // Seek + fade the saved music in. Done after stopMusicLoop() above
+    // tore the menu loop down, so the new sound starts from a clean
+    // state. fadeInMs is 500 per the design — short enough to read as
+    // a deliberate resume cue rather than a slow swell. The wave's own
+    // `startMusicLoop(KEY)` (fired on first script tick) is idempotent
+    // when the key matches, so the seeked track keeps playing through
+    // the wave entry. When the saved key DOESN'T match the wave's
+    // expected music (e.g. the script does `startMusicWithIntro(...)`
+    // with different keys), the script call hard-cuts and the seeked
+    // track is replaced — that's a controlled rough seam, vs always
+    // restarting the section from t=0.
+    if (isContinue && cont.music !== null) {
+      playMusicLoop(cont.music.key, { seek: cont.music.time, fadeInMs: 500 });
+    }
     // Stash the top-level chain entity on the manager so mass-purge
     // operations (e.g. the final-boss death sweep) can iterate
     // `stage.active` without accidentally killing the script-host
@@ -454,16 +523,15 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Multiplier-drop pickup: one-way overlap with the player. Reading
-    // `multLift` off MultDropKind bumps the live mult (boss drops bump
-    // it most) and kills the drop. See src/docs/scoring-system.md.
+    // Multiplier-drop pickup: one-way overlap with the player. Fires
+    // the collect-toward-HUD animation; the animation's onComplete
+    // bumps `score.mult` and dies the drop. See
+    // src/docs/scoring-system.md and src/script/multDrop.ts.
     this.physics.add.overlap(this.player, this.stage.drops, (_p, d) => {
       const drop = d as Entity;
       if (!drop.alive) return;
-      const kind = drop.kind;
-      if (!(kind instanceof MultDropKind)) return;
-      if (kind.multLift > 0) addMult(this.stage.score, kind.multLift);
-      drop.die();
+      if (!(drop.kind instanceof MultDropKind)) return;
+      triggerPickup(drop);
     });
 
     if (isTouchDevice) {
@@ -681,6 +749,30 @@ export class GameScene extends Phaser.Scene {
     return !this.state.practiceWave && !this.state.testMode;
   }
 
+  // Save the run on player death so the menu CONTINUE button can resume
+  // from the wave the player died on. Snapshot uses the same id as the
+  // wave-entry auto-save (`stage.lastReachedWaveId` is set by every
+  // `markReached` call), so resuming a death-save and resuming a
+  // wave-entry-save land on the same chain entry-point. Music is
+  // captured before any pauseMusic the overlay path triggers — caller
+  // is responsible for ordering.
+  //
+  // Skipped if `lastReachedWaveId` is null (the player died before any
+  // `markReached` fired, e.g. inside the intro monologue) — the save
+  // slot stays at whatever it was, which is better than writing a
+  // partial snapshot we can't resume from.
+  private saveOnDeath(): void {
+    const waveId = this.stage.lastReachedWaveId;
+    if (waveId === null) return;
+    saveSnapshot(
+      makeSnapshot({
+        waveId,
+        score: this.stage.score,
+        music: getMusicTime(),
+      }),
+    );
+  }
+
   private showContinueOverlay(): void {
     console.log('[music] showContinueOverlay: enter', { t: Math.round(performance.now()) });
     if (this.state.continueOverlay) return;
@@ -803,6 +895,14 @@ export class GameScene extends Phaser.Scene {
     // way around, so top-of-update is the only safe slot.)
     if (!this.player.alive) {
       if (this.state.continueOverlay !== null || this.state.deathStarted) return;
+      // Save the run on death before the overlay opens. Captures the
+      // current wave id + score + music position so the menu CONTINUE
+      // button can resume from exactly here. Gated to real-stage runs
+      // (allowsContinue) to mirror the auto-save trigger in
+      // `markReached`. Music is captured *before* `showContinueOverlay`
+      // calls `pauseMusic` (which we never reach here pre-save), so
+      // `getMusicTime()` still returns the live position.
+      if (this.allowsContinue()) this.saveOnDeath();
       // Continue prompt only in the real stage — practice / test / music
       // modes either keep the player invincible or never decrement HP, so
       // a death there is anomalous and falls through to the death sequence.

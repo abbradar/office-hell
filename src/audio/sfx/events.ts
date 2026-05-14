@@ -7,7 +7,19 @@
 // silently until initBuses + setSoundManager have been called from BootScene.
 
 import { sfxBus } from '../buses';
-import { CLICK_SFX_KEY, HURT_SFX_KEY, SHOOT_SFX_KEY } from '../keys';
+import {
+  BOSS_DIE_SFX_KEY,
+  BOSS_PHASE_SFX_KEY,
+  CLICK_SFX_KEY,
+  ENEMY_DIE_SFX_KEY,
+  ENEMY_HIT_SFX_KEY,
+  FOOTSTEP_05_SFX_KEY,
+  FOOTSTEP_06_SFX_KEY,
+  FOOTSTEP_09_SFX_KEY,
+  HURT_SFX_KEY,
+  PICKUP_SFX_KEY,
+  SHOOT_SFX_KEY,
+} from '../keys';
 import { playPooled } from './pool';
 
 export function shoot(): void {
@@ -34,32 +46,47 @@ export function playerDeath(): void {
   setTimeout(() => playPooled(HURT_SFX_KEY, { volume: 0.9, detune: -1000 }), 130);
 }
 
-// Boss-death cue. Two triangle oscillators an octave apart sweeping down
-// over ~600ms; lower partial louder so it reads as a heavy collapse rather
-// than the player's higher-pitched two-blip hurt. Same procedural path as
-// the gym-bro thump/jump — direct sfxBus connection, no extra asset.
-export function playBossDeath(): void {
-  if (!sfxBus) return;
-  const ctx = sfxBus.context;
-  const now = ctx.currentTime;
-  const partials: Array<[number, number, number]> = [
-    [320, 60, 0.4],
-    [160, 30, 0.55],
-  ];
-  for (const [base, end, amp] of partials) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(base, now);
-    osc.frequency.exponentialRampToValueAtTime(end, now + 0.55);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(amp, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-    osc.connect(gain);
-    gain.connect(sfxBus);
-    osc.start(now);
-    osc.stop(now + 0.65);
-  }
+// Boss / mini-boss death cue — zapTwoTone sample.
+export function playBossDie(): void {
+  playPooled(BOSS_DIE_SFX_KEY, { volume: 0.7 });
+}
+
+// Boss phase-change cue — zap1 sample, fired at the start of
+// `bossPhaseTransition` so the silhouette flicker has audible weight.
+export function playBossPhaseChange(): void {
+  playPooled(BOSS_PHASE_SFX_KEY, { volume: 0.6 });
+}
+
+// Regular enemy death — pepSound4. Mini-boss / boss kills route through
+// `playBossDie` instead. Volume matched to `shoot` so kills register
+// over a dense bullet volley.
+export function playEnemyDie(): void {
+  playPooled(ENEMY_DIE_SFX_KEY, { volume: 0.9 });
+}
+
+// Non-killing enemy hit — tone1 with a small random detune so a chain
+// of hits doesn't read as a single tone. Volume matches `shoot` so the
+// hit / fire pair reads as one cohesive percussion layer; the per-call
+// voice cap keeps dense salvos from blowing past it.
+export function playEnemyHit(): void {
+  playPooled(ENEMY_HIT_SFX_KEY, { volume: 0.7, detune: (Math.random() - 0.5) * 200 });
+}
+
+// Mult-drop collection — phaserUp4. Triggered at the start of the
+// pickup animation (the upward zip toward the HUD mult readout).
+// Comparable to `shoot` so a pickup burst doesn't get swamped by the
+// concurrent fire layer.
+export function playPickup(): void {
+  playPooled(PICKUP_SFX_KEY, { volume: 0.9 });
+}
+
+// Random one of three footstep samples — used during silent walking
+// scenes (tutorial, inter-stage water-cooler beat, ending corridor)
+// before any music starts.
+const FOOTSTEP_KEYS = [FOOTSTEP_05_SFX_KEY, FOOTSTEP_06_SFX_KEY, FOOTSTEP_09_SFX_KEY];
+export function playFootstep(): void {
+  const key = FOOTSTEP_KEYS[Math.floor(Math.random() * FOOTSTEP_KEYS.length)] as string;
+  playPooled(key, { volume: 0.35, detune: (Math.random() - 0.5) * 200 });
 }
 
 export function playClick(): void {

@@ -30,9 +30,11 @@ export const KILL_BASE_BY_TIER: Record<EntityTier, number> = {
 export const POINT_BLANK_RADIUS = 40;
 export const POINT_BLANK_MULT = 1.5;
 
-// Chain cap. 16× is a soft ceiling — high enough to feel rewarding for
-// clean play, low enough that the HUD digit width stays bounded.
-export const MAX_MULT = 16;
+// Chain cap. 999× matches the 3-digit HUD readout width and is high
+// enough that long no-hit streaks keep paying out without flat-lining
+// mid-fight. Kept as a soft ceiling so addMult clamps cleanly when a
+// boss dumps a burst of pickups at once.
+export const MAX_MULT = 999;
 export const ALIVE_TICK_FRAMES = 6; // +1 per 0.1s @ 60fps
 
 export class GameScore {
@@ -103,10 +105,12 @@ export function addMult(score: GameScore, delta: number): void {
   score.mult = Math.min(MAX_MULT, score.mult + delta);
 }
 
-// MultDropKind + MULT_LIFT_BY_TIER moved to `./multDrop` to break the
-// score↔types cycle that was throwing TDZ ReferenceErrors in dev
-// (score.ts imported `EntityKind` for the `extends` clause but
-// types.ts imports `recordKill` from here, so when types.ts loaded
-// first, `EntityKind` was still uninitialised when this module's
-// `class MultDropKind extends EntityKind` ran). Importers should pull
-// `MultDropKind` from `./multDrop` directly.
+// MultDropKind moved to `./multDrop` to break the score↔types cycle
+// that was throwing TDZ ReferenceErrors in dev (score.ts imported
+// `EntityKind` for the `extends` clause but types.ts imports
+// `recordKill` from here, so when types.ts loaded first, `EntityKind`
+// was still uninitialised when this module's `class MultDropKind
+// extends EntityKind` ran). Importers should pull `MultDropKind` from
+// `./multDrop` directly. Every pickup is worth +1 mult; tier-based
+// scaling now lives in the *count* of drops a wave emits, set in
+// StageManager.spawnDropBurst.

@@ -1,7 +1,7 @@
 import { GAME_H, PLAYER_Y } from '../../config';
 import type { Entity } from '../../entities/Entity';
 import { moveTo } from '../../script/patterns';
-import { findClosestDoorLine, markWave, waitSeconds, walkThroughDoorLine } from '../../script/stage';
+import { findClosestDoorLine, markWave, waitSeconds, walkThroughDoorLine, withFootsteps } from '../../script/stage';
 import { EntityKind, type HPVars, type ScriptYield } from '../../script/types';
 import { CHARACTERS } from '../characters';
 import { PLAYER_BOMBS } from '../player';
@@ -119,12 +119,16 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
     // floor does, so it cannot drift.
     const slideDist = COOLER_Y - COOLER_SLIDE_START_Y;
     const slideStartScroll = stage.bgScrollY;
-    while (true) {
-      const advance = stage.bgScrollY - slideStartScroll;
-      if (advance >= slideDist) break;
-      cooler.y = COOLER_SLIDE_START_Y + advance;
-      yield 1;
-    }
+    yield* withFootsteps(
+      (function* (): Generator<ScriptYield, void, void> {
+        while (true) {
+          const advance = stage.bgScrollY - slideStartScroll;
+          if (advance >= slideDist) break;
+          cooler.y = COOLER_SLIDE_START_Y + advance;
+          yield 1;
+        }
+      })(),
+    );
     cooler.y = COOLER_Y;
 
     // ─── Approach + dialog (unchanged from the original) ────────────────
@@ -150,9 +154,13 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
     // Walk both to the cooler in parallel along the same vertical line
     // (MEET_X). Player approaches from below, other from above. The
     // `all` join waits until both moveTo generators finish.
-    yield {
-      all: [moveTo(player, MEET_X, PLAYER_DEST_Y, WALK_SPEED), moveTo(other, MEET_X, OTHER_DEST_Y, WALK_SPEED)],
-    };
+    yield* withFootsteps(
+      (function* (): Generator<ScriptYield, void, void> {
+        yield {
+          all: [moveTo(player, MEET_X, PLAYER_DEST_Y, WALK_SPEED), moveTo(other, MEET_X, OTHER_DEST_Y, WALK_SPEED)],
+        };
+      })(),
+    );
 
     // Face each other — moveTo zeroes velocity on arrival, so updateAnim
     // would otherwise read the last `facing` (which during travel was
@@ -218,25 +226,29 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
     // sprite. Floor still not moving. The refresh line opens a dialog,
     // which pauses physics; the other freezes mid-step until the line
     // dismisses, then continues to the door.
-    yield {
-      all: [
-        (function* (): Generator<ScriptYield, void, void> {
-          const exitDoorY = findClosestDoorLine(other, other.y, 'upper') ?? other.y;
-          yield* walkThroughDoorLine(other, exitDoorY, 'left', WALK_SPEED);
-        })(),
-        (function* (): Generator<ScriptYield, void, void> {
-          yield* waitSeconds(REFRESH_PAUSE_SECONDS);
-          (player.vars as HPVars).hp = player.kind.hp;
-          player.kind.bombs = PLAYER_BOMBS;
-          player.render();
-          yield self.dialogue({
-            left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
-            lines: [{ speaker: 'left', text: 'Phew, feeling a bit better now.' }],
-          });
-          yield* moveTo(player, PLAYER_SIDESTEP_X, player.y, WALK_SPEED);
-        })(),
-      ],
-    };
+    yield* withFootsteps(
+      (function* (): Generator<ScriptYield, void, void> {
+        yield {
+          all: [
+            (function* (): Generator<ScriptYield, void, void> {
+              const exitDoorY = findClosestDoorLine(other, other.y, 'upper') ?? other.y;
+              yield* walkThroughDoorLine(other, exitDoorY, 'left', WALK_SPEED);
+            })(),
+            (function* (): Generator<ScriptYield, void, void> {
+              yield* waitSeconds(REFRESH_PAUSE_SECONDS);
+              (player.vars as HPVars).hp = player.kind.hp;
+              player.kind.bombs = PLAYER_BOMBS;
+              player.render();
+              yield self.dialogue({
+                left: { sprite: playerCh.sprite, frame: playerCh.frame, name: playerCh.name },
+                lines: [{ speaker: 'left', text: 'Phew, feeling a bit better now.' }],
+              });
+              yield* moveTo(player, PLAYER_SIDESTEP_X, player.y, WALK_SPEED);
+            })(),
+          ],
+        };
+      })(),
+    );
     other.die();
 
     // Phase B — floor scrolls, carrying the player and cooler back to the
@@ -257,7 +269,7 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
       duration: dropMs,
       ease: 'Linear',
     });
-    yield* moveTo(player, player.x, PLAYER_Y, FLOOR_SCROLL_PX_PER_SEC, { silent: true });
+    yield* withFootsteps(moveTo(player, player.x, PLAYER_Y, FLOOR_SCROLL_PX_PER_SEC, { silent: true }));
 
     // Phase C — player starts moving up: corridor scroll flips back to
     // forward (gameplay-normal), the player walks-in-place at PLAYER_Y,
@@ -276,7 +288,7 @@ export function* interStageWaterCooler(self: Entity): Generator<ScriptYield, voi
       ease: 'Linear',
       onComplete: () => cooler.destroy(),
     });
-    yield* waitSeconds(exitMs / 1000);
+    yield* withFootsteps(waitSeconds(exitMs / 1000));
 
     // Cleanup. Cooler is normally destroyed by the tween's onComplete by
     // the time we get here; explicit destroy is idempotent if the wave

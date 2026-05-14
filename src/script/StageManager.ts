@@ -7,7 +7,7 @@ import { Entity } from '../entities/Entity';
 import type { Player } from '../entities/Player';
 import { BubbleManager } from '../ui/bubbles';
 import { DialogueManager, type DialogueOpts } from '../ui/dialogue';
-import { MultDropKind } from './multDrop';
+import { MultDropKind, triggerPickup } from './multDrop';
 import { ALIVE_TICK_FRAMES, GameScore, recordAliveTick } from './score';
 import type { DamageClass, EntityKind, EntityScript, EntityTier, ScriptYield, SpawnOpts } from './types';
 import { HPEntityKind } from './types';
@@ -127,20 +127,15 @@ type Wait = {
 // `git blame` makes the source of the seed obvious.
 const STAGE_RNG_SEED = 0x4f48656c; // "OHel"
 
-// Multiplier-drop magnet tuning. The threshold is a fraction of GAME_H
-// — drops are vacuumed only while the player sits above
-// `GAME_H * MAGNET_THRESHOLD_FRAC` (inverted Touhou POC pattern). 0.4
-// = top 40% of the field, where the bullets cluster — risk for reward.
-// See src/docs/scoring-system.md → "Magnet zone".
-const MAGNET_THRESHOLD_FRAC = 0.4;
-// px/s the magnet pull retargets a drop's velocity to. Tuned to feel
-// snappy without snapping — the overlap handler in GameScene catches
-// the collect on first contact, so 400 reaches the player within ~1s
-// from anywhere on screen.
-const MAGNET_SPEED = 400;
+// Multiplier-drop auto-pick tuning. The threshold is a fraction of
+// GAME_H — drops within range of the player auto-collect only while
+// the player sits above `GAME_H * AUTOPICK_THRESHOLD_FRAC` (inverted
+// Touhou POC pattern). 0.4 = top 40% of the field, where the bullets
+// cluster — risk for reward. See src/docs/scoring-system.md.
+const AUTOPICK_THRESHOLD_FRAC = 0.4;
 // Initial downward drift for a freshly spawned drop. Slow enough to
 // give the player time to come up and claim it; fast enough that an
-// uncollected drop exits via the bottom cull margin in a few seconds.
+// uncollected drop exits below the field in a few seconds.
 const MULT_DROP_DRIFT_VY = 40;
 // Fallback spawn y when scheduleMultDrop can't find a live carrier
 // (every enemy in the wave is already dead by the time the wave script
@@ -153,6 +148,19 @@ const MULT_DROP_FALLBACK_Y = 40;
 // produce its first live enemy, but bounded so a wave that never
 // spawns one (a misconfiguration) doesn't leak the pending entry.
 const PENDING_DROP_TIMEOUT_FRAMES = 300;
+// Per-tier drop count: regular waves drop 1; mini-bosses 2; bosses 5.
+// All copies spawn at the carrier's death point with a small radial
+// jitter so they read as a fan instead of one stacked sprite.
+const DROP_COUNT_BY_TIER: Record<EntityTier, number> = { regular: 1, miniBoss: 2, boss: 5 };
+// Mini-boss / boss drops auto-collect after this many ms on the
+// ground — the player doesn't need to walk up for them. Short enough
+// that the burst reads as "the boss exploded into mult"; long enough
+// that all N copies pop in before the first one zips away.
+const AUTOPICK_DELAY_MS = 50;
+// Radial spread for a multi-drop burst. 12 logical px is roughly the
+// width of the 16-px-square sprite, so adjacent drops in a 5-drop
+// boss burst end up just-barely-separated instead of overlapping.
+const DROP_SPREAD_RADIUS = 12;
 
 // The runtime that runs a stage: owns the active entity list, the
 // script scheduler (wait queue, races, drops), the dialogue + bubble
@@ -213,6 +221,13 @@ export class StageManager {
   // Current HUD wave label, set by `markWave(self, name)` calls in the
   // stage body. Null until the body's first markWave.
   wave: string | null = null;
+  // Most recently `markReached`-tagged wave id. Distinct from `wave`
+  // (above) which is the debug HUD label — this is the WaveDef.id from
+  // content/stage.ts (e.g. `r-interns`, `boss`) and is read by the
+  // death-save path in GameScene to write out the snapshot keyed to
+  // the same id the auto-save trigger uses. Null until the first
+  // `markReached` call this run.
+  lastReachedWaveId: string | null = null;
   // Most recent leaf-yield description from a script with
   // `debugYieldReasons` set. Updated in `processYield`; rendered after
   // `wave` in the debug HUD line. Null until the first such yield.
@@ -565,9 +580,10 @@ export class StageManager {
   }
 
   // Sample a live enemy and attach an onDeath callback that spawns
-  // the tiered drop at the kill point. Returns false when no
-  // candidate exists; the caller (`scheduleMultDrop` or the per-tick
-  // resolver) decides whether to retry or fall back.
+  // the tiered drop burst (1 / 2 / 5 copies by tier) at the kill
+  // point. Returns false when no candidate exists; the caller
+  // (`scheduleMultDrop` or the per-tick resolver) decides whether to
+  // retry or fall back.
   private tryAssignDrop(tier: EntityTier): boolean {
     const candidates: Entity[] = [];
     for (const c of this.damages.player.getChildren()) {
@@ -578,16 +594,43 @@ export class StageManager {
       if (e.alive && e.kind instanceof HPEntityKind) candidates.push(e);
     }
     if (candidates.length === 0) return false;
-    const kind = MULT_DROP_BY_TIER[tier];
     const carrier = candidates[Math.floor(Math.random() * candidates.length)] as Entity;
     carrier.onDeath(() => {
       // onDeath fires inside `die()` AFTER alive=false; the entity's
       // position is still valid (Phaser keeps x/y until the next pool
       // reuse), so spawning at (carrier.x, carrier.y) lands at the
       // visual kill point.
-      this.spawn(kind, carrier.x, carrier.y, 0, MULT_DROP_DRIFT_VY);
+      this.spawnDropBurst(tier, carrier.x, carrier.y);
     });
     return true;
+  }
+
+  // Spawn the tier's drop burst at (x, y). Regular waves drop 1; mini-
+  // bosses 2; bosses 5. Copies past the first land at points spread
+  // evenly around a small radius so 5 boss orbs read as a fan instead
+  // of overlapping at a single pixel. Mini-boss / boss bursts schedule
+  // an auto-pickup tick after AUTOPICK_DELAY_MS — the player doesn't
+  // have to walk up for them.
+  private spawnDropBurst(tier: EntityTier, x: number, y: number): void {
+    const kind = MULT_DROP_BY_TIER[tier];
+    const count = DROP_COUNT_BY_TIER[tier];
+    const autopick = tier !== 'regular';
+    for (let i = 0; i < count; i++) {
+      const angle = count > 1 ? (i / count) * Math.PI * 2 : 0;
+      const dx = count > 1 ? Math.cos(angle) * DROP_SPREAD_RADIUS : 0;
+      const dy = count > 1 ? Math.sin(angle) * DROP_SPREAD_RADIUS : 0;
+      // Mini-boss / boss drops auto-collect immediately, so a downward
+      // drift would just stutter the pickup-toward-HUD tween. Spawn
+      // them stationary.
+      const vy = autopick ? 0 : MULT_DROP_DRIFT_VY;
+      const drop = this.spawn(kind, x + dx, y + dy, 0, vy);
+      if (autopick) {
+        this.scene.time.delayedCall(AUTOPICK_DELAY_MS, () => {
+          if (!drop.alive) return;
+          triggerPickup(drop);
+        });
+      }
+    }
   }
 
   // Per-tick resolver for pending drops queued by `scheduleMultDrop`.
@@ -603,8 +646,7 @@ export class StageManager {
         continue;
       }
       if (pd.framesLeft <= 0) {
-        const kind = MULT_DROP_BY_TIER[pd.tier];
-        this.spawn(kind, GAME_W / 2, MULT_DROP_FALLBACK_Y, 0, MULT_DROP_DRIFT_VY);
+        this.spawnDropBurst(pd.tier, GAME_W / 2, MULT_DROP_FALLBACK_Y);
         this.pendingDrops.splice(i, 1);
       }
     }
@@ -1048,13 +1090,13 @@ export class StageManager {
       }
     }
 
-    // Multiplier-drop magnet trigger: player must be in the top 40% of
-    // the playfield to vacuum drops. Inverted from the safe-bottom
-    // pattern — risk should be where the bullets are. See
-    // src/docs/scoring-system.md → "Magnet zone".
-    const magnetActive = this.player.y < GAME_H * MAGNET_THRESHOLD_FRAC;
-    const playerX = this.player.x;
-    const playerY = this.player.y;
+    // Auto-pick zone: when the player sits in the top 40% of the
+    // playfield, every live drop on the field starts its pickup
+    // animation directly (the "magnet" model has been replaced — drops
+    // don't chase the player, they collect themselves). Inverted from
+    // the safe-bottom pattern — risk should be where the bullets are.
+    // See src/docs/scoring-system.md.
+    const autopickActive = this.player.y < GAME_H * AUTOPICK_THRESHOLD_FRAC;
 
     for (let i = this.active.length - 1; i >= 0; i--) {
       const e = this.active[i];
@@ -1067,15 +1109,21 @@ export class StageManager {
 
       e.updateAnim();
 
-      // Magnet pull on drops while the player is in the magnet zone.
-      // Vector from drop → player, normalised, scaled by MAGNET_SPEED;
-      // overlap handler fires when contact lands so no extra hysteresis
-      // is needed.
-      if (magnetActive && e.kind instanceof MultDropKind) {
-        const dx = playerX - e.x;
-        const dy = playerY - e.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 1) e.body.setVelocity((dx / d) * MAGNET_SPEED, (dy / d) * MAGNET_SPEED);
+      if (autopickActive && e.kind instanceof MultDropKind) {
+        triggerPickup(e);
+      }
+
+      // Drops use a tighter cull than other entities: any drop that
+      // exits the playfield gets released immediately (no CULL_MARGIN
+      // leash) so a drifting orb can't be "returned" by a later
+      // gameplay change. Bullets / enemies keep the margin so on-
+      // screen exits don't pop visibly.
+      if (e.kind instanceof MultDropKind) {
+        const offField = e.x < 0 || e.x > GAME_W || e.y < 0 || e.y > GAME_H;
+        if (offField && !e.getData('picking')) {
+          this.release(e, i);
+        }
+        continue;
       }
 
       const inX = e.x >= -CULL_MARGIN && e.x <= GAME_W + CULL_MARGIN;
