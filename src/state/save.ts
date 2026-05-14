@@ -18,14 +18,19 @@
 // wrapped so the menu and gameplay degrade gracefully (continue button
 // just won't appear).
 
+import { getCurrentTrackInfo, getMusicTime } from '../audio/music/loop';
 import type { GameScore } from '../script/score';
 
 export const SAVE_KEY = 'office-hell:save:state';
 
 // Schema versioning so a save written by an older build doesn't crash
 // a newer one — if `version` doesn't match we treat the slot as empty.
-// Bump when the shape of `SavedGameState` changes.
-const SAVE_VERSION = 1;
+// Bump when the shape of `SavedGameState` changes. v2 changes
+// `SavedMusic.time` from absolute music time to a loop-buffer offset;
+// reading a v1 save's `time` as a buffer offset would seek a track
+// with an intro to the wrong loop position, so we drop the slot
+// entirely on the version bump.
+const SAVE_VERSION = 2;
 
 export type SavedScore = {
   score: number;
@@ -39,8 +44,20 @@ export type SavedScore = {
 
 export type SavedMusic = {
   key: string;
-  // Seconds since track start, sourced from `getMusicTime()` at save
-  // time. Used as `seek` when resuming the loop track on continue.
+  // Position **within the loop buffer**, in seconds, i.e.
+  // `(getMusicTime().time - introDuration) mod loopDuration`. Used
+  // as the `seek` argument when resuming the loop track on continue.
+  //
+  // Stored as a buffer offset (not the absolute track clock) so the
+  // restore path's `waitTrackEnded` boundary math lines up: the
+  // restored loop has `introDuration = 0`, and saving an absolute
+  // time would otherwise make wave-end music time cross loop
+  // boundaries at totally different points than the live chain,
+  // leaving the script parked on a 40+ second wait for a loop
+  // boundary while the field sits empty. With a buffer offset, the
+  // restored loop boundary computation matches the live chain's
+  // (modulo the missing intro segment, which only adds a small
+  // constant offset).
   time: number;
 };
 
@@ -132,4 +149,27 @@ export function makeSnapshot(opts: { waveId: string; score: GameScore; music: Sa
     music: opts.music,
     savedAt: Date.now(),
   };
+}
+
+// Snapshot the live music position as a loop-buffer offset (the form
+// `SavedMusic.time` is defined to hold). Reads `getMusicTime()` and
+// `getCurrentTrackInfo()` directly so callers don't have to thread
+// either through their own state. Returns null when no track is
+// playing — the resume path handles that by leaving music to start
+// fresh on the wave's own `startMusicLoop` call.
+export function snapshotMusic(): SavedMusic | null {
+  const mt = getMusicTime();
+  if (mt === null) return null;
+  const info = getCurrentTrackInfo();
+  // No info / zero loop length means we can't normalise — fall back
+  // to "no music" rather than write a stale absolute time the restore
+  // path will misinterpret. Practically this only fires on one-shot
+  // tracks (the kaedalus intro / ending opening), where the right
+  // answer is "skip the intro on resume" anyway.
+  if (info === null || info.loopDuration <= 0) return null;
+  const introDur = info.introDuration;
+  const loopDur = info.loopDuration;
+  const elapsed = Math.max(0, mt.time - introDur);
+  const offset = ((elapsed % loopDur) + loopDur) % loopDur;
+  return { key: mt.key, time: offset };
 }

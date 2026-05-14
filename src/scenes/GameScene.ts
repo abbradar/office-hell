@@ -17,7 +17,7 @@ import { displayState } from '../render/displayState';
 import { MultDropKind, triggerPickup } from '../script/multDrop';
 import { StageManager } from '../script/StageManager';
 import { onContinue } from '../script/score';
-import { makeSnapshot, restoreScore, type SavedGameState, saveSnapshot } from '../state/save';
+import { makeSnapshot, restoreScore, type SavedGameState, saveSnapshot, snapshotMusic } from '../state/save';
 import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
@@ -489,17 +489,22 @@ export class GameScene extends Phaser.Scene {
           ? makeContinueStage(continueWave!)
           : stage;
 
-    // Seek + fade the saved music in. Done after stopMusicLoop() above
-    // tore the menu loop down, so the new sound starts from a clean
-    // state. fadeInMs is 500 per the design — short enough to read as
-    // a deliberate resume cue rather than a slow swell. The wave's own
-    // `startMusicLoop(KEY)` (fired on first script tick) is idempotent
-    // when the key matches, so the seeked track keeps playing through
-    // the wave entry. When the saved key DOESN'T match the wave's
-    // expected music (e.g. the script does `startMusicWithIntro(...)`
-    // with different keys), the script call hard-cuts and the seeked
-    // track is replaced — that's a controlled rough seam, vs always
-    // restarting the section from t=0.
+    // Seek + fade the saved music in. `cont.music.time` is a loop-
+    // buffer offset (see SavedMusic in src/state/save.ts), so passing
+    // it as `seek` lands the playback at the same in-loop position
+    // the save captured. fadeInMs is 500 per the design — short
+    // enough to read as a deliberate resume cue rather than a slow
+    // swell. The wave's own `startMusicLoop(KEY)` (fired on first
+    // script tick) is idempotent when the key matches, so the seeked
+    // track keeps playing through the wave entry. When the saved key
+    // DOESN'T match the wave's expected music (e.g. the script does
+    // `startMusicWithIntro(...)` with different keys), the script call
+    // hard-cuts and the seeked track is replaced — that's a
+    // controlled rough seam, vs always restarting the section from
+    // t=0. Buffer-offset semantics also make `waitTrackEnded`'s next-
+    // boundary math line up with the live chain (modulo the missing
+    // intro segment), so the empty-field stall the absolute-time form
+    // produced is gone.
     if (isContinue && cont.music !== null) {
       playMusicLoop(cont.music.key, { seek: cont.music.time, fadeInMs: 500 });
     }
@@ -764,11 +769,14 @@ export class GameScene extends Phaser.Scene {
   private saveOnDeath(): void {
     const waveId = this.stage.lastReachedWaveId;
     if (waveId === null) return;
+    // `snapshotMusic()` normalises to a loop-buffer offset — see
+    // `SavedMusic` in src/state/save.ts for why we don't store the
+    // raw `getMusicTime()` here.
     saveSnapshot(
       makeSnapshot({
         waveId,
         score: this.stage.score,
-        music: getMusicTime(),
+        music: snapshotMusic(),
       }),
     );
   }

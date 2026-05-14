@@ -7,10 +7,10 @@ import {
   STAGE1_RETRO_03_OPENING_KEY,
   STAGE1_RETRO_OPENING_KEY,
 } from '../audio/keys';
-import { getMusicTime, stopMusicLoop } from '../audio/music/loop';
+import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import { PRACTICE_UNLOCK_KEY_PREFIX } from '../scenes/GameScene';
-import { makeSnapshot, saveSnapshot } from '../state/save';
+import { makeSnapshot, saveSnapshot, snapshotMusic } from '../state/save';
 import {
   markWave,
   startMusicLoop,
@@ -85,15 +85,18 @@ function markReached(self: Entity, id: string): void {
   }
   // Auto-save snapshot for the menu CONTINUE button. Captures the
   // music position at the wave-entry boundary so resume lands on the
-  // same beat the live chain would have landed on. `getMusicTime()`
-  // returns null when no track is playing (e.g. the silent water-
-  // cooler interstage) — in that case we save `music: null` and the
-  // continue path starts the wave's music from offset 0.
+  // same beat the live chain would have landed on. `snapshotMusic()`
+  // normalises the position to a loop-buffer offset (i.e.
+  // `(getMusicTime - introDur) mod loopDur`) so the resume path's
+  // `waitTrackEnded` boundary math lines up — see SavedMusic for the
+  // full rationale. Returns null when no track is playing or the
+  // active track is a one-shot; in those cases the continue path
+  // starts music from the wave's own `startMusicLoop` call.
   saveSnapshot(
     makeSnapshot({
       waveId: id,
       score: self.stage.score,
-      music: getMusicTime(),
+      music: snapshotMusic(),
     }),
   );
 }
