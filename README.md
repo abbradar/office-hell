@@ -79,7 +79,7 @@ final boss music analysis).
 
 **Music**
 
-- [DOS-88 Music Library](https://dos88.itch.io/dos-88-music-library) — CC BY 4.0. Five tracks from the library are used as the menu loop and the stage 1 / stage 2 / final-boss themes (see [`src/audio/preload.ts`](src/audio/preload.ts) for the per-track mapping).
+- [DOS-88 Music Library](https://dos88.itch.io/dos-88-music-library) — CC BY 4.0.
 - **Kaedalus ([kaedalus.com](http://kaedalus.com))** — ["Crack the Underground Base"](https://opengameart.org/content/crack-the-underground-base-action-chipmusicrock) — CC BY-SA 3.0. The track is cut into chunks under [`src/assets/audio/chunks/kaedalus/`](src/assets/audio/chunks/kaedalus/) — see that folder's [`LICENSE.txt`](src/assets/audio/chunks/kaedalus/LICENSE.txt) for the derivative-work declaration.
 - [nene](https://opengameart.org/users/nene) — "Boss Battle #8" (retro and metal versions), "Boss Battle #9", "Unchained Destiny" — CC0.
 
