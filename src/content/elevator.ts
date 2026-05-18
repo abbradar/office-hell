@@ -20,11 +20,16 @@ export const ELEVATOR_OPEN_MS = 500;
 // rumble (a few-pixel up/down jitter) doesn't expose the scene's clear
 // color at the edges.
 export const ELEVATOR_BACKDROP_OVERFLOW = 24;
-// Extra vertical overflow that MenuScene opts into: the menu shifts the
-// elevator upward to crop more of its top building-frame band; this
-// padding keeps the bottom from exposing the scene's clear color.
-// CharacterSelect doesn't shift, so it keeps the default overflow.
-export const ELEVATOR_MENU_VERTICAL_PAD = 120;
+// Extra vertical overflow applied on every elevator backdrop. The
+// source sprite has a thick building-frame band at the top and no
+// equivalent at the bottom — left as-is the composition reads top-
+// heavy. We crop the top band by shifting the sprite upward
+// (ELEVATOR_Y_OFFSET) and grow its height (this pad) so the bottom
+// stays covered. Both MenuScene and CharacterSelect adopt the same
+// framing so the menu → character-select cut doesn't visibly resize
+// the doors.
+export const ELEVATOR_VERTICAL_PAD = 120;
+export const ELEVATOR_Y_OFFSET = -40;
 // Shared tint applied to the elevator backdrop on both Menu and
 // CharacterSelect — knocks the source sprite's medium grey down to a
 // flat dark grey so the gothic logo (Menu) and the character cards
@@ -59,19 +64,21 @@ export function registerElevatorAnims(scene: Phaser.Scene): void {
   });
 }
 
+// Centre y the backdrop sprite settles at after the vertical-crop
+// offset. Exposed so the menu's rumble tween has a single source of
+// truth for the resting position.
+export const ELEVATOR_BACKDROP_CENTER_Y = GAME_H / 2 + ELEVATOR_Y_OFFSET;
+
 // Shared placement so the open doors carry over from MenuScene's open
-// animation to CharacterSelect without a visual jump. `extraVerticalPad`
-// is opt-in extra height for callers that shift the sprite vertically and
-// need to keep the bottom edge covered (MenuScene). The width overflow
-// stays bound to the default so we don't over-stretch the door panels'
-// aspect ratio.
-export function addElevatorBackdrop(
-  scene: Phaser.Scene,
-  frame: number,
-  extraVerticalPad = 0,
-): Phaser.GameObjects.Sprite {
+// animation to CharacterSelect without a visual jump. Display size +
+// centre y are both baked in here — the previous opt-in extra pad on
+// the menu side made the two scenes stretch the source sprite to
+// different rectangles and the doors visibly resized at the cut. The
+// width overflow stays bound to the default so we don't over-stretch
+// the door panels' aspect ratio.
+export function addElevatorBackdrop(scene: Phaser.Scene, frame: number): Phaser.GameObjects.Sprite {
   return scene.add
-    .sprite(GAME_W / 2, GAME_H / 2, ELEVATOR_DOORS_KEY, frame)
-    .setDisplaySize(GAME_W + ELEVATOR_BACKDROP_OVERFLOW, GAME_H + ELEVATOR_BACKDROP_OVERFLOW + extraVerticalPad)
+    .sprite(GAME_W / 2, ELEVATOR_BACKDROP_CENTER_Y, ELEVATOR_DOORS_KEY, frame)
+    .setDisplaySize(GAME_W + ELEVATOR_BACKDROP_OVERFLOW, GAME_H + ELEVATOR_BACKDROP_OVERFLOW + ELEVATOR_VERTICAL_PAD)
     .setDepth(-10);
 }

@@ -5,9 +5,9 @@ import { playClick } from '../audio/sfx/events';
 import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
 import {
   addElevatorBackdrop,
+  ELEVATOR_BACKDROP_CENTER_Y,
   ELEVATOR_BACKDROP_TINT,
   ELEVATOR_FRAME_CLOSED,
-  ELEVATOR_MENU_VERTICAL_PAD,
   ELEVATOR_OPEN_ANIM,
 } from '../content/elevator';
 import { MENU_LOGO_KEY } from '../content/textures';
@@ -30,13 +30,6 @@ const RUMBLE_PIXELS = 4;
 const RUMBLE_MIN_MS = 4000;
 const RUMBLE_MAX_MS = 6000;
 const RUMBLE_DURATION_MS = 100;
-
-// Shift the elevator up so its top building-frame band is mostly cropped
-// off-screen. The source sprite has a thick frame piece at the top and no
-// equivalent at the bottom — left as-is the composition reads top-heavy.
-// Pairs with ELEVATOR_BACKDROP_OVERFLOW (in elevator.ts) which is bumped
-// to cover the freshly-exposed area at the bottom.
-const ELEVATOR_Y_OFFSET = -40;
 
 // Per-run mutable state. Phaser reuses the scene instance across
 // `scene.start('Menu')` (e.g. coming back from CharSelect's back link
@@ -80,8 +73,7 @@ export class MenuScene extends Phaser.Scene {
 
     addMuteButton(this);
 
-    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED, ELEVATOR_MENU_VERTICAL_PAD);
-    elevator.y = GAME_H / 2 + ELEVATOR_Y_OFFSET;
+    const elevator = addElevatorBackdrop(this, ELEVATOR_FRAME_CLOSED);
     elevator.setTint(ELEVATOR_BACKDROP_TINT);
     this.scheduleRumble(elevator);
 
@@ -233,7 +225,7 @@ export class MenuScene extends Phaser.Scene {
       // The scene may have been torn down between scheduling and firing
       // (e.g. quick START press). Bail if we're no longer the active menu.
       if (!this.scene.isActive() || this.state.starting) return;
-      const baseY = GAME_H / 2 + ELEVATOR_Y_OFFSET;
+      const baseY = ELEVATOR_BACKDROP_CENTER_Y;
       this.tweens.add({
         targets: target,
         y: baseY - RUMBLE_PIXELS,
