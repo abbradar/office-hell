@@ -17,8 +17,8 @@ import { displayState } from '../render/displayState';
 import { MultDropKind, triggerPickup } from '../script/multDrop';
 import { StageManager } from '../script/StageManager';
 import { onContinue } from '../script/score';
-import { makeSnapshot, restoreScore, type SavedGameState, saveSnapshot, snapshotMusic } from '../state/save';
 import { DAMAGE_CLASSES, HPEntityKind, type HPVars } from '../script/types';
+import { makeSnapshot, restoreScore, type SavedGameState, saveSnapshot, snapshotMusic } from '../state/save';
 import { FONT_DEBUG, FONT_DIALOGUE_SM, FONT_MENU, FONT_TITLE } from '../ui/fonts';
 import { addMuteButton } from '../ui/muteButton';
 import {
@@ -480,13 +480,16 @@ export class GameScene extends Phaser.Scene {
     // same key and won't restart the track.
     if (isContinue) restoreScore(this.stage.score, cont.score);
 
+    // Pick the stage entry point. Test / practice / continue / fresh-
+    // run are mutually exclusive; the continue branch checks
+    // `continueWave` directly (rather than `isContinue`) so TypeScript
+    // narrows it to non-null without a `!` assertion.
     const stageKind = this.state.testMode
       ? stageTest
       : this.state.practiceWave
         ? makeWaveStage(this.state.practiceWave)
-        : // biome-ignore lint/style/noNonNullAssertion: guarded by isContinue
-          isContinue
-          ? makeContinueStage(continueWave!)
+        : continueWave !== null
+          ? makeContinueStage(continueWave)
           : stage;
 
     // Seek + fade the saved music in. `cont.music.time` is a loop-

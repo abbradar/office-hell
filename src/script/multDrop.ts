@@ -12,9 +12,9 @@
 // scheduler can choose how many copies to spawn and which ones
 // auto-pickup. See src/docs/scoring-system.md → "Multiplier drops".
 
+import { playPickup } from '../audio/sfx/events';
 import { HEADER_H } from '../config';
 import type { Entity } from '../entities/Entity';
-import { playPickup } from '../audio/sfx/events';
 import { addMult } from './score';
 import { EntityKind } from './types';
 

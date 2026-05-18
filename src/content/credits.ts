@@ -73,9 +73,7 @@ export const SECTIONS: Section[] = [
   },
   {
     heading: 'CREATED FOR',
-    body: 
-      'BULLET HELL JAM 7 ' + 
-      '(itch.io/jam/bullet-jam-7)',
+    body: 'BULLET HELL JAM 7 ' + '(itch.io/jam/bullet-jam-7)',
   },
   {
     heading: 'SOURCE CODE',

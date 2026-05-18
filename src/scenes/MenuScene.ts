@@ -3,7 +3,6 @@ import { MENU_LOOP_KEY } from '../audio/keys';
 import { playMusicLoop } from '../audio/music/loop';
 import { playClick } from '../audio/sfx/events';
 import { DEVELOPER_MODE, GAME_H, GAME_W } from '../config';
-import { hasAnyPracticeUnlock } from './GameScene';
 import {
   addElevatorBackdrop,
   ELEVATOR_BACKDROP_TINT,
@@ -20,6 +19,7 @@ import { addMuteButton } from '../ui/muteButton';
 import { COLOR_ACCENT_GOLD_STR, COLOR_TEXT_PRIMARY_STR, COLOR_WALL_STR } from '../ui/palette';
 import { makePrompt } from '../ui/prompt';
 import { onTap } from '../ui/tap';
+import { hasAnyPracticeUnlock } from './GameScene';
 
 // "Elevator stops at a floor" jitter: small enough to read as motor
 // vibration on a full-screen backdrop without making the menu text wobble

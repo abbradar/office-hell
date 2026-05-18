@@ -10,7 +10,6 @@ import {
 import { stopMusicLoop } from '../audio/music/loop';
 import type { Entity } from '../entities/Entity';
 import { PRACTICE_UNLOCK_KEY_PREFIX } from '../scenes/GameScene';
-import { makeSnapshot, saveSnapshot, snapshotMusic } from '../state/save';
 import {
   markWave,
   startMusicLoop,
@@ -22,6 +21,7 @@ import {
 } from '../script/stage';
 import type { ScriptYield } from '../script/types';
 import { EntityKind } from '../script/types';
+import { makeSnapshot, saveSnapshot, snapshotMusic } from '../state/save';
 import { allDoorsSpamWave } from './waves/allDoorsSpam';
 import { checkEmailWave } from './waves/checkEmail';
 import { urgentCallWave } from './waves/colleague';

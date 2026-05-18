@@ -19,12 +19,12 @@ import footstep06SfxUrl from '../assets/audio/sfx/footstep06.ogg';
 import footstep09SfxUrl from '../assets/audio/sfx/footstep09.ogg';
 import hurtSfxUrl from '../assets/audio/sfx/hit_hurt.wav';
 import shootSfxUrl from '../assets/audio/sfx/noised_laser.wav';
-import bossDieSfxUrl from '../assets/audio/sfx/zapTwoTone.mp3';
-import bossPhaseSfxUrl from '../assets/audio/sfx/zap1.mp3';
 import enemyDieSfxUrl from '../assets/audio/sfx/pepSound4.mp3';
-import enemyHitSfxUrl from '../assets/audio/sfx/tone1.mp3';
 import pickupSfxUrl from '../assets/audio/sfx/phaserUp4.mp3';
 import clickSfxUrl from '../assets/audio/sfx/switch20.wav';
+import enemyHitSfxUrl from '../assets/audio/sfx/tone1.mp3';
+import bossPhaseSfxUrl from '../assets/audio/sfx/zap1.mp3';
+import bossDieSfxUrl from '../assets/audio/sfx/zapTwoTone.mp3';
 import {
   BOSS_DIE_SFX_KEY,
   BOSS_PHASE_SFX_KEY,
