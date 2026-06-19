@@ -6,7 +6,14 @@ import { GAME_W, SCRIPT_FPS } from './config';
 // device pixels (see render/textResolution.ts).
 import './render/textResolution';
 import { installTextResolutionRefresher } from './render/textResolution';
+import { initTelegram } from './platform/telegram';
 import { BootScene } from './scenes/BootScene';
+
+// When launched inside Telegram, expand/fullscreen the webview and disable
+// the swipe-to-close gesture BEFORE we read the viewport below, so the
+// initial canvas is sized against the final layout. No-op (one microtask)
+// for every other host. See src/platform/telegram.ts.
+await initTelegram();
 
 // Boot-time read, before Phaser is constructed. The host page pads the body
 // by the top/side safe-area insets (notch, rounded corners), so body

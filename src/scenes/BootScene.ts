@@ -24,6 +24,7 @@ import {
   registerBombAnims,
 } from '../content/textures';
 import { isTouchDevice } from '../input/device';
+import { isTelegramActive } from '../platform/telegram';
 import { bindLogicalCamera } from '../render/cameraBind';
 import { DISPLAY_RESIZE_EVENT, displayState } from '../render/displayState';
 import { loadInputIcons } from '../ui/inputIcons';
@@ -299,7 +300,10 @@ export class BootScene extends Phaser.Scene {
       // arming.
       let started = false;
       const onGesture = () => {
-        if (isTouchDevice && !this.scale.isFullscreen) {
+        // Telegram owns fullscreen via its own API (see platform/telegram.ts);
+        // the browser fullscreen request is unavailable / throws inside its
+        // webview, so skip it there and let Telegram's fullscreen stand.
+        if (isTouchDevice && !this.scale.isFullscreen && !isTelegramActive()) {
           this.scale.startFullscreen();
         }
         if (started) return;
