@@ -37,6 +37,15 @@ interface TelegramWebApp {
   disableVerticalSwipes?(): void;
   requestFullscreen?(): void;
   lockOrientation?(orientation: 'portrait' | 'landscape'): void;
+  // Bot API 8.0+: insets to clear the device safe area (notch, status bar)
+  // and Telegram's own overlaid controls (X Close bar in fullscreen mode).
+  // In expanded (non-fullscreen) mode, contentSafeAreaInset.top is 0 since
+  // the Telegram bar is external chrome above the webview; in fullscreen it
+  // equals the overlaid bar height. We use these JS values instead of the
+  // --tg-*-safe-area-inset-* CSS variables because CSS variable propagation
+  // is not reliable on all client versions.
+  safeAreaInset?: { top: number; right: number; bottom: number; left: number };
+  contentSafeAreaInset?: { top: number; right: number; bottom: number; left: number };
 }
 
 declare global {
@@ -108,16 +117,49 @@ export async function initTelegram(): Promise<boolean> {
   // disableVerticalSwipes (Bot API 7.7+) is the one that actually matters —
   // see the file header.
   if (atLeast('7.7') && wa.disableVerticalSwipes) guard(() => wa.disableVerticalSwipes?.());
-  // Fullscreen + orientation lock (Bot API 8.0+). Verify on a real device:
-  // in fullscreen Telegram overlays its close/menu controls at the top, so
-  // the game's HUD relies on the existing `env(safe-area-inset-top)` padding
-  // in index.html to clear them.
+  // Fullscreen + orientation lock (Bot API 8.0+).
   if (atLeast('8.0')) {
     if (wa.lockOrientation) guard(() => wa.lockOrientation?.('portrait'));
     if (wa.requestFullscreen) guard(() => wa.requestFullscreen?.());
   }
   if (wa.setBackgroundColor) guard(() => wa.setBackgroundColor?.(BG_COLOR));
   if (wa.setHeaderColor) guard(() => wa.setHeaderColor?.(BG_COLOR));
+
+  // Apply Telegram's safe-area insets as body padding so the canvas clears
+  // both the device notch (safeAreaInset) and any overlaid Telegram controls
+  // (contentSafeAreaInset — the X Close bar when in fullscreen mode).
+  //
+  // We drive this from the JS API rather than CSS variables because:
+  // 1. CSS variable propagation is not reliable on all client versions.
+  // 2. The JS values update via events (safeAreaChanged, contentSafeAreaChanged)
+  //    when the user transitions between expanded and fullscreen modes, and we
+  //    can re-trigger Phaser's resize path in response.
+  //
+  // Setting body.style.paddingTop as an inline style overrides the CSS
+  // `env(safe-area-inset-top)` rule in index.html, which only applies to
+  // non-Telegram contexts. Telegram's safeAreaInset.top already includes the
+  // device safe area so there is no double-counting.
+  //
+  // Called once synchronously here (before Phaser reads bodyRect in main.ts)
+  // and again from the change events (after Phaser is running, so the resize
+  // path re-fits the canvas). Only available on Bot API 8.0+; older clients
+  // fall through and the CSS env() rule stays in effect.
+  if (atLeast('8.0')) {
+    const applyInsets = (): void => {
+      const safeTop = wa.safeAreaInset?.top ?? 0;
+      const contentTop = wa.contentSafeAreaInset?.top ?? 0;
+      document.body.style.paddingTop = `${safeTop + contentTop}px`;
+    };
+    applyInsets();
+    wa.onEvent('safeAreaChanged', () => {
+      applyInsets();
+      window.dispatchEvent(new Event('resize'));
+    });
+    wa.onEvent('contentSafeAreaChanged', () => {
+      applyInsets();
+      window.dispatchEvent(new Event('resize'));
+    });
+  }
 
   // Telegram resizes the webview on expand, fullscreen, and orientation
   // changes; nudge Phaser's ScaleManager so BootScene's RESIZE handler
