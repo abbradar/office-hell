@@ -138,7 +138,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     // its own prompt, then re-center the group around GAME_W / 2.
     const HINT_Y = GAME_H - 130;
     const HINT_GAP = 60;
-    const hintStyle = { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' };
+    const hintStyle = { ...FONT_DEBUG, fontSize: isTouchDevice ? '18px' : '16px', color: COLOR_TEXT_DIM_STR, align: 'center' };
     if (isTouchDevice) {
       makePrompt(this, GAME_W / 2, HINT_Y, 'tap a card to select   •   tap "back" to return', hintStyle, {
         align: 'center',
@@ -157,6 +157,7 @@ export class CharacterSelectScene extends Phaser.Scene {
     const back = this.add
       .text(GAME_W / 2, GAME_H - 56, '← back', {
         ...FONT_DIALOGUE_SM,
+        fontSize: isTouchDevice ? '20px' : '16px',
         color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5)

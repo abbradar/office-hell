@@ -164,6 +164,7 @@ export class CreditsScene extends Phaser.Scene {
     const back = this.add
       .text(GAME_W / 2, GAME_H - 55, '← back to menu', {
         ...FONT_DIALOGUE_SM,
+        fontSize: isTouchDevice ? '20px' : '16px',
         color: COLOR_TEXT_MUTED_STR,
       })
       .setOrigin(0.5)
@@ -186,7 +187,7 @@ export class CreditsScene extends Phaser.Scene {
       GAME_W / 2,
       GAME_H - 25,
       hintTemplate,
-      { ...FONT_DEBUG, color: COLOR_TEXT_DIM_STR, align: 'center' },
+      { ...FONT_DEBUG, fontSize: isTouchDevice ? '18px' : '16px', color: COLOR_TEXT_DIM_STR, align: 'center' },
       { align: 'center' },
     );
 

@@ -371,7 +371,7 @@ export class BootScene extends Phaser.Scene {
     this.loadingText = this.add
       .text(cx, cy - 24, 'loading…', {
         color: COLOR_TEXT_DIM_STR,
-        fontSize: '14px',
+        fontSize: isTouchDevice ? '18px' : '14px',
       })
       .setOrigin(0.5);
 

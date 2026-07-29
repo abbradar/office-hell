@@ -30,8 +30,14 @@
         /* Honour the top/side bezels (notch, rounded corners) so the play
            area never sits under hardware. The bottom inset is intentionally
            NOT padded — the touch-control band lives down there, and the home
-           indicator sitting over a button is harmless. */
-        padding-top: env(safe-area-inset-top);
+           indicator sitting over a button is harmless.
+           In Telegram fullscreen mode the mini-app header bar (X Close etc.)
+           is an overlay drawn on top of the webview, not external chrome.
+           --tg-content-safe-area-inset-top (set by the Telegram SDK) gives its
+           height; adding it here pushes the canvas below the bar so that the
+           game content is never obscured and pointer coordinates map correctly.
+           Defaults to 0px outside Telegram. */
+        padding-top: calc(env(safe-area-inset-top) + var(--tg-content-safe-area-inset-top, 0px));
         padding-right: env(safe-area-inset-right);
         padding-left: env(safe-area-inset-left);
       }
