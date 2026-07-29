@@ -194,6 +194,30 @@ export class BootScene extends Phaser.Scene {
 
     this.load.start();
 
+    // When the viewport changes (fullscreen toggle, Telegram expand/viewportChanged,
+    // address-bar show/hide, orientation flip, desktop window drag) recompute the
+    // device-pixel canvas size + world-rect math, then notify every scene so its
+    // main camera re-pins the viewport / zoom and any text bitmap re-rasterises at
+    // the new scale. Installed here — before the Promise.all chain — so that a
+    // Telegram viewportChanged event that fires during asset loading (expand() is
+    // async; the webview resize arrives while files are still in flight) is caught
+    // and doesn't leave the canvas stuck at the pre-expand dimensions.
+    //
+    // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE *after* its own
+    // getParentBounds() refresh, so reading parentSize gives the live post-expand
+    // viewport. ENTER_FULLSCREEN fires before the browser has settled the new layout.
+    //
+    // recomputeDisplay returns true only when it called setGameSize (which itself
+    // re-fires RESIZE). DISPLAY_RESIZE_EVENT goes out only on actual changes —
+    // emitting unconditionally would re-rasterise every Text on every native scroll
+    // tick, which is a lot of work for nothing.
+    this.scale.on(Phaser.Scale.Events.RESIZE, () => {
+      const before = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
+      recomputeDisplay(this);
+      const after = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
+      if (before !== after) this.game.events.emit(DISPLAY_RESIZE_EVENT);
+    });
+
     // Kick off dynamic-import of every other scene in parallel with the asset
     // stream and the user-gesture wait. Vite splits each into its own chunk;
     // the content/script modules they depend on tag along. Each scene
@@ -330,29 +354,6 @@ export class BootScene extends Phaser.Scene {
         window.removeEventListener('keydown', onGesture);
       });
 
-      // When the viewport changes (fullscreen toggle, address-bar
-      // show/hide, orientation flip, desktop window drag) recompute the
-      // device-pixel canvas size + world-rect math, then notify every
-      // scene so its main camera re-pins the viewport / zoom and any
-      // text bitmap re-rasterises at the new scale.
-      //
-      // Listen on RESIZE (not ENTER_FULLSCREEN): Phaser fires RESIZE
-      // *after* its own getParentBounds() refresh, so reading parentSize
-      // here gives the live post-fullscreen viewport. ENTER_FULLSCREEN
-      // fires inside the DOM fullscreenchange handler before the browser
-      // has settled the new layout.
-      //
-      // recomputeDisplay returns true only when it called setGameSize
-      // (which itself re-fires RESIZE). The DISPLAY_RESIZE_EVENT below
-      // only goes out on actual changes — emitting unconditionally would
-      // be cheap but would re-rasterise every Text on every native scroll
-      // tick, which is a lot of work for nothing.
-      this.scale.on(Phaser.Scale.Events.RESIZE, () => {
-        const before = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
-        recomputeDisplay(this);
-        const after = `${displayState.canvasW}x${displayState.canvasH}|${displayState.logicalH}`;
-        if (before !== after) this.game.events.emit(DISPLAY_RESIZE_EVENT);
-      });
     });
   }
 
