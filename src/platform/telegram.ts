@@ -144,11 +144,35 @@ export async function initTelegram(): Promise<boolean> {
   // and again from the change events (after Phaser is running, so the resize
   // path re-fits the canvas). Only available on Bot API 8.0+; older clients
   // fall through and the CSS env() rule stays in effect.
+  // Debug overlay — fixed div showing live values so problems are visible
+  // on a real device without devtools. Remove once the inset wiring is confirmed.
+  const dbg = document.createElement('div');
+  Object.assign(dbg.style, {
+    position: 'fixed', top: '0', left: '0', zIndex: '9999',
+    background: 'rgba(0,0,0,0.75)', color: '#0f0', fontFamily: 'monospace',
+    fontSize: '11px', padding: '4px 6px', lineHeight: '1.5', pointerEvents: 'none',
+  });
+  document.body.appendChild(dbg);
+  const updateDbg = (): void => {
+    const safeTop = wa.safeAreaInset?.top;
+    const contentTop = wa.contentSafeAreaInset?.top;
+    dbg.textContent = [
+      `api≥8.0: ${atLeast('8.0')}`,
+      `safeArea.top: ${safeTop ?? 'undef'}`,
+      `contentSafe.top: ${contentTop ?? 'undef'}`,
+      `body.paddingTop: ${document.body.style.paddingTop || '(css)'}`,
+      `innerH: ${window.innerHeight}`,
+      `bodyH: ${Math.round(document.body.getBoundingClientRect().height)}`,
+    ].join('\n');
+  };
+  updateDbg();
+
   if (atLeast('8.0')) {
     const applyInsets = (): void => {
       const safeTop = wa.safeAreaInset?.top ?? 0;
       const contentTop = wa.contentSafeAreaInset?.top ?? 0;
       document.body.style.paddingTop = `${safeTop + contentTop}px`;
+      updateDbg();
     };
     applyInsets();
     wa.onEvent('safeAreaChanged', () => {
